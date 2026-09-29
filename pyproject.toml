@@ -29,6 +29,7 @@ audio = [
     "av>=12",
 ]
 agent = [
+    "openai>=1.40",
 ]
 drawing = [
 ]
