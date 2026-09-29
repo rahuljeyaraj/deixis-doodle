@@ -1,0 +1,87 @@
+{
+  "sheet": "m1-targets.pdf",
+  "width_mm": 210.0,
+  "height_mm": 148.0,
+  "frame": "paper frame: origin at the sheet's bottom-left corner as the user sees it (printed text upright, bottom edge toward the user); +x right, +y away",
+  "ring_radii_mm": [
+    3.0,
+    5.0
+  ],
+  "targets": [
+    {
+      "id": 1,
+      "x_mm": 24.0,
+      "y_mm": 121.0
+    },
+    {
+      "id": 2,
+      "x_mm": 65.0,
+      "y_mm": 118.5
+    },
+    {
+      "id": 3,
+      "x_mm": 109.0,
+      "y_mm": 120.5
+    },
+    {
+      "id": 4,
+      "x_mm": 139.0,
+      "y_mm": 113.5
+    },
+    {
+      "id": 5,
+      "x_mm": 180.5,
+      "y_mm": 116.5
+    },
+    {
+      "id": 6,
+      "x_mm": 24.5,
+      "y_mm": 71.0
+    },
+    {
+      "id": 7,
+      "x_mm": 62.5,
+      "y_mm": 73.0
+    },
+    {
+      "id": 8,
+      "x_mm": 101.5,
+      "y_mm": 75.5
+    },
+    {
+      "id": 9,
+      "x_mm": 147.5,
+      "y_mm": 70.0
+    },
+    {
+      "id": 10,
+      "x_mm": 181.0,
+      "y_mm": 72.5
+    },
+    {
+      "id": 11,
+      "x_mm": 22.5,
+      "y_mm": 27.5
+    },
+    {
+      "id": 12,
+      "x_mm": 69.0,
+      "y_mm": 35.5
+    },
+    {
+      "id": 13,
+      "x_mm": 103.5,
+      "y_mm": 27.0
+    },
+    {
+      "id": 14,
+      "x_mm": 141.0,
+      "y_mm": 31.0
+    },
+    {
+      "id": 15,
+      "x_mm": 184.0,
+      "y_mm": 24.5
+    }
+  ]
+}
