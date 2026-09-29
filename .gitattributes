@@ -1,0 +1,4 @@
+# Shell scripts run in WSL or Git Bash, which fail on CRLF (core.autocrlf is on for Windows).
+*.sh text eol=lf
+# PDFs must never get line-ending conversion (reportlab writes ASCII PDFs; it breaks the xref).
+*.pdf binary

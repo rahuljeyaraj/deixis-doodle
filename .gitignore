@@ -8,10 +8,6 @@ __pycache__/
 build/
 dist/
 
-# uv.lock stays out of feature branches during the parallel overnight build.
-# The integration session regenerates it, commits it and deletes these lines.
-uv.lock
-
 # Secrets
 .env
 .env.*
