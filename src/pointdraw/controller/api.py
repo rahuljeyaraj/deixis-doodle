@@ -16,7 +16,12 @@ from typing import Literal, Protocol
 from deixis.geometry import Box, Polyline
 
 Speed = Literal["slow", "normal", "fast"]
-State = Literal["disconnected", "idle", "previewing", "drawing", "paused", "stopped", "error"]
+State = Literal[
+    "disconnected", "idle", "previewing", "drawing", "moving", "paused", "stopped", "error"
+]
+# "moving": park, home and bring-up moves (added by session CTRL).
+# "paused": the hands-clear interlock is holding motion (also before a job starts).
+# "stopped": after stop(), until the next command starts.
 
 
 @dataclass(frozen=True)
