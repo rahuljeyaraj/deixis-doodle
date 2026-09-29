@@ -23,6 +23,7 @@ vision = [
 audio = [
 ]
 agent = [
+    "openai>=1.40",
 ]
 drawing = [
 ]
