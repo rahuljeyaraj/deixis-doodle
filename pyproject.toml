@@ -27,6 +27,8 @@ agent = [
 drawing = [
 ]
 cosmos = [
+    "openai>=1.40",
+    "opencv-contrib-python>=4.9",
 ]
 ui = [
 ]
