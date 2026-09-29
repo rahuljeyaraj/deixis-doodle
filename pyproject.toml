@@ -19,6 +19,8 @@ dependencies = [
 controller = [
 ]
 vision = [
+    "opencv-contrib-python>=4.8",
+    "mediapipe>=0.10.14",
 ]
 audio = [
 ]
