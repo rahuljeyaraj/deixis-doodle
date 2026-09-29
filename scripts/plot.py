@@ -222,6 +222,12 @@ def do_info(args: argparse.Namespace, cfg: MachineConfig, ctl: Controller, sim: 
     for line, what in (("M115", "firmware"), ("M114", "position"), ("M105", "temperatures")):
         reply = ctl.query(line)
         print(f"{what:13} {' | '.join(reply) or '(no reply text)'}")
+        if line == "M115":
+            caps = " ".join(reply)
+            if "EMERGENCY_PARSER:1" in caps:
+                print("emergency parser: yes, stop (M410) acts the moment it arrives")
+            elif "Cap:" in caps:
+                print("emergency parser: NO. Stops wait behind queued lines; use the E-stop")
     print("temperatures should read about 25 C with the 100 kOhm resistors fitted (Path A)")
     return 0
 
