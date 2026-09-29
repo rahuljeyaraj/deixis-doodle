@@ -45,7 +45,9 @@ def detect_onsets(x: np.ndarray, sr: int, p: OnsetParams | None = None) -> list[
     onsets: list[float] = []
     last = -np.inf
     for k in range(len(db)):
-        bg = np.median(db[max(0, k - hist) : k]) if k > 0 else -120.0
+        if k < max(1, hist // 4):
+            continue  # not enough history to know the background level yet
+        bg = np.median(db[max(0, k - hist) : k])
         if db[k] > p.floor_db and db[k] - bg >= p.rise_db:
             seg = np.abs(x[k * n : (k + 1) * n])
             first = int(np.argmax(seg >= 0.5 * seg.max())) if seg.size else 0
@@ -57,7 +59,7 @@ def detect_onsets(x: np.ndarray, sr: int, p: OnsetParams | None = None) -> list[
 
 
 def first_sound(x: np.ndarray, sr: int, rel_db: float = -35.0, frame_s: float = 0.005) -> float:
-    """Start time of the first frame within `rel_db` of the loudest frame (None-safe: 0.0)."""
+    """Start time of the first frame within `rel_db` of the loudest frame (0.0 if silent)."""
     db = frame_energy_db(x, sr, frame_s)
     if db.size == 0:
         return 0.0
