@@ -156,7 +156,10 @@ def cmd_config(args: argparse.Namespace, cfg: MachineConfig) -> int:
             if not sep:
                 raise SystemExit(f"--set needs key=value, not {item!r}")
             changes[key.strip()] = parse_value(value.strip())
-        cfg = with_changes(cfg, changes)
+        try:
+            cfg = with_changes(cfg, changes)
+        except ValueError as e:
+            raise SystemExit(f"not saved: {e}") from e
         path = save_config(cfg, args.config)
         print(f"saved {path}")
     print(json.dumps(cfg.model_dump(), indent=2))
