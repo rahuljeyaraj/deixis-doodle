@@ -39,8 +39,10 @@ from pointdraw.config import Settings, get_settings
 
 log = logging.getLogger("pointdraw.agent")
 
-DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
-FALLBACK_MODEL = "nvidia/Nemotron-3_5-Lightning"
+# R3 (30 Sep): Lightning 52/61 at p50 0.60 s vs Nano 43/61 at 1.00 s, and only Lightning
+# returns several calls in one reply. NEMOTRON_MODEL in .env overrides this.
+DEFAULT_MODEL = "nvidia/Nemotron-3_5-Lightning"
+FALLBACK_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
 
 
 class AgentUnavailable(RuntimeError):

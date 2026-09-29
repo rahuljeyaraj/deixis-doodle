@@ -56,7 +56,7 @@ def test_first_try_success_and_request_shape():
     req = fake.requests[0]
     assert req["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
     assert req["tool_choice"] == "auto"
-    assert req["model"] == "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
+    assert req["model"] == "nvidia/Nemotron-3_5-Lightning"
     assert len(req["tools"]) == 10
     assert req["messages"][1]["content"].endswith("Words: 0=put 1=a 2=tree 3=here")
     assert res.usage == {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
