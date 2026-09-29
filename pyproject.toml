@@ -21,6 +21,10 @@ controller = [
 vision = [
 ]
 audio = [
+    "sherpa-onnx>=1.12",
+    "onnxruntime>=1.18",
+    "sounddevice>=0.4.7",
+    "av>=12",
 ]
 agent = [
 ]
