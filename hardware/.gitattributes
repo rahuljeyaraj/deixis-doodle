@@ -1,0 +1,2 @@
+# Generated PDFs must never get line-ending conversion (it breaks their xref tables).
+print/*.pdf binary
