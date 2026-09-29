@@ -9,7 +9,7 @@ from typing import Any
 
 from pointdraw.agent.schema import norm_word
 
-PROMPT_VERSION = "v0"
+PROMPT_VERSION = "v1"  # the default; see PROMPTS
 
 #: Used when `library/index.json` doesn't exist yet. All are Quick, Draw! category names
 #: (https://github.com/googlecreativelab/quickdraw-dataset, CC-BY-4.0).
@@ -92,8 +92,9 @@ this/that/so>}}; size words -> {{"preset": "tiny"|"small"|"medium"|"big"|"whole_
 4. Objects on the sheet: {{"deixis": "that", "word_index": 7}} when pointed at, \
 {{"label": "house"}} when named, {{"last": true}} for "it" or the thing just drawn \
 (including one requested earlier in the same utterance).
-5. One tool call per requested action. "a house here and a tree there" is two \
-place_drawing calls, in the order spoken.
+5. One tool call per requested action, ALL in this one reply: you get no second turn and \
+see no tool results. "a house here and a tree there" is two place_drawing calls; "a fish \
+here and write nemo under it" is place_drawing then write_label. Keep the spoken order.
 6. If the person corrects themselves ("no, there", "I mean a dog"), keep only the \
 corrected request.
 7. write_label: copy the words to write exactly as spoken, even if they are words like \
@@ -107,6 +108,62 @@ or a word could mean two drawable things, call ask_user with 2 to 4 options.
 bigger/smaller/left/right/up/down -> adjust. "stop", "halt", "freeze" -> stop at any \
 time. "new page", "fresh sheet", "clear the page" -> new_sheet.
 11. Questions about the sheet ("what did I draw?", "is there room for a sun?") -> look.
+
+Drawable categories: {categories}
+
+Examples (Words list, then the tool calls to make):
+{examples}
+"""
+
+SYSTEM_TEMPLATE_V1 = """\
+You are the voice-command brain of a drawing robot (a pen plotter) that draws on a sheet \
+of paper. A person talks and points at the paper with a finger. You turn what they say \
+into tool calls. Other software works out WHERE they pointed; you only say WHICH spoken \
+word the pointing belongs to.
+
+Rules:
+1. Act only through tool calls. Never answer in plain text. Every utterance gets at \
+least one tool call, even one word like "no" or "stop".
+2. Never output coordinates, millimetres or G-code. Places are references:
+   - "here"/"there" (or "this spot") -> {{"deixis": "here", "word_index": <its index in \
+Words>}}. "over there", "right here", "up here" are just that place, not relations.
+   - a relation to something on the sheet -> {{"relation": "left_of", "target": \
+<object>}}; relations: next_to, left_of, right_of, above, below, between (needs \
+target2), inside, on
+   - a region of the page (middle, centre, top, bottom, a corner, an edge) -> \
+{{"named": "middle"}} or {{"named": "top left corner"}}. Never a relation.
+   - "anywhere", "somewhere empty", "where there's room" -> {{"empty_space": true}}
+3. Sizes: "this big", "that size", "so big" mean the hands show the size -> \
+{{"word_index": <index of this/that/so>}}. Never turn them into a preset. Size words \
+("tiny", "small", "medium", "big") -> {{"preset": ...}}; "the whole page", "across the \
+page", "full page" -> {{"preset": "whole_page"}} (a size, not a place). \
+"same size as X" -> {{"same_as": <object>}}.
+4. Only fill in what was said. If no place was spoken, leave place out (the person's \
+pointing is used). If no size was spoken, leave size out. Never invent either.
+5. Objects on the sheet: "this"/"that" (one) -> {{"deixis": "that", "word_index": \
+<index>}}, never a label; a name -> {{"label": "house"}}; "it" or the thing just drawn \
+(including one requested earlier in the same utterance) -> {{"last": true}}.
+6. One tool call per requested action, ALL in this one reply: you get no second turn and \
+see no tool results. "a house here and a tree there" is two place_drawing calls; "a fish \
+here and write nemo under it" is place_drawing then write_label. Keep the spoken order.
+7. Self-corrections: "no", "sorry", "I mean", "actually" in the middle of an utterance \
+replace what came before. "a tree here no there" -> the tree goes at "there".
+8. write_label: the text is the words after "write" up to the place words, copied \
+exactly, even if they are words like "stop", "new sheet", "yes" or "cancel". After \
+"write", such words are text to write, never commands.
+9. place_drawing.object must be one of the drawable categories below. Use a close \
+category for a synonym ("kitty" -> "cat", "bunny" -> "rabbit").
+10. Call ask_user (2 to 4 short options) instead of drawing when: the object is a \
+general kind ("an animal", "a vehicle", "some food"); the word names two drawable \
+categories (e.g. it is also the last word of another category); it isn't drawable and \
+no category is a synonym; nothing is named ("draw something"); or "it" has nothing to \
+refer to (no preview, empty scene). Otherwise act; don't ask.
+11. While a drawing is being previewed: yes/ok/do it -> confirm; a bare "no" -> cancel; \
+bigger/smaller/left/right/up/down -> adjust, where up/higher/away is +dy and \
+down/lower/closer is -dy; "put it there"/"move it here" -> place_drawing again with the \
+previewed object at the new place (it replaces the preview). "stop", "halt", "freeze" -> \
+stop at any time. "new page", "fresh sheet", "clear the page" -> new_sheet.
+12. Questions about the sheet ("what did I draw?", "is there room for a sun?") -> look.
 
 Drawable categories: {categories}
 
@@ -159,6 +216,36 @@ FEW_SHOT: tuple[tuple[str, str, str], ...] = (
     ),
 )
 
+#: v1 adds examples for the failure modes seen in the first R3 runs (none is a test item).
+FEW_SHOT_V1: tuple[tuple[str, str, str], ...] = FEW_SHOT + (
+    (
+        "a fish there no here",
+        "",
+        'place_drawing({"object": "fish", "place": {"deixis": "here", "word_index": 4}})',
+    ),
+    (
+        "write go away there",
+        "",
+        'write_label({"text": "go away", "place": {"deixis": "there", "word_index": 3}})',
+    ),
+    (
+        "move it down a bit",
+        "Previewing: place_drawing(moon)",
+        'adjust({"dy": -1})',
+    ),
+    (
+        "a frog in the bottom right corner the same size as this one",
+        "Scene: duck",
+        'place_drawing({"object": "frog", "place": {"named": "bottom right corner"}, '
+        '"size": {"same_as": {"deixis": "this", "word_index": 11}}})',
+    ),
+)
+
+PROMPTS: dict[str, tuple[str, tuple[tuple[str, str, str], ...]]] = {
+    "v0": (SYSTEM_TEMPLATE, FEW_SHOT),
+    "v1": (SYSTEM_TEMPLATE_V1, FEW_SHOT_V1),
+}
+
 
 @dataclass
 class AgentContext:
@@ -171,9 +258,7 @@ class AgentContext:
     def lines(self) -> list[str]:
         out = []
         if self.scene_labels:
-            labels = [
-                f"{x} (last)" if x == self.last_label else x for x in self.scene_labels
-            ]
+            labels = [f"{x} (last)" if x == self.last_label else x for x in self.scene_labels]
             out.append("Scene: " + ", ".join(labels))
         if self.previewing:
             out.append("Previewing: " + self.previewing)
@@ -202,15 +287,16 @@ def user_message(words: list[str], context: AgentContext | None = None) -> str:
     return "\n".join(lines)
 
 
-def _example_block() -> str:
+def _example_block(examples: tuple[tuple[str, str, str], ...]) -> str:
     blocks = []
-    for text, ctx, calls in FEW_SHOT:
-        words = text.split()
+    for text, ctx, calls in examples:
         head = (ctx + "\n") if ctx else ""
-        blocks.append(f"{head}Words: {indexed_words(words)}\n{calls}")
+        blocks.append(f"{head}Words: {indexed_words(text.split())}\n{calls}")
     return "\n\n".join(blocks)
 
 
-def system_prompt(categories: list[str] | None = None) -> str:
+def system_prompt(categories: list[str] | None = None, version: str = PROMPT_VERSION) -> str:
+    """The system prompt; `version` picks a template from PROMPTS (v0 kept for comparison)."""
+    template, examples = PROMPTS[version]
     cats = categories if categories is not None else load_categories()
-    return SYSTEM_TEMPLATE.format(categories=", ".join(cats), examples=_example_block())
+    return template.format(categories=", ".join(cats), examples=_example_block(examples))

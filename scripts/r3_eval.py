@@ -24,6 +24,7 @@ from pointdraw.agent.fallback_parser import parse as fallback_parse  # noqa: E40
 from pointdraw.agent.prompts import (  # noqa: E402
     BUILTIN_CATEGORIES,
     PROMPT_VERSION,
+    PROMPTS,
     AgentContext,
     load_categories,
 )
@@ -65,10 +66,11 @@ def run(args: argparse.Namespace) -> int:
             timeout_s=args.timeout,
             max_retries=args.retries,
             categories=cats,
+            prompt_version=args.prompt,
         )
     name = "fallback" if agent is None else agent.model.split("/")[-1]
     if agent is not None:
-        name += f"_{args.tool_choice}" + ("_think" if args.thinking else "")
+        name += f"_{args.prompt}_{args.tool_choice}" + ("_think" if args.thinking else "")
 
     rows = []
     for it in items:
@@ -92,6 +94,7 @@ def run(args: argparse.Namespace) -> int:
                 errors=res.errors,
                 speech=res.speech,
                 usage=res.usage,
+                guarded=res.guarded,
             )
         got = [c.to_dict() for c in calls]
         row.update(calls=got, ok=item_matches(it, got), names_ok=names_match(it, got))
@@ -108,13 +111,12 @@ def run(args: argparse.Namespace) -> int:
                 print(f"      errors:   {row['errors']}")
 
     summary = summarise(rows, items, name)
+    summary["prompt_version"] = "rules" if agent is None else args.prompt
     print_summary(summary)
     out_dir = ROOT / "out" / "r3"
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{name}.json"
-    out.write_text(
-        json.dumps({"summary": summary, "rows": rows}, indent=1), encoding="utf-8"
-    )
+    out.write_text(json.dumps({"summary": summary, "rows": rows}, indent=1), encoding="utf-8")
     print(f"\nWrote {out.relative_to(ROOT)}")
     return 0
 
@@ -136,6 +138,7 @@ def summarise(rows: list[dict], items: list, name: str) -> dict:
         "tool_names": sum(r["names_ok"] for r in rows),
         "no_call": sum(1 for r in rows if not r["calls"]),
         "retried": sum(1 for r in rows if r.get("attempts", 1) > 1),
+        "guarded": sum(1 for r in rows if r.get("guarded")),
         "unavailable": sum(1 for r in rows if r.get("error")),
         "ask_expected": len(exp_ask),
         "ask_correct": len(exp_ask & got_ask),
@@ -158,7 +161,7 @@ def print_summary(s: dict) -> None:
     print(f"\n== {s['name']} (prompt {s['prompt_version']}) ==")
     print(f"exact match      {s['exact']}/{s['items']} ({100 * s['exact'] / n:.0f}%)")
     print(f"tool names right {s['tool_names']}/{s['items']}")
-    print(f"no tool call     {s['no_call']}   retried {s['retried']}")
+    print(f"no tool call     {s['no_call']}   retried {s['retried']}   guarded {s['guarded']}")
     print(
         f"ask_user         {s['ask_correct']}/{s['ask_expected']} when needed, "
         f"{s['ask_unneeded']} unneeded"
@@ -178,7 +181,8 @@ def main() -> int:
     g.add_argument("--fallback", action="store_true", help="score the offline rule parser")
     g.add_argument("--model", default=None, help="Token Factory model ID")
     p.add_argument("--thinking", action="store_true", help="leave reasoning on (slow)")
-    p.add_argument("--tool-choice", default="required", choices=["required", "auto"])
+    p.add_argument("--tool-choice", default="auto", choices=["required", "auto"])
+    p.add_argument("--prompt", default=PROMPT_VERSION, choices=sorted(PROMPTS))
     p.add_argument("--timeout", type=float, default=15.0)
     p.add_argument("--retries", type=int, default=1)
     p.add_argument("--library", action="store_true", help="use library/index.json categories")

@@ -13,6 +13,7 @@ Matching rules (deliberately about meaning, not wording):
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -136,5 +137,5 @@ def percentile(xs: list[float], q: float) -> float:
     if not xs:
         return 0.0
     s = sorted(xs)
-    k = max(0, min(len(s) - 1, int(round(q / 100 * len(s) + 0.5)) - 1))
+    k = max(0, min(len(s) - 1, math.ceil(q / 100 * len(s)) - 1))
     return s[k]

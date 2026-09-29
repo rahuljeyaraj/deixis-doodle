@@ -36,9 +36,7 @@ from pydantic import (
 DEMONSTRATIVES = ("here", "there", "this", "that", "these", "those", "so")
 
 Demonstrative = Literal["here", "there", "this", "that", "these", "those", "so"]
-Relation = Literal[
-    "next_to", "left_of", "right_of", "above", "below", "between", "inside", "on"
-]
+Relation = Literal["next_to", "left_of", "right_of", "above", "below", "between", "inside", "on"]
 SizePreset = Literal["tiny", "small", "medium", "big", "whole_page"]
 ConnectorKind = Literal["arrow", "line", "double_arrow"]
 
@@ -128,6 +126,12 @@ def _repair_object(v: Any) -> Any:
         return {"label": v.strip()}
     if isinstance(v, dict) and "word_index" in v and "deixis" not in v:
         return {"deixis": "that", **v}
+    if isinstance(v, dict) and isinstance(v.get("deixis"), str):
+        d = v["deixis"].strip().lower()
+        if d in ("it", "last"):
+            return {"last": True}
+        if d not in DEMONSTRATIVES:
+            return {"label": v["deixis"].strip()}  # {"deixis": "sun"} means the label "sun"
     return v
 
 
@@ -257,9 +261,7 @@ class RelativeSize(_Strict):
 
 def _size_tag(v: Any) -> str | None:
     if isinstance(v, BaseModel):
-        return {DeicticSize: "deictic", PresetSize: "preset", RelativeSize: "relative"}.get(
-            type(v)
-        )
+        return {DeicticSize: "deictic", PresetSize: "preset", RelativeSize: "relative"}.get(type(v))
     if isinstance(v, dict):
         for key, tag in (("preset", "preset"), ("same_as", "relative"), ("word_index", "deictic")):
             if key in v:
@@ -338,7 +340,10 @@ class AskUser(_Strict):
     """Ask a short question when the request is ambiguous."""
 
     question: str = Field(min_length=1)
-    options: list[str] = Field(default_factory=list, max_length=4)
+    options: Annotated[
+        list[str],
+        BeforeValidator(lambda v: v[:4] if isinstance(v, list) else v),
+    ] = Field(default_factory=list, max_length=4)
 
 
 class Look(_Strict):

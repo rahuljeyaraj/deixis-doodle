@@ -2,8 +2,10 @@
 
 - OpenAI SDK against Token Factory's OpenAI-compatible API, key from `Settings`.
 - Reasoning off (`chat_template_kwargs.enable_thinking = false`): about 1 s per call.
-- `tool_choice="required"` by default, because with "auto" about 1 reply in 10 was plain
-  text (22 Sep test). Plain text is still handled: retried once, then returned as speech.
+- `tool_choice="auto"` by default. On 30 Sep, "required" made Nano return only the first
+  of several calls and made Lightning loop on `look` calls until max_tokens (see
+  docs/spikes/r3-nemotron.md). A plain-text reply is retried once with feedback, then
+  returned as speech.
 - One retry: invalid calls are sent back to the model with the validation errors.
 - Every call's latency and token use are logged on the `pointdraw.agent` logger.
 """
@@ -12,15 +14,24 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from pointdraw import clock
-from pointdraw.agent.prompts import AgentContext, load_categories, system_prompt, user_message
+from pointdraw.agent.prompts import (
+    PROMPT_VERSION,
+    AgentContext,
+    load_categories,
+    system_prompt,
+    user_message,
+)
 from pointdraw.agent.schema import (
+    TOOL_ARGS,
     ToolCall,
     ToolCallError,
     check_against_transcript,
+    norm_word,
     openai_tools,
     parse_call,
 )
@@ -48,6 +59,8 @@ class AgentResult:
     attempts: int = 1
     errors: list[str] = field(default_factory=list)  # validation errors seen (and fixed?)
     usage: dict[str, int] = field(default_factory=dict)
+    guarded: bool = False  # True if guard_label_commands replaced the model's calls
+    salvaged: bool = False  # True if calls were read from text like 'cancel()'
 
     @property
     def ok(self) -> bool:
@@ -64,13 +77,14 @@ class NemotronAgent:
         client: Any = None,
         *,
         thinking: bool = False,
-        tool_choice: str = "required",
+        tool_choice: str = "auto",
         timeout_s: float = 8.0,
         max_retries: int = 1,
         temperature: float = 0.0,
         max_tokens: int = 512,
         categories: list[str] | None = None,
         check_categories: bool = True,
+        prompt_version: str = PROMPT_VERSION,
     ) -> None:
         self.settings = settings or get_settings()
         self.model = model or self.settings.nemotron_model or DEFAULT_MODEL
@@ -82,7 +96,8 @@ class NemotronAgent:
         self.max_tokens = max_tokens
         self.categories = categories if categories is not None else load_categories()
         self.check_categories = check_categories
-        self.system = system_prompt(self.categories)
+        self.prompt_version = prompt_version
+        self.system = system_prompt(self.categories, prompt_version)
         self.tools = openai_tools()
         self._client = client
 
@@ -139,6 +154,9 @@ class NemotronAgent:
             _add_usage(result.usage, getattr(resp, "usage", None))
             msg = resp.choices[0].message
             raw_calls = list(getattr(msg, "tool_calls", None) or [])
+            if not raw_calls:
+                raw_calls = calls_from_text(getattr(msg, "content", None) or "")
+                result.salvaged = result.salvaged or bool(raw_calls)
             calls, errors = self._validate(raw_calls, words)
             log.info(
                 "nemotron model=%s attempt=%d latency=%.2fs calls=%d errors=%d",
@@ -160,6 +178,9 @@ class NemotronAgent:
                 result.calls = calls  # keep the valid ones
                 break
             messages += _feedback_messages(msg, raw_calls, errors)
+        result.calls, result.guarded = guard_label_commands(
+            words, result.calls, context, self.categories
+        )
         result.latency_s = clock.now() - t_start
         return result
 
@@ -180,6 +201,61 @@ class NemotronAgent:
             else:
                 calls.append(call)
         return calls, errors
+
+
+@dataclass
+class _Fn:
+    name: str
+    arguments: str
+
+
+@dataclass
+class _TextCall:
+    """Quacks like an OpenAI tool call; built from a call written as text."""
+
+    id: str
+    function: _Fn
+    type: str = "function"
+
+
+_TEXT_CALL = re.compile(r"^\s*`*([a-z_]+)\s*\((.*)\)\s*;?`*\s*$")
+
+
+def calls_from_text(text: str) -> list[Any]:
+    """Tool calls the model wrote as text in the few-shot notation, one per line, e.g.
+    'cancel()' or 'place_drawing({"object": "cat"})'. Unknown names are ignored."""
+    out: list[Any] = []
+    for line in text.splitlines():
+        m = _TEXT_CALL.match(line)
+        if m and m.group(1) in TOOL_ARGS:
+            args = m.group(2).strip() or "{}"
+            out.append(_TextCall(id=f"text-{len(out)}", function=_Fn(m.group(1), args)))
+    return out
+
+
+_WRITE_VERBS = {"write", "label", "print"}
+_GUARDED_TOOLS = {"new_sheet", "cancel", "confirm"}
+
+
+def guard_label_commands(
+    words: list[str],
+    calls: list[ToolCall],
+    context: AgentContext | None,
+    categories: list[str],
+) -> tuple[list[ToolCall], bool]:
+    """If the person said "write ..." but the model returned new_sheet, cancel or confirm
+    (e.g. "write new sheet there"), use the rule parser's reading instead. `stop` is never
+    overridden: stopping by mistake is safe, not stopping isn't."""
+    from pointdraw.agent.fallback_parser import FILLERS
+    from pointdraw.agent.fallback_parser import parse as fallback_parse
+
+    first = next((w for w in map(norm_word, words) if w and w not in FILLERS), "")
+    if first in _WRITE_VERBS and any(c.name in _GUARDED_TOOLS for c in calls):
+        fixed = fallback_parse(words, context, categories)
+        if fixed and not any(c.name in _GUARDED_TOOLS for c in fixed):
+            log.warning("guard: replaced %s with %s", calls, fixed)
+            return fixed, True
+    return calls, False
 
 
 def _add_usage(total: dict[str, int], usage: Any) -> None:
