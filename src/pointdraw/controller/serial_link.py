@@ -109,16 +109,23 @@ class SerialLink:
     # ------------------------------------------------------------------ lifecycle
 
     def connect(self) -> None:
-        if self._factory is not None:
-            self._ser = self._factory()
-        else:
-            import serial
+        try:
+            if self._factory is not None:
+                self._ser = self._factory()
+            else:
+                import serial
 
-            self._ser = serial.Serial(self.port, self.baud, timeout=0.1, write_timeout=2)
+                self._ser = serial.Serial(self.port, self.baud, timeout=0.1, write_timeout=2)
+        except Exception as e:  # noqa: BLE001 - pyserial raises several types
+            raise LinkError(f"could not open {self.port}: {e}") from e
         self._closed = False
         self._reader = threading.Thread(target=self._read_loop, name="serial-reader", daemon=True)
         self._reader.start()
-        self._wait_for_boot()
+        try:
+            self._wait_for_boot()
+        except LinkError:
+            self.close()
+            raise
         self._connected = True
         log.info("connected to %s at %d baud", self.port, self.baud)
 
