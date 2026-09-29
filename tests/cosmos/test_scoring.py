@@ -1,6 +1,7 @@
 """R1 scoring and the evaluation loop, with fake Cosmos responses."""
 
 import json
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -72,6 +73,14 @@ def test_summary_and_table():
     assert "(a) label a pointed crop | 2 | 1/2 (50%)" in table
     assert latency_stats([]) == {"n": 0}
     assert latency_stats([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])["p90_s"] == 9
+
+
+def test_example_labels_template_loads():
+    path = Path(__file__).resolve().parents[2] / "data" / "r1" / "labels.example.json"
+    cases = load_dataset(path)
+    assert cases[0].path.name == "img01.jpg"
+    assert cases[0].marks[0].label == "circle" and cases[0].marks[0].synonyms
+    assert len(cases[0].point_queries) == 2
 
 
 def test_crop_px_pads_with_white():

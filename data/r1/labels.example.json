@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "source": "rahul's phone photos, <date>. Pixel boxes are [x1, y1, x2, y2] in the photo as stored (x right, y down).",
+  "images": [
+    {
+      "file": "img01.jpg",
+      "marks": [
+        {"label": "circle", "synonyms": ["ring", "oval"], "box_px": [812, 402, 1105, 690]},
+        {"label": "house", "synonyms": ["home", "hut"], "box_px": [1300, 350, 1620, 760]}
+      ],
+      "point_queries": [
+        {"query": "empty space to the right of the house", "accept_box_px": [1640, 350, 1880, 760]},
+        {"query": "empty space below the circle", "accept_box_px": [812, 700, 1105, 980]}
+      ]
+    }
+  ]
+}
