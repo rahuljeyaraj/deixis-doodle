@@ -141,10 +141,16 @@ def ink_mask(
     params: InkParams | None = None,
 ) -> np.ndarray:
     """uint8 mask (255 = the user's ink) after thresholding, robot removal and cleanup."""
-    p = params or InkParams()
+    return _ink_and_robot(image, mm_per_px, robot_polylines_mm, params or InkParams())[0]
+
+
+def _ink_and_robot(
+    image: np.ndarray, mm_per_px: float, robot_polylines_mm: Sequence[Polyline], p: InkParams
+) -> tuple[np.ndarray, np.ndarray | None]:
     dark = darkening(image, mm_per_px, p.block_mm)
     mask = np.where(dark >= p.offset, 255, 0).astype(np.uint8)
 
+    robot = None
     if robot_polylines_mm:
         robot = robot_stroke_mask(
             dark.shape, robot_polylines_mm, mm_per_px, p.robot_pen_width_mm, p.robot_dilate_mm
@@ -164,7 +170,7 @@ def ink_mask(
         mask[-b:, :] = 0
         mask[:, :b] = 0
         mask[:, -b:] = 0
-    return mask
+    return mask, robot
 
 
 def _contains(outer: tuple[int, int, int, int], inner: tuple[int, int, int, int], tol: int) -> bool:
@@ -177,9 +183,18 @@ def _contains(outer: tuple[int, int, int, int], inner: tuple[int, int, int, int]
 
 
 def marks_from_mask(
-    mask: np.ndarray, mm_per_px: float, params: InkParams | None = None
+    mask: np.ndarray,
+    mm_per_px: float,
+    params: InkParams | None = None,
+    bridge: np.ndarray | None = None,
 ) -> list[UserMark]:
-    """Group an ink mask into `UserMark`s, largest first."""
+    """Group an ink mask into `UserMark`s, largest first.
+
+    `bridge` is the removed robot-stroke mask. Where a user's line crosses a robot stroke the
+    subtraction cuts it; robot pixels close to user ink are treated as connecting, so a circle
+    crossed by a robot line stays one mark. The bridge is local (about one stroke width around
+    the crossing), so two marks that merely touch the same long robot line stay separate.
+    """
     p = params or InkParams()
     h, w = mask.shape
     gap = int(round(p.merge_gap_mm / mm_per_px))
@@ -187,6 +202,12 @@ def marks_from_mask(
     if gap >= 1:
         k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (gap + 1, gap + 1))
         grouping = cv2.dilate(mask, k)
+    if bridge is not None:
+        # Radius of one full stroke width, so ink on either side reaches across the band.
+        band = int(math.ceil((p.robot_pen_width_mm + 2 * p.robot_dilate_mm) / mm_per_px))
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * band + 3, 2 * band + 3))
+        near_ink = cv2.dilate(mask, k)
+        grouping = cv2.bitwise_or(grouping, cv2.bitwise_and(bridge, near_ink))
     n, labels = cv2.connectedComponents(grouping, connectivity=8)
     ys, xs = np.nonzero(mask)
     groups: dict[int, list[np.ndarray]] = {}
@@ -248,7 +269,8 @@ def segment_ink(
 ) -> list[UserMark]:
     """The user's marks on a warped paper image, minus the robot's own strokes."""
     p = params or InkParams()
-    return marks_from_mask(ink_mask(image, mm_per_px, robot_polylines_mm, p), mm_per_px, p)
+    mask, robot = _ink_and_robot(image, mm_per_px, robot_polylines_mm, p)
+    return marks_from_mask(mask, mm_per_px, p, bridge=robot)
 
 
 def distance_to_box(point: Point, box: Box) -> float:

@@ -71,7 +71,33 @@ def find_paper_quad(image: np.ndarray, min_area_frac: float = 0.05) -> np.ndarra
             break
     if quad is None:
         quad = cv2.boxPoints(cv2.minAreaRect(c))
-    return order_corners(np.asarray(quad, np.float64) / small_scale)
+    # The 7x7 smoothness window and the blur mark a band about 3 px wide inside the paper edge
+    # as rough, so push each edge back out by that much.
+    quad = offset_quad(order_corners(np.asarray(quad, np.float64)), 3.0)
+    return quad / small_scale
+
+
+def offset_quad(quad: np.ndarray, d: float) -> np.ndarray:
+    """Move each edge of an ordered convex quad outward by `d` (negative moves inward)."""
+    center = quad.mean(axis=0)
+    lines = []
+    for i in range(4):
+        a, b = quad[i], quad[(i + 1) % 4]
+        t = (b - a) / max(np.linalg.norm(b - a), 1e-9)
+        n = np.array([t[1], -t[0]])
+        if np.dot(n, a - center) < 0:
+            n = -n
+        lines.append((a + d * n, t))
+    out = []
+    for i in range(4):
+        (p1, t1), (p2, t2) = lines[i - 1], lines[i]
+        m = np.array([t1, -t2]).T
+        if abs(np.linalg.det(m)) < 1e-9:
+            out.append(quad[i])
+            continue
+        s = np.linalg.solve(m, p2 - p1)[0]
+        out.append(p1 + s * t1)
+    return np.array(out)
 
 
 def quad_size_px(quad: np.ndarray) -> tuple[float, float]:
