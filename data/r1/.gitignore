@@ -1,0 +1,8 @@
+# R1 phone photos and results stay local (privacy, and the 5 MB rule). Only docs and templates
+# are committed from this folder.
+photos/
+*.jpg
+*.jpeg
+*.png
+*.heic
+results*.json
