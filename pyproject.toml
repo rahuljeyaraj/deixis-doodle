@@ -17,6 +17,8 @@ dependencies = [
 # (see docs/sessions/README.md). Install with: uv sync --extra <group>
 [project.optional-dependencies]
 controller = [
+    "pyserial>=3.5",
+    "pillow>=10",
 ]
 vision = [
 ]
