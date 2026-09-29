@@ -97,6 +97,9 @@ class MachineConfig(_Model):
     clamp_tolerance_mm: float = Field(0.05, ge=0, le=0.05)
 
     servo_enabled: bool = False  # allows M280 (a servo pen lift, later)
+    # M410 stops without deceleration, so Marlin warns steps may be lost: the next command
+    # after a stop homes (G28) first.
+    rehome_after_stop: bool = True
 
     # Serial link.
     baud: int = 115200

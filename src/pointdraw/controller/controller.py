@@ -7,8 +7,8 @@ with a `SafetyError`. A worker thread then streams each job one line at a time:
   the pen if it was down, and reports `paused`. Motion resumes (pen lowered again if needed)
   once hands have been clear for `hands_clear_hold_s`. Motion never starts while not clear.
 - `stop()` sends M410 at once from the caller's thread, drops every queued job, then the
-  worker renumbers the link and lifts the pen. The next command clears the `stopped` state;
-  re-home after a stop if the machine might have lost steps.
+  worker renumbers the link and lifts the pen. M410 stops without deceleration and Marlin
+  warns that steps may be lost, so (with `rehome_after_stop`) the next command homes first.
 """
 
 from __future__ import annotations
@@ -68,6 +68,7 @@ class Controller:
         self._busy = False
         self._closing = False
         self._pen_down = False
+        self._needs_home = False
         self._worker: threading.Thread | None = None
 
     # ------------------------------------------------------------------ lifecycle
@@ -143,6 +144,7 @@ class Controller:
             self._jobs.append(_Job("recover", [], "stopped", self._gen, recover=True))
             self._state = "stopped"
             self._message = "stopped"
+            self._needs_home = self.config.rehome_after_stop
             self._cond.notify_all()
 
     def set_hands_clear(self, clear: bool) -> None:
@@ -188,6 +190,10 @@ class Controller:
                 raise RuntimeError("not started; call start() first")
             if self._state == "error":
                 raise LinkError(f"controller in error state: {self._message}")
+            if self._needs_home:
+                if lines[:1] != ["G28"]:
+                    lines = gcode.home_gcode(self.config) + lines
+                self._needs_home = False
             self._jobs.append(_Job(label, lines, state, self._gen))
             self._cond.notify_all()
 

@@ -152,10 +152,29 @@ def test_stop_is_immediate_and_lifts_the_pen(slow):
     assert sim.position[0] < X0 + 150
     assert len(sim.strokes) == 1  # the queued job never ran
     assert sim.lines[-1] == gcode.pen_up(CFG)
-    # A new command after a stop works.
+    # A new command after a stop works, and homes first (M410 may lose steps).
+    n = len(sim.lines)
     ctl.draw_polylines([[(X0, Y + 20), (X0 + 20, Y + 20)]])
     assert ctl.wait(3)
     assert ctl.status().state == "idle" and len(sim.strokes) == 2
+    assert sim.lines[n] == "G28"
+    ctl.park()
+    assert ctl.wait(3)
+    assert sim.lines.count("G28") == 1  # only once
+
+
+def test_no_rehome_when_disabled():
+    cfg = with_changes(CFG, {"rehome_after_stop": False})
+    sim = SimulatedPlotter(cfg)
+    ctl = Controller(sim, cfg, hands_clear=True)
+    ctl.start()
+    try:
+        ctl.stop()
+        ctl.park()
+        assert ctl.wait(3)
+        assert "G28" not in sim.lines
+    finally:
+        ctl.close()
 
 
 def test_stop_while_paused(slow):
