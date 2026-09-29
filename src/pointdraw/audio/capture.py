@@ -109,6 +109,35 @@ def default_input_device() -> int | None:
         return None
 
 
+def wasapi_twin(default_index: int, devices: list[dict]) -> int | None:
+    """The WASAPI entry for the same microphone as `default_index`, if the default is MME.
+
+    PortAudio's default on Windows is the MME device, which reports no ADC timestamps (so
+    stamps fall back to callback time). WASAPI reports them. MME truncates names to 31
+    characters, so match on the prefix.
+    """
+    d = next((x for x in devices if x["index"] == default_index), None)
+    if d is None or d["hostapi"] != "MME":
+        return None
+    prefix = d["name"][:25]
+    for x in devices:
+        if x["hostapi"] == "Windows WASAPI" and x["name"].startswith(prefix):
+            return x["index"]
+    return None
+
+
+def preferred_input_device() -> int | None:
+    """Default microphone, switched to its WASAPI entry on Windows when there is one."""
+    idx = default_input_device()
+    if idx is None:
+        return None
+    try:
+        twin = wasapi_twin(idx, list_input_devices())
+    except Exception:
+        twin = None
+    return twin if twin is not None else idx
+
+
 class AudioCapture:
     """Background sounddevice input stream delivering (samples, t0) blocks through a queue."""
 
@@ -149,7 +178,7 @@ class AudioCapture:
     def start(self) -> AudioCapture:
         import sounddevice as sd
 
-        dev = self.device if self.device is not None else default_input_device()
+        dev = self.device if self.device is not None else preferred_input_device()
         if dev is None:
             raise RuntimeError("no microphone found")
         info = sd.query_devices(dev, "input")

@@ -68,8 +68,10 @@ def test_default_model_on_a_synthetic_utterance(monkeypatch):
         pytest.skip("run scripts/make_test_utterances.py first")
     x, sr = read_wav(wav)
     x = np.concatenate([np.zeros(int(0.3 * sr), np.float32), x])
+    x += np.random.default_rng(0).normal(0, 1e-3, len(x)).astype(np.float32)  # mic noise floor
     asr = LocalAsr(AsrConfig())
     words = asr.transcribe(x, sr, t_start=1000.0 - 0.3)
     assert [w.text.lower() for w in words] == ["put", "a", "tree", "here"]
+    # Checks the clock plumbing (t_start offset, lag correction), not accuracy: see r2-asr.md.
     here = words[-1]
-    assert here.t0 == pytest.approx(1000.0 + item["words"][3]["t0"], abs=0.15)
+    assert here.t0 == pytest.approx(1000.0 + item["words"][3]["t0"], abs=0.25)

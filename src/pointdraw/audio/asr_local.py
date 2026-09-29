@@ -45,8 +45,14 @@ class AsrConfig:
     lag_s: float | None = None
 
 
-# Median lag of word start times against ground truth, from scripts/asr_bench.py (docs/spikes).
-MEASURED_LAG_S: dict[str, float] = {}
+# Median lag of demonstrative start times against ground truth (synthetic voices, 300 ms
+# pre-roll), from scripts/asr_bench.py on 30 Sep 2026; see docs/spikes/r2-asr.md. Re-check with
+# real speech once the clap test (audio/sync.py) has calibrated the audio clock.
+MEASURED_LAG_S: dict[str, float] = {
+    "parakeet_v2": 0.095,
+    "nemotron35": 0.135,
+    "nemotron_en": 0.025,
+}
 
 
 def tokens_to_words(

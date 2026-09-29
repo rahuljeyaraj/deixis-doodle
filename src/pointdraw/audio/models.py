@@ -72,7 +72,9 @@ ASR_MODELS: dict[str, AsrModel] = {
     ]
 }
 
-DEFAULT_ASR = "nemotron_en"
+# Spike R2 (docs/spikes/r2-asr.md): Parakeet TDT has the most accurate word start times, which is
+# what deixis needs. The streaming Nemotron models emit the utterance-final word late.
+DEFAULT_ASR = "parakeet_v2"
 
 SILERO_VAD_URL = f"{SHERPA_ASR_RELEASE}/silero_vad.onnx"
 SILERO_VAD_PATH = MODELS_DIR / "silero_vad.onnx"

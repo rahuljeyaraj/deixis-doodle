@@ -2,7 +2,7 @@
 
 import pytest
 
-from pointdraw.audio.capture import BlockClock
+from pointdraw.audio.capture import BlockClock, wasapi_twin
 
 SR = 16000
 N = 512  # samples per block
@@ -50,3 +50,15 @@ def test_tracks_slow_drift():
     for k in range(400):
         t = c.stamp(N, 2.0 + k * (BLOCK_S + drift))
     assert t == pytest.approx(2.0 + 399 * (BLOCK_S + drift), abs=0.01)
+
+
+def test_wasapi_twin_of_an_mme_default():
+    name = "Microphone Array (Lenovo FHD Webcam Audio)"
+    devices = [
+        {"index": 1, "name": name[:31], "hostapi": "MME"},
+        {"index": 6, "name": name, "hostapi": "Windows DirectSound"},
+        {"index": 12, "name": name, "hostapi": "Windows WASAPI"},
+    ]
+    assert wasapi_twin(1, devices) == 12
+    assert wasapi_twin(12, devices) is None  # already WASAPI
+    assert wasapi_twin(1, devices[:2]) is None  # no WASAPI entry
