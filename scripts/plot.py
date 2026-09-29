@@ -208,6 +208,9 @@ def _run_command(
         print("\nstopping", file=sys.stderr)
         ctl.stop()
         ctl.wait(10)
+        print(
+            "stopped. Steps may be lost: run `plot.py home` before drawing again", file=sys.stderr
+        )
         return 130
     except SafetyError as e:
         print(f"refused: {e}", file=sys.stderr)
