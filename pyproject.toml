@@ -1,0 +1,68 @@
+[project]
+name = "deixis-doodle"
+version = "0.1.0"
+description = "Point and Draw: telling any robot *where* by speech and pointing (Nebius x NVIDIA Global AI Hackathon, Physical AI track)"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11,<3.13"
+authors = [{ name = "Rahul Jeyaraj" }]
+dependencies = [
+    "numpy>=1.26",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+]
+
+# One optional group per workstream. Each session edits ONLY its own group
+# (see docs/sessions/README.md). Install with: uv sync --extra <group>
+[project.optional-dependencies]
+controller = [
+]
+vision = [
+]
+audio = [
+]
+agent = [
+]
+drawing = [
+]
+cosmos = [
+]
+ui = [
+]
+hwkit = [
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deixis", "src/pointdraw"]
+
+[tool.uv]
+# Use a uv-managed CPython, never the PlatformIO Python that is first on PATH.
+python-preference = "only-managed"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--import-mode=importlib -m 'not hardware and not network'"
+markers = [
+    "hardware: needs the plotter, camera, microphone or robot attached",
+    "network: needs internet access, model downloads or API keys",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

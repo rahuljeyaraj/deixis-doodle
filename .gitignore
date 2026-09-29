@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# uv.lock stays out of feature branches during the parallel overnight build.
+# The integration session regenerates it, commits it and deletes these lines.
+uv.lock
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local data, downloaded models, caches, calibration and outputs (never commit)
+.cache/
+out/
+recordings/
+*.wav
+*.mp4
+*.mov
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
