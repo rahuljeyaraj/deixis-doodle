@@ -313,10 +313,14 @@ def understand(
     context: AgentContext | None = None,
     agent: NemotronAgent | None = None,
 ) -> AgentResult:
-    """Nemotron if it's reachable and answers with calls, else the rule-based parser."""
+    """Nemotron if it's reachable and answers with calls, else the rule-based parser.
+
+    The fallback parser gets the agent's categories, so both readers agree on what is
+    drawable (without an agent it loads them itself)."""
     from pointdraw.agent.fallback_parser import parse as fallback_parse
 
     err = ""
+    categories = getattr(agent, "categories", None)
     if agent is not None:
         try:
             res = agent.run(words, context)
@@ -327,7 +331,7 @@ def understand(
             err = str(e)
             log.warning("nemotron unavailable, using fallback parser: %s", e)
     t0 = clock.now()
-    calls = fallback_parse(words, context)
+    calls = fallback_parse(words, context, categories)
     return AgentResult(
         calls=calls,
         source="fallback",
