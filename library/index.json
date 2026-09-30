@@ -1,0 +1,359 @@
+{
+ "version": 1,
+ "source": "Quick, Draw! by Google Creative Lab (CC BY 4.0); see ATTRIBUTION.md",
+ "categories": {
+  "apple": {
+   "file": "quickdraw/apple.json",
+   "variants": 3,
+   "synonyms": []
+  },
+  "bed": {
+   "file": "quickdraw/bed.json",
+   "variants": 3,
+   "synonyms": []
+  },
+  "bench": {
+   "file": "quickdraw/bench.json",
+   "variants": 3,
+   "synonyms": []
+  },
+  "bicycle": {
+   "file": "quickdraw/bicycle.json",
+   "variants": 3,
+   "synonyms": [
+    "bike"
+   ]
+  },
+  "bird": {
+   "file": "quickdraw/bird.json",
+   "variants": 3,
+   "synonyms": [
+    "birdie"
+   ]
+  },
+  "brain": {
+   "file": "quickdraw/brain.json",
+   "variants": 3,
+   "synonyms": [
+    "mind"
+   ]
+  },
+  "bush": {
+   "file": "quickdraw/bush.json",
+   "variants": 3,
+   "synonyms": [
+    "hedge",
+    "shrub"
+   ]
+  },
+  "camera": {
+   "file": "quickdraw/camera.json",
+   "variants": 3,
+   "synonyms": [
+    "webcam"
+   ]
+  },
+  "car": {
+   "file": "quickdraw/car.json",
+   "variants": 3,
+   "synonyms": [
+    "automobile"
+   ]
+  },
+  "cat": {
+   "file": "quickdraw/cat.json",
+   "variants": 3,
+   "synonyms": [
+    "kitten",
+    "kitty"
+   ]
+  },
+  "chair": {
+   "file": "quickdraw/chair.json",
+   "variants": 3,
+   "synonyms": [
+    "seat"
+   ]
+  },
+  "cloud": {
+   "file": "quickdraw/cloud.json",
+   "variants": 3,
+   "synonyms": [
+    "clouds"
+   ]
+  },
+  "couch": {
+   "file": "quickdraw/couch.json",
+   "variants": 3,
+   "synonyms": [
+    "settee",
+    "sofa"
+   ]
+  },
+  "crown": {
+   "file": "quickdraw/crown.json",
+   "variants": 3,
+   "synonyms": [
+    "tiara"
+   ]
+  },
+  "cup": {
+   "file": "quickdraw/cup.json",
+   "variants": 3,
+   "synonyms": [
+    "mug",
+    "teacup"
+   ]
+  },
+  "dog": {
+   "file": "quickdraw/dog.json",
+   "variants": 3,
+   "synonyms": [
+    "doggy",
+    "puppy"
+   ]
+  },
+  "door": {
+   "file": "quickdraw/door.json",
+   "variants": 3,
+   "synonyms": []
+  },
+  "ear": {
+   "file": "quickdraw/ear.json",
+   "variants": 4,
+   "synonyms": [
+    "ears"
+   ]
+  },
+  "eye": {
+   "file": "quickdraw/eye.json",
+   "variants": 3,
+   "synonyms": [
+    "eyeball"
+   ]
+  },
+  "fence": {
+   "file": "quickdraw/fence.json",
+   "variants": 3,
+   "synonyms": [
+    "gate"
+   ]
+  },
+  "fish": {
+   "file": "quickdraw/fish.json",
+   "variants": 3,
+   "synonyms": []
+  },
+  "floor lamp": {
+   "file": "quickdraw/floor lamp.json",
+   "variants": 3,
+   "synonyms": [
+    "lamp"
+   ]
+  },
+  "flower": {
+   "file": "quickdraw/flower.json",
+   "variants": 3,
+   "synonyms": [
+    "daisy",
+    "flowers",
+    "rose"
+   ]
+  },
+  "hand": {
+   "file": "quickdraw/hand.json",
+   "variants": 4,
+   "synonyms": [
+    "hands",
+    "palm"
+   ]
+  },
+  "hat": {
+   "file": "quickdraw/hat.json",
+   "variants": 3,
+   "synonyms": [
+    "cap"
+   ]
+  },
+  "house": {
+   "file": "quickdraw/house.json",
+   "variants": 3,
+   "synonyms": [
+    "cottage",
+    "home",
+    "hut"
+   ]
+  },
+  "key": {
+   "file": "quickdraw/key.json",
+   "variants": 3,
+   "synonyms": []
+  },
+  "laptop": {
+   "file": "quickdraw/laptop.json",
+   "variants": 3,
+   "synonyms": [
+    "computer",
+    "notebook",
+    "pc"
+   ]
+  },
+  "light bulb": {
+   "file": "quickdraw/light bulb.json",
+   "variants": 3,
+   "synonyms": [
+    "bulb",
+    "lightbulb"
+   ]
+  },
+  "microphone": {
+   "file": "quickdraw/microphone.json",
+   "variants": 3,
+   "synonyms": [
+    "mic",
+    "microphones"
+   ]
+  },
+  "moon": {
+   "file": "quickdraw/moon.json",
+   "variants": 3,
+   "synonyms": []
+  },
+  "mountain": {
+   "file": "quickdraw/mountain.json",
+   "variants": 3,
+   "synonyms": [
+    "hill",
+    "mountains"
+   ]
+  },
+  "mouth": {
+   "file": "quickdraw/mouth.json",
+   "variants": 4,
+   "synonyms": [
+    "lips"
+   ]
+  },
+  "pond": {
+   "file": "quickdraw/pond.json",
+   "variants": 3,
+   "synonyms": [
+    "lake",
+    "puddle"
+   ]
+  },
+  "sailboat": {
+   "file": "quickdraw/sailboat.json",
+   "variants": 3,
+   "synonyms": [
+    "boat",
+    "yacht"
+   ]
+  },
+  "smiley face": {
+   "file": "quickdraw/smiley face.json",
+   "variants": 3,
+   "synonyms": [
+    "face",
+    "happy face",
+    "smile",
+    "smiley"
+   ]
+  },
+  "star": {
+   "file": "quickdraw/star.json",
+   "variants": 3,
+   "synonyms": [
+    "stars"
+   ]
+  },
+  "sun": {
+   "file": "quickdraw/sun.json",
+   "variants": 3,
+   "synonyms": [
+    "sunshine"
+   ]
+  },
+  "table": {
+   "file": "quickdraw/table.json",
+   "variants": 3,
+   "synonyms": [
+    "desk"
+   ]
+  },
+  "television": {
+   "file": "quickdraw/television.json",
+   "variants": 3,
+   "synonyms": [
+    "screen",
+    "telly",
+    "tv"
+   ]
+  },
+  "tree": {
+   "file": "quickdraw/tree.json",
+   "variants": 3,
+   "synonyms": [
+    "trees"
+   ]
+  }
+ },
+ "synonyms": {
+  "automobile": "car",
+  "bike": "bicycle",
+  "birdie": "bird",
+  "boat": "sailboat",
+  "bulb": "light bulb",
+  "cap": "hat",
+  "clouds": "cloud",
+  "computer": "laptop",
+  "cottage": "house",
+  "daisy": "flower",
+  "desk": "table",
+  "doggy": "dog",
+  "ears": "ear",
+  "eyeball": "eye",
+  "face": "smiley face",
+  "flowers": "flower",
+  "gate": "fence",
+  "hands": "hand",
+  "happy face": "smiley face",
+  "hedge": "bush",
+  "hill": "mountain",
+  "home": "house",
+  "hut": "house",
+  "kitten": "cat",
+  "kitty": "cat",
+  "lake": "pond",
+  "lamp": "floor lamp",
+  "lightbulb": "light bulb",
+  "lips": "mouth",
+  "mic": "microphone",
+  "microphones": "microphone",
+  "mind": "brain",
+  "mountains": "mountain",
+  "mug": "cup",
+  "notebook": "laptop",
+  "palm": "hand",
+  "pc": "laptop",
+  "puddle": "pond",
+  "puppy": "dog",
+  "rose": "flower",
+  "screen": "television",
+  "seat": "chair",
+  "settee": "couch",
+  "shrub": "bush",
+  "smile": "smiley face",
+  "smiley": "smiley face",
+  "sofa": "couch",
+  "stars": "star",
+  "sunshine": "sun",
+  "teacup": "cup",
+  "telly": "television",
+  "tiara": "crown",
+  "trees": "tree",
+  "tv": "television",
+  "webcam": "camera",
+  "yacht": "sailboat"
+ }
+}

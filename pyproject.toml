@@ -32,6 +32,8 @@ agent = [
     "openai>=1.40",
 ]
 drawing = [
+    "pillow>=10",
+    "vpype>=1.14",
 ]
 cosmos = [
     "openai>=1.40",
