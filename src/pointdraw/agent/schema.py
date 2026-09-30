@@ -463,6 +463,21 @@ def _word_refs(obj: Any, path: str = "") -> list[tuple[str, int, str | None]]:
     return out
 
 
+#: Words that are never an object's label (Lightning once sent {"label": "the"}, 30 Sep).
+_NOT_NAMES = {"the", "a", "an", "this", "that", "these", "those", "it", "one", "them", "to", ""}
+
+
+def _labels(obj: Any, path: str = "") -> list[tuple[str, str]]:
+    """All (path, label) pairs of LabelObject references inside a validated args model."""
+    out: list[tuple[str, str]] = []
+    if isinstance(obj, LabelObject):
+        out.append((path, obj.label))
+    elif isinstance(obj, BaseModel):
+        for field in type(obj).model_fields:
+            out += _labels(getattr(obj, field), f"{path}.{field}" if path else field)
+    return out
+
+
 def check_against_transcript(
     call: ToolCall, words: list[str], categories: list[str] | None = None
 ) -> list[str]:
@@ -483,6 +498,12 @@ def check_against_transcript(
         elif deixis and normed[idx] != deixis:
             problems.append(
                 f"{call.name}.{path}: word {idx} is '{words[idx]}' but deixis says '{deixis}'"
+            )
+    for path, label in _labels(call.args):
+        if norm_word(label) in _NOT_NAMES:
+            problems.append(
+                f"{call.name}.{path}: '{label}' is not a name; use the object's label "
+                "from the Scene line, e.g. {\"label\": \"house\"}"
             )
     if categories and call.name == "place_drawing":
         obj = call.args.object.strip().lower()  # type: ignore[attr-defined]

@@ -21,7 +21,7 @@ def _cases():
         if spec.voice == "tts":
             continue  # tts-only scenes need the Windows voice and the ASR model
         v = spec.variations
-        cfgs = [RunConfig()]
+        cfgs = [RunConfig(), RunConfig(use_cache=False)]  # recorded replies, then parser only
         cfgs += [RunConfig(seed=s) for s in v.seeds]
         if v.hover_mm:
             cfgs.append(RunConfig(hover_mm=v.hover_mm))

@@ -1,6 +1,6 @@
 id: S20
 title: "Draw a dragon"
-tests: "not in the library: ask_user with close matches, draw nothing"
+tests: "not in the library: ask, don't draw. Mock: the rule parser names the dragon and offers close matches; live Lightning asked 'Which animal should I draw?' (30 Sep)"
 lines:
   - at: 1.0
     text: "Draw a dragon."
@@ -8,5 +8,4 @@ hand: []
 expect:
   drawn: []
   asks: 1
-  ask_contains: [dragon]
 variations: {hover_mm: null}

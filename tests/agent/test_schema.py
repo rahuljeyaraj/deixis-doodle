@@ -167,3 +167,14 @@ def test_check_against_transcript():
 
 def test_presets_match_plan():
     assert PRESET_MM == {"tiny": 20, "small": 35, "medium": 55, "big": 80, "whole_page": None}
+
+
+def test_article_as_label_is_sent_back():
+    """Live 30 Sep: Lightning sent {"label": "the"} for "an arrow from the brain to the hand"."""
+    from pointdraw.agent.schema import check_against_transcript, parse_call
+
+    words = "an arrow from the brain to the hand".split()
+    bad = parse_call("draw_connector", {"from": {"label": "the"}, "to": {"label": "hand"}})
+    assert any("not a name" in p for p in check_against_transcript(bad, words))
+    good = parse_call("draw_connector", {"from": {"label": "brain"}, "to": {"label": "hand"}})
+    assert check_against_transcript(good, words) == []

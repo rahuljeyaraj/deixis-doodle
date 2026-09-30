@@ -49,6 +49,8 @@ class RunConfig:
             parts.append(f"shift{self.shift_s:+g}")
         if self.emergency_parser is not None:
             parts.append("ep" if self.emergency_parser else "noep")
+        if not self.use_cache:
+            parts.append("parser")
         return "-".join(parts)
 
 
