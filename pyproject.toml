@@ -21,6 +21,8 @@ controller = [
     "pillow>=10",
 ]
 vision = [
+    "opencv-contrib-python>=4.8",
+    "mediapipe>=0.10.14",
 ]
 audio = [
     "sherpa-onnx>=1.12",
