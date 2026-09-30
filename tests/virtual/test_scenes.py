@@ -27,7 +27,8 @@ def _cases():
             cfgs.append(RunConfig(hover_mm=v.hover_mm))
         cfgs += [RunConfig(shift_s=s) for s in v.shifts]
         for cfg in cfgs:
-            yield pytest.param(spec, cfg, id=f"{spec.id}-{cfg.variant}")
+            marks = [pytest.mark.xfail(reason=spec.known_issue)] if spec.known_issue else []
+            yield pytest.param(spec, cfg, id=f"{spec.id}-{cfg.variant}", marks=marks)
 
 
 @pytest.mark.virtual

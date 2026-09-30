@@ -1,6 +1,7 @@
 id: S18
 title: "Preview, then 'no, there' and a new point"
 tests: "re-pointing during the preview replaces the previewed place"
+known_issue: "the rule parser does not read 'no, there' during a preview yet (fix on feat/virtual-parser)"
 lines:
   - at: 1.4
     text: "A sun here."

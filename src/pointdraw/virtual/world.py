@@ -111,7 +111,9 @@ def run(
     plotter = VirtualPlotter(machine, emergency_parser=ep)
     paper = machine.paper_box
     origin = (paper.x, paper.y)
-    planner = Planner(_library())
+    lib = _library()
+    lib._next.clear()  # variants cycle per category; start each run from the first one
+    planner = Planner(lib)
     sheet = VirtualSheet(seed=cfg.seed)
     camera = VirtualCamera(sheet, plotter, origin, seed=cfg.seed)
     if cfg.cosmos == "live":

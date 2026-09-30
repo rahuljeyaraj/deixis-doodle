@@ -317,6 +317,18 @@ def _travel(res: Any, t0: float, t1: float) -> float:
     return sum(math.dist(a, b) for a, b in zip(pts, pts[1:], strict=False))
 
 
+def _pen_down_time(res: Any, t0: float, t1: float) -> float:
+    """Seconds the pen spent moving across the paper (down, XY moving) between two times.
+
+    Pen lifts (Z only, 5 mm/s on a stock Ender 3) are left out: they take the pen away."""
+    tr = [s for s in res.plotter.track if t0 <= s[0] <= t1]
+    out = 0.0
+    for a, b in zip(tr, tr[1:], strict=False):
+        if a[3] and b[3] and (a[1], a[2]) != (b[1], b[2]):
+            out += b[0] - a[0]
+    return out
+
+
 def _interlock_checks(res: Any, checks: list, metrics: dict, require_pause: bool) -> None:
     evs = res.plotter.events
     starts = [e for e in evs if e.kind in ("job_start", "resumed")]
@@ -335,17 +347,19 @@ def _interlock_checks(res: Any, checks: list, metrics: dict, require_pause: bool
         p = next((e for e in paused if e.t >= r.t), None)
         if p is None:
             continue
-        lat.append((p.t - r.t, _travel(res, r.t, p.t)))
+        lat.append((p.t - r.t, _travel(res, r.t, p.t), _pen_down_time(res, r.t, p.t)))
     if lat:
-        metrics["pause_latency_s"] = round(max(x for x, _ in lat), 3)
-        metrics["pause_travel_mm"] = round(max(m for _, m in lat), 1)
-        ok = all(x <= PAUSE_MAX_S and m <= PAUSE_MAX_MM for x, m in lat)
+        metrics["pause_latency_s"] = round(max(x for x, _, _ in lat), 3)
+        metrics["pause_pen_down_s"] = round(max(d for _, _, d in lat), 3)
+        metrics["pause_travel_mm"] = round(max(m for _, m, _ in lat), 1)
+        ok = all(d <= PAUSE_MAX_S and m <= PAUSE_MAX_MM for _, m, d in lat)
         _check(
             checks,
             "pause_within_limit",
             ok,
-            f"worst {metrics['pause_latency_s']} s, {metrics['pause_travel_mm']} mm "
-            f"(limit {PAUSE_MAX_S} s, {PAUSE_MAX_MM:g} mm)",
+            f"worst {metrics['pause_travel_mm']} mm and {metrics['pause_pen_down_s']} s of "
+            f"pen-down motion (limit {PAUSE_MAX_MM:g} mm, {PAUSE_MAX_S} s); "
+            f"{metrics['pause_latency_s']} s until fully paused, pen lifts included",
         )
     if require_pause:
         resumed = [e for e in evs if e.kind == "resumed"]

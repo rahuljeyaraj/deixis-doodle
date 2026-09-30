@@ -111,6 +111,7 @@ class SceneSpec(_M):
     variations: Variations = Field(default_factory=Variations)
     plotter: Plotter = Field(default_factory=Plotter)
     max_time: float = 90.0
+    known_issue: str | None = None  # a known failure, with the reason; the test xfails
     path: str | None = None
 
 
