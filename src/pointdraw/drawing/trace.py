@@ -47,6 +47,7 @@ class TraceParams:
     """Tracing knobs. Most are multiples of the measured line width w (pixels)."""
 
     speck_area_w2: float = 1.5  # drop ink blobs smaller than this times w squared
+    speck_side_frac: float = 0.02  # ... or under 2 % of the largest blob's size
     hole_area_w2: float = 0.3  # fill paper holes inside the ink smaller than this times w^2
     spur_w: float = 1.0  # prune dangling branches shorter than this times w (plus 2 px)
     bridge_w: float = 0.75  # merge two junctions joined by a path shorter than this times w
@@ -104,25 +105,36 @@ def load_gray(src: str | Path | np.ndarray) -> np.ndarray:
 
 
 def ink_mask(gray: np.ndarray) -> np.ndarray:
-    """Dark ink as True. Otsu after a light blur; an image with no contrast has no ink."""
+    """Dark ink as True. Otsu after a light blur; an image with no contrast has no ink.
+    Light lines on a dark page are inverted first (the page is whatever covers most of it)."""
     if int(gray.max()) - int(gray.min()) < 16:
         return np.zeros(gray.shape, bool)
+    if np.median(gray) < 128:
+        gray = 255 - gray
     blur = cv2.GaussianBlur(gray, (0, 0), 1.0)
     _, m = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     return m > 0
 
 
-def _drop_small(mask: np.ndarray, min_area: float) -> np.ndarray:
+def _drop_small(mask: np.ndarray, min_area: float, min_side_frac: float) -> np.ndarray:
+    """Keep ink blobs with at least `min_area` pixels whose larger bbox side is at least
+    `min_side_frac` of the largest blob's."""
     n, lab, st, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
-    keep = st[:, cv2.CC_STAT_AREA] >= min_area
+    if n <= 1:
+        return np.zeros(mask.shape, bool)
+    area = st[:, cv2.CC_STAT_AREA]
+    side = np.maximum(st[:, cv2.CC_STAT_WIDTH], st[:, cv2.CC_STAT_HEIGHT])
+    main = 1 + int(np.argmax(area[1:]))
+    keep = (area >= min_area) & (side >= min_side_frac * side[main])
     keep[0] = False
     return keep[lab]
 
 
 def clean_mask(mask: np.ndarray, width_px: float, params: TraceParams = DEFAULT_PARAMS):
-    """Drop ink specks and fill pinholes, both scaled by the line width."""
+    """Drop ink specks and fill pinholes. A speck is small against the line width (area) or
+    against the drawing (size): thin lines make the area test alone too weak."""
     w2 = width_px * width_px
-    out = _drop_small(mask, max(4.0, params.speck_area_w2 * w2))
+    out = _drop_small(mask, max(4.0, params.speck_area_w2 * w2), params.speck_side_frac)
     holes = ~out
     # background components touching the border are paper, never holes
     n, lab, st, _ = cv2.connectedComponentsWithStats(holes.astype(np.uint8), connectivity=4)
@@ -507,6 +519,15 @@ def _as_polyline(a: np.ndarray) -> Polyline:
 # ---------------------------------------------------------------------------------------------
 
 
+def _crop(mask: np.ndarray, pad: int = 4) -> tuple[np.ndarray, int, int]:
+    """The mask cut to its ink's bounding box plus `pad`, and the cut's top-left corner."""
+    ys, xs = np.nonzero(mask)
+    h, w = mask.shape
+    y0, y1 = max(0, int(ys.min()) - pad), min(h, int(ys.max()) + pad + 1)
+    x0, x1 = max(0, int(xs.min()) - pad), min(w, int(xs.max()) + pad + 1)
+    return mask[y0:y1, x0:x1], x0, y0
+
+
 def trace(src: str | Path | np.ndarray, params: TraceParams = DEFAULT_PARAMS) -> TraceResult:
     """Centre-line strokes of black line art on white, in image pixels (y down)."""
     gray = load_gray(src)
@@ -516,20 +537,18 @@ def trace(src: str | Path | np.ndarray, params: TraceParams = DEFAULT_PARAMS) ->
     if not mask.any():
         return TraceResult([], 0.0, (w, h), 0, 0.0, ["no ink found"])
     # work on the ink's bounding box only (thinning a full 1024 x 1024 page is slow)
-    ys, xs = np.nonzero(mask)
-    pad = 4
-    y0, y1 = max(0, ys.min() - pad), min(h, ys.max() + pad + 1)
-    x0, x1 = max(0, xs.min() - pad), min(w, xs.max() + pad + 1)
-    crop = mask[y0:y1, x0:x1]
+    crop, x0, y0 = _crop(mask)
     # first pass only to measure the line width, which scales everything else
     width = line_width(_distance(crop), skeleton(crop, params.thinning))
     crop = clean_mask(crop, width, params)
     if not crop.any():
         return TraceResult([], width, (w, h), 0, 0.0, ["only specks found"])
+    crop, dx, dy = _crop(crop)  # smaller now that stray specks are gone
+    x0, y0 = x0 + dx, y0 + dy
     dist = _distance(crop)
     skel = skeleton(crop, params.thinning)
     width = line_width(dist, skel)
-    max_width = 2.0 * float(dist.max()) - 0.5
+    max_width = 2.0 * float(dist.max()) - 1.0
     if max_width > 3.0 * width:
         notes.append(f"filled areas: widest ink {max_width:.0f} px vs lines {width:.0f} px")
 
