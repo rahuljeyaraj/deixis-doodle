@@ -243,6 +243,28 @@ def _extremes(mm: np.ndarray) -> np.ndarray:
     return np.array(idx)
 
 
+def _corner_candidates(px: np.ndarray, layers: int = 2, cap: int = 12) -> list[int]:
+    """Points that could be the grid's outer corners: the outer two convex-hull layers.
+
+    One hull layer is not enough: a stray detection outside the grid can hide a true corner
+    from the hull, but then that corner is on the second layer.
+    """
+    remaining = list(range(len(px)))
+    out: list[int] = []
+    for _ in range(layers):
+        if len(remaining) < 3:
+            out += remaining
+            break
+        hull = cv2.convexHull(px[remaining].astype(np.float32), returnPoints=False).ravel()
+        layer = [remaining[k] for k in hull.tolist()]
+        out += layer
+        remaining = [k for k in remaining if k not in layer]
+    if len(out) > cap:  # keep the ones farthest from the centroid
+        c = px.mean(axis=0)
+        out = sorted(out, key=lambda k: -float(np.linalg.norm(px[k] - c)))[:cap]
+    return out
+
+
 def _nearest_pairs(
     proj: np.ndarray, det: np.ndarray, tol: float
 ) -> tuple[list[tuple[int, int]], float]:
@@ -332,11 +354,13 @@ def match_crosses(
     ext = _extremes(mm)
     if len(set(ext.tolist())) < 4:
         raise CalibrationError("known points need four distinct extreme corners (use a grid)")
-    hull = cv2.convexHull(px.astype(np.float32), returnPoints=False).ravel()
     hyps: dict[frozenset[tuple[int, int]], tuple[int, float, list[tuple[int, int]]]] = {}
-    for combo in itertools.combinations(hull.tolist(), 4):  # keeps hull (cyclic) order
+    for combo in itertools.combinations(_corner_candidates(px), 4):
+        # Order the four points around their centroid so they form a quadrilateral.
+        c = px[list(combo)].mean(axis=0)
+        ordered = sorted(combo, key=lambda k: math.atan2(px[k, 1] - c[1], px[k, 0] - c[0]))
         for mirror in (False, True):
-            seq = list(combo)[::-1] if mirror else list(combo)
+            seq = ordered[::-1] if mirror else ordered
             for r in range(4):
                 quad = seq[r:] + seq[:r]
                 try:

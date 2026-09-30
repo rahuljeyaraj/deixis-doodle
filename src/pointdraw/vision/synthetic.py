@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 
 from pointdraw import layout
+from pointdraw.vision.lens import undistort_points
 
 
 def marker_corners_mm(center: tuple[float, float], size: float) -> np.ndarray:
@@ -63,6 +64,30 @@ class Lens:
         r2 = np.sum(n**2, axis=1, keepdims=True)
         n = n * (1 + self.k1 * r2 + self.k2 * r2**2)
         return n * self.f_px + K[:2, 2]
+
+
+def warp_plane(
+    canvas: np.ndarray,
+    H_canvas_to_px: np.ndarray,
+    size: tuple[int, int],
+    lens: Lens | None = None,
+    border: int = 60,
+) -> np.ndarray:
+    """Warp a flat canvas into a camera image: homography, then optional lens distortion."""
+    if lens is None or (lens.k1 == 0 and lens.k2 == 0):
+        return cv2.warpPerspective(
+            canvas, H_canvas_to_px, size, flags=cv2.INTER_LINEAR, borderValue=border
+        )
+    # For every distorted output pixel, find the ideal pixel, then the canvas pixel.
+    w, h = size
+    gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+    pts = np.stack([gx.ravel(), gy.ravel()], axis=1).reshape(-1, 1, 2)
+    K = lens.K(size)
+    ideal = undistort_points(pts, K, lens.dist).reshape(-1, 1, 2)
+    src = cv2.perspectiveTransform(ideal, np.linalg.inv(H_canvas_to_px)).reshape(-1, 2)
+    mapx = src[:, 0].reshape(h, w).astype(np.float32)
+    mapy = src[:, 1].reshape(h, w).astype(np.float32)
+    return cv2.remap(canvas, mapx, mapy, cv2.INTER_LINEAR, borderValue=border)
 
 
 @dataclass
@@ -135,19 +160,7 @@ def render(
 
     S = np.array([[1 / s, 0, bx], [0, 1 / s, by], [0, 0, 1]], np.float64)  # canvas -> mm
     Hc = H_mm_to_px @ S  # canvas px -> ideal camera px
-    if lens is None or (lens.k1 == 0 and lens.k2 == 0):
-        img = cv2.warpPerspective(canvas, Hc, size, flags=cv2.INTER_LINEAR, borderValue=60)
-    else:
-        # For every distorted output pixel, find the ideal pixel, then the canvas pixel.
-        w, h = size
-        gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
-        pts = np.stack([gx.ravel(), gy.ravel()], axis=1).reshape(-1, 1, 2)
-        K = lens.K(size)
-        ideal = cv2.undistortPoints(pts, K, lens.dist, P=K).reshape(-1, 2)
-        src = cv2.perspectiveTransform(ideal.reshape(-1, 1, 2), np.linalg.inv(Hc)).reshape(-1, 2)
-        mapx = src[:, 0].reshape(h, w).astype(np.float32)
-        mapy = src[:, 1].reshape(h, w).astype(np.float32)
-        img = cv2.remap(canvas, mapx, mapy, cv2.INTER_LINEAR, borderValue=60)
+    img = warp_plane(canvas, Hc, size, lens)
 
     rng = np.random.default_rng(seed)
     if blur_px > 0:

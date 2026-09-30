@@ -42,6 +42,17 @@ def board_image(px_per_mm: float = 11.811) -> np.ndarray:
     return charuco_board().generateImage((w, h), 0, 1)
 
 
+_UNDISTORT_CRITERIA = (cv2.TERM_CRITERIA_COUNT | cv2.TERM_CRITERIA_EPS, 30, 1e-6)
+
+
+def undistort_points(pts_px: np.ndarray, K: np.ndarray, dist: np.ndarray) -> np.ndarray:
+    """Raw -> undistorted pixels (same K). Iterates to convergence: OpenCV's default five
+    iterations are not enough near the corners of a strongly distorted wide-angle image."""
+    pts = np.asarray(pts_px, dtype=np.float64).reshape(-1, 1, 2)
+    out = cv2.undistortPoints(pts, K, dist, R=np.eye(3), P=K, criteria=_UNDISTORT_CRITERIA)
+    return out.reshape(-1, 2)
+
+
 @dataclass
 class LensModel:
     K: np.ndarray  # 3x3 camera matrix
@@ -55,7 +66,7 @@ class LensModel:
         pts = np.asarray(pts_px, dtype=np.float64).reshape(-1, 1, 2)
         if len(pts) == 0:
             return pts.reshape(0, 2)
-        return cv2.undistortPoints(pts, self.K, self.dist, P=self.K).reshape(-1, 2)
+        return undistort_points(pts, self.K, self.dist)
 
     def distort(self, pts_px: np.ndarray) -> np.ndarray:
         """Undistorted pixels -> raw pixels (to draw overlays on the live image)."""
