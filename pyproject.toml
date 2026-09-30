@@ -25,6 +25,8 @@ audio = [
 agent = [
 ]
 drawing = [
+    "pillow>=10",
+    "vpype>=1.14",
 ]
 cosmos = [
 ]
