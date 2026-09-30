@@ -321,6 +321,7 @@ cosmos = [
     { name = "opencv-contrib-python" },
 ]
 drawing = [
+    { name = "opencv-contrib-python" },
     { name = "pillow" },
     { name = "vpype" },
 ]
@@ -353,6 +354,7 @@ requires-dist = [
     { name = "openai", marker = "extra == 'agent'", specifier = ">=1.40" },
     { name = "openai", marker = "extra == 'cosmos'", specifier = ">=1.40" },
     { name = "opencv-contrib-python", marker = "extra == 'cosmos'", specifier = ">=4.9" },
+    { name = "opencv-contrib-python", marker = "extra == 'drawing'", specifier = ">=4.8" },
     { name = "opencv-contrib-python", marker = "extra == 'hwkit'" },
     { name = "opencv-contrib-python", marker = "extra == 'vision'", specifier = ">=4.8" },
     { name = "pillow", marker = "extra == 'controller'", specifier = ">=10" },

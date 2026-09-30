@@ -36,6 +36,7 @@ agent = [
 drawing = [
     "pillow>=10",
     "vpype>=1.14",
+    "opencv-contrib-python>=4.8",
 ]
 cosmos = [
     "openai>=1.40",
