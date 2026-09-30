@@ -227,7 +227,15 @@ class Runtime:
         self.t = max(self.t, t)
         self.speech_active = False
         self.last_heard = t
-        utt = Utterance(len(self.utts), list(words), t)
+        fixed = repair_words(list(words), self.planner.categories)
+        if [w.text for w in fixed] != [w.text for w in words]:
+            self.log.add(
+                t,
+                "asr_repair",
+                heard=" ".join(w.text for w in words),
+                fixed=" ".join(w.text for w in fixed),
+            )
+        utt = Utterance(len(self.utts), fixed, t)
         self.utts.append(utt)
         self.log.add(
             t,
@@ -868,6 +876,46 @@ class Runtime:
 
     def _box_to_bed(self, b: Box) -> Box:
         return Box(b.x + self.origin[0], b.y + self.origin[1], b.w, b.h)
+
+
+_DEMONSTRATIVE_WORDS = {"here", "there", "this", "that"}
+
+
+#: Homophones of drawable things that Parakeet produced in tts mode (30 Sep), fixed only
+#: straight after an article (so "the son" also becomes "the sun": fine for a drawing robot).
+_HOMOPHONES = {"son": "sun", "sunn": "sun", "i": "eye", "aye": "eye", "year": "ear"}
+_ARTICLES = {"a", "an", "the"}
+
+
+def repair_words(words: list[Word], categories: list[str]) -> list[Word]:
+    """Undo a few known ASR slips on drawable words (Parakeet, tts mode, 30 Sep):
+
+    - "a cross here" heard as "across here": a word that is "a" + a drawable category is
+      split, but only before a demonstrative or at the end ("across the page" is English);
+    - "an ear" heard as "a near": re-split;
+    - "a sun" heard as "a son" (and eye/I, ear/year): homophones right after an article.
+    """
+    cats = {c for c in categories if " " not in c}
+    out: list[Word] = []
+    i = 0
+    while i < len(words):
+        w = words[i]
+        low = norm_word(w.text)
+        prev = norm_word(out[-1].text) if out else ""
+        nxt = norm_word(words[i + 1].text) if i + 1 < len(words) else ""
+        if low.startswith("a") and low[1:] in cats and (not nxt or nxt in _DEMONSTRATIVE_WORDS):
+            mid = w.t0 + (w.t1 - w.t0) * 0.25
+            out += [Word("a", w.t0, mid, w.confidence), Word(low[1:], mid, w.t1, w.confidence)]
+        elif low == "a" and nxt.startswith("n") and nxt[1:] in cats and nxt[1:][:1] in "aeiou":
+            n = words[i + 1]
+            out += [Word("an", w.t0, w.t1, w.confidence), Word(nxt[1:], n.t0, n.t1, n.confidence)]
+            i += 1
+        elif prev in _ARTICLES and low in _HOMOPHONES and _HOMOPHONES[low] in cats:
+            out.append(Word(_HOMOPHONES[low], w.t0, w.t1, w.confidence))
+        else:
+            out.append(w)
+        i += 1
+    return out
 
 
 def _retarget(call: ToolCall, obj: SceneObject) -> ToolCall:

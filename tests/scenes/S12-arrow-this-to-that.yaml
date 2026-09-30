@@ -11,9 +11,9 @@ lines:
 hand:
   - {at: 0.2, enter: [60, -40]}
   - {move: [40, 90], dur: 0.6}
-  - {hold: 1.8}
+  - {hold: 1.4}
   - {move: [150, 80], dur: 0.4}
-  - {hold: 1.0}
+  - {hold: 1.2}
   - {leave: true}
 expect:
   calls: [draw_connector]

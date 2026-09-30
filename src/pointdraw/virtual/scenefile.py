@@ -21,6 +21,9 @@ class Line(_M):
     text: str
     words: list[list[Any]] | None = None  # [[word, t0], [word, t0, t1], ...] to set times
     rate: float = 1.0  # speaking speed factor
+    tts_rate: int = 0  # tts mode: SAPI rate, -10..10
+    cut: float | None = None  # tts mode: keep only this fraction of the audio (cut off)
+    noise_db: float | None = None  # tts mode: add noise at this level (dBFS) over the line
 
 
 class RobotItem(_M):
