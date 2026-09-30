@@ -1,0 +1,81 @@
+id: S26
+title: "The hero script: the robot draws its own senses (plan 9.2)"
+tests: "the whole demo in one take: place + size, relation, place + correction, the user's own mark, path, label + correction, two labels, arrow by name"
+voice: both
+notes: >
+  Step 2 says "an eye under it", not the plan's "an eye next to it": 'next to' puts the eye to
+  the right of the ear, between the ear and the brain, so the ear-to-brain arrow would cross
+  it. The hero-senses layout has the eye below the ear. Proposed change for docs/video.
+  Each step starts once the previous drawing is done: pointing while the pen moves would
+  pause it (that's S21).
+# Layout (paper mm): ear top left, eye under it, brain in the middle, the user's box
+# bottom right with the hand inside it.
+lines:
+  - {at: 1.2, text: "Draw an ear here."}
+  - {at: 3.0, text: "About this big."}
+  - {at: 16.0, text: "An eye under it."}
+  - {at: 52.0, text: "A brain up here, a bit bigger."}
+  - {at: 94.3, text: "Put a hand inside that."}
+  - {at: 126.0, text: "An arrow from this to that."}
+  - {at: 148.0, text: "Label that one 'Nemotron'."}
+  - {at: 153.0, text: "A bit lower."}
+  - {at: 180.0, text: "Label this 'Cosmos', and this 'ASR'."}
+  - {at: 215.0, text: "Now an arrow from the brain to the hand."}
+events:
+  - {at: 92.5, user_mark: {shape: square, at: [170, 45], size: 50, ink: black pen, label: box}}
+hand:
+  # 1. ear here ... about this big (pinch)
+  - {at: 0.2, enter: [60, -40]}
+  - {move: [30, 112], dur: 0.7}
+  - {hold: 1.6}
+  - {move: [38, 118], dur: 0.25}
+  - {pinch: 32}
+  - {hold: 1.4}
+  - {leave: true}
+  # 3. brain up here
+  - {at: 51.0, enter: [120, -40]}
+  - {move: [110, 88], dur: 0.7}
+  - {hold: 1.8}
+  - {leave: true}
+  # 4. the user draws a box with their own pen, then points inside it
+  - {at: 91.5, enter: [190, -40], pose: fist}
+  - {move: [170, 45], dur: 0.5}
+  - {hold: 1.6}
+  - {pose: point, move: [168, 43], dur: 0.4}
+  - {hold: 1.8}
+  - {leave: true}
+  # 5. an arrow from this (ear) to that (brain)
+  - {at: 125.0, enter: [60, -40]}
+  - {move: [30, 112], dur: 0.7}
+  - {hold: 1.3}
+  - {move: [110, 88], dur: 0.4}
+  - {hold: 1.3}
+  - {leave: true}
+  # 6. label that one (the brain)
+  - {at: 147.0, enter: [120, -40]}
+  - {move: [110, 88], dur: 0.7}
+  - {hold: 1.8}
+  - {leave: true}
+  # 7. label this (the eye) ... and this (the ear)
+  - {at: 179.0, enter: [60, -40]}
+  - {move: [30, 66], dur: 0.7}
+  - {hold: 1.6}
+  - {move: [30, 112], dur: 0.4}
+  - {hold: 1.6}
+  - {leave: true}
+expect:
+  calls: [place_drawing, place_drawing, place_drawing, place_drawing, draw_connector,
+          write_label, adjust, write_label, write_label, draw_connector]
+  drawn:
+    - {kind: object, label: ear, center: [30, 112], size: 32}
+    - {kind: object, label: eye, near: ear, near_mm: 15, empty: true}
+    - {kind: object, label: brain, center: [110, 88], size: 50}
+    - {kind: object, label: hand, inside: box}
+    - {kind: arrow, from: ear, to: brain}
+    - {kind: label, text: nemotron, below: brain}
+    - {kind: label, text: cosmos, below: eye}
+    - {kind: label, text: asr, below: ear}
+    - {kind: arrow, from: brain, to: hand}
+  asks: 0
+variations: {hover_mm: null}
+max_time: 300

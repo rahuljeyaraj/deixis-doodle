@@ -128,6 +128,7 @@ class Pending:
     t_ready: float
     utt: Utterance
     result: AgentResult
+    deferred: bool = False  # waiting for the pen to park before looking at the paper
 
 
 @dataclass
@@ -283,8 +284,17 @@ class Runtime:
         self._plotter_events()
         due = [p for p in self.pending if p.t_ready <= t]
         for p in due:
+            if self.plotter.busy and _needs_view(p.result.calls):
+                # "Put a hand inside that" while the pen is drawing: finish, park, look at the
+                # paper (the user may have just drawn something), then resolve.
+                if not p.deferred:
+                    p.deferred = True
+                    self.log.add(t, "deferred", utt=p.utt.id, why="wait for the pen to park")
+                continue
             self.pending.remove(p)
-            self._apply(p.utt, p.result, p.t_ready)
+            if p.deferred:
+                self.refresh_scene(t)
+            self._apply(p.utt, p.result, max(p.t_ready, t) if p.deferred else p.t_ready)
         self._auto_confirm(t)
         if self.state == UNDERSTAND and not self.pending:
             self._set_state(self._rest_state(), t)
@@ -373,7 +383,9 @@ class Runtime:
         elif name == "cancel":
             self.cancel(t)
         elif name == "adjust":
-            self.adjust(a.dx, a.dy, a.scale, t)  # type: ignore[attr-defined]
+            # "A brain up here, a bit bigger": the adjust is for the item just placed.
+            target = new[-1] if new else None
+            self.adjust(a.dx, a.dy, a.scale, t, target)  # type: ignore[attr-defined]
         elif name == "ask_user":
             q = Question(a.question, "agent", list(a.options))  # type: ignore[attr-defined]
             self._ask(q, refs.utt, None, t)
@@ -425,6 +437,12 @@ class Runtime:
         pl = refs.place(a.place, size)  # type: ignore[attr-defined]
         size = pl.size or size
         placed = self.planner.object(cat, pl.center, size, id=self.scene.new_id(cat))
+        rel = getattr(a.place, "relation", None)  # type: ignore[attr-defined]
+        if rel in ("next_to", "left_of", "right_of", "above", "below", "on") and pl.target:
+            # Re-place with the drawing's real width and height, so the gap is exact.
+            ext = (placed.box.w, placed.box.h)
+            c = self.scene.relation(rel, pl.target, size, extent=ext)
+            placed = self.planner.object(cat, c, size, id=placed.id)
         self._add_item(
             placed, "object", cat, None, pl.where.model_dump(mode="json"), new, t, target=pl.target
         )
@@ -612,8 +630,10 @@ class Runtime:
             self.plotter.preview_box(self._box_to_bed(obj.box), tag=tag)
             prop.previews.add(tag)
 
-    def adjust(self, dx: int, dy: int, scale: float, t: float) -> None:
-        obj = self._previewed_item()
+    def adjust(
+        self, dx: int, dy: int, scale: float, t: float, target: SceneObject | None = None
+    ) -> None:
+        obj = target or self._previewed_item()
         if obj is None:
             self.say(t, "There's nothing to adjust right now.")
             return
@@ -622,6 +642,23 @@ class Runtime:
         p = Placed(obj.id, obj.kind, obj.polylines, obj.box, obj.label)
         p = self.planner.shift(p, dx * step, dy * step, scale)
         self.log.add(t, "adjust", id=obj.id, dx=dx, dy=dy, scale=scale)
+        if target is not None:  # not previewed yet: just change it
+            p, _ = self.planner.keep_inside(p)
+            obj.polylines, obj.box = p.polylines, p.box
+            self.log.add(
+                t,
+                "item",
+                id=obj.id,
+                type=obj.kind,
+                label=obj.label,
+                text=obj.text,
+                box=_box(obj.box),
+                center=_pt(obj.center),
+                where=None,
+                moved=False,
+                replaced=True,
+            )
+            return
         self._replace(obj, p, t, None)
 
     def confirm(self, t: float, reason: str = "confirm") -> None:
@@ -879,6 +916,20 @@ class Runtime:
 
 
 _DEMONSTRATIVE_WORDS = {"here", "there", "this", "that"}
+
+
+def _needs_view(calls: list[ToolCall]) -> bool:
+    """True if a call refers to an object on the sheet by pointing or by name."""
+    from pointdraw.agent.schema import LabelObject
+
+    def walk(m: Any) -> bool:
+        if isinstance(m, (DeicticObject, LabelObject)):
+            return True
+        if isinstance(m, BaseModel):
+            return any(walk(getattr(m, f)) for f in type(m).model_fields)
+        return False
+
+    return any(walk(c.args) for c in calls)
 
 
 #: Homophones of drawable things that Parakeet produced in tts mode (30 Sep), fixed only

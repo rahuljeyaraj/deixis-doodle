@@ -123,8 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.pop("SERIAL_PORT", None)  # belt and braces: nothing here may use it
 
     specs = scenefile.all_scenes() if a.all else [scenefile.find(s) for s in a.scene]
-    if a.voice == "tts":
-        specs = [s for s in specs if s.voice in ("tts", "both")] if a.all else specs
+    if a.voice == "text" and a.all:
+        specs = [s for s in specs if s.voice != "tts"]  # tts-only scenes need real audio
     ep = None if a.ep == "scene" else a.ep == "on"
     base = RunConfig(
         ai=a.ai,

@@ -49,7 +49,7 @@ class SceneObject:
 
 @dataclass(frozen=True)
 class SceneParams:
-    gap_mm: float = 4.0  # space between an object and one placed next to it
+    gap_mm: float = 10.0  # space between an object and one placed next to it (room for a label)
     near_mm: float = 20.0  # "that one": objects within this distance of the point
     ambiguous_mm: float = 6.0  # two objects this close in distance -> ask
     empty_margin_mm: float = 3.0  # keep this far from other ink in empty space
@@ -202,18 +202,26 @@ class SceneModel:
         return True
 
     def relation(
-        self, rel: str, target: SceneObject, size: float, target2: SceneObject | None = None
+        self,
+        rel: str,
+        target: SceneObject,
+        size: float,
+        target2: SceneObject | None = None,
+        extent: tuple[float, float] | None = None,
     ) -> Point:
-        """Centre for a new object of `size` (its larger side) placed `rel` the target."""
+        """Centre for a new object of `size` (its larger side) placed `rel` the target.
+
+        With `extent` (the drawing's real width and height) it sits `gap_mm` from the target;
+        without, it is treated as a square of side `size`."""
         t = target.box
         g = self.params.gap_mm
-        h = size / 2
+        hx, hy = (extent[0] / 2, extent[1] / 2) if extent else (size / 2, size / 2)
         cx, cy = t.center
         options = {
-            "left_of": (t.x - g - h, cy),
-            "right_of": (t.x2 + g + h, cy),
-            "above": (cx, t.y2 + g + h),
-            "below": (cx, t.y - g - h),
+            "left_of": (t.x - g - hx, cy),
+            "right_of": (t.x2 + g + hx, cy),
+            "above": (cx, t.y2 + g + hy),
+            "below": (cx, t.y - g - hy),
         }
         if rel in options:
             return options[rel]
@@ -234,7 +242,7 @@ class SceneModel:
         if rel == "inside":
             return (cx, cy)
         if rel == "on":
-            return (cx, t.y2 + h * 0.7)
+            return (cx, t.y2 + hy * 0.7)
         raise ValueError(f"unknown relation {rel!r}")
 
     def inside_size(self, target: SceneObject) -> float:

@@ -1,0 +1,29 @@
+id: S25
+title: "Cut-off and mumbled commands (tts mode)"
+tests: "ASR errors: a cut-off 'here' falls back to the last-hold rule; speech lost in noise does nothing; fillers are ignored"
+voice: tts
+# 1. "A house here." cut at 38 % -> Parakeet hears "A house he" (30 Sep). No demonstrative
+#    is left, so the last hold places the house where the finger was.
+# 2. "A sun here." under loud noise (-14 dBFS) -> nothing is heard, nothing happens.
+# 3. "Mm, a tree, um, here." -> "MM a tree um here": fillers ignored, tree drawn.
+lines:
+  - {at: 1.2, text: "A house here.", cut: 0.38}
+  - {at: 14.0, text: "A sun here.", noise_db: -14}
+  - {at: 28.0, text: "Mm, a tree, um, here."}
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [60, 80], dur: 0.6}
+  - {hold: 1.8}
+  - {leave: true}
+  - {at: 27.2, enter: [180, -40]}
+  - {move: [150, 80], dur: 0.6}
+  - {hold: 2.4}
+  - {leave: true}
+expect:
+  calls: [place_drawing, place_drawing]
+  drawn:
+    - {kind: object, label: house, center: [60, 80]}
+    - {kind: object, label: tree, center: [150, 80]}
+  asks: 0
+variations: {seeds: [], hover_mm: null, shifts: []}
+max_time: 120
