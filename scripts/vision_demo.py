@@ -79,7 +79,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--calib", type=Path, default=DEFAULT_CALIBRATION_PATH)
     ap.add_argument("--lens", type=Path, default=DEFAULT_LENS_PATH)
     ap.add_argument("--crosses", type=Path, help="JSON of the crosses' machine mm (for C)")
-    ap.add_argument("--up", default="+y", help="machine axis pointing to the image top (for C)")
+    ap.add_argument(
+        "--up",
+        default="auto",
+        help="machine axis at the image top, e.g. -y (for C); auto reads it off the markers",
+    )
     ap.add_argument("--px-per-mm", type=float, default=2.0, help="rough scale when uncalibrated")
     ap.add_argument("--headless", action="store_true", help="no window (for tests)")
     ap.add_argument("--max-frames", type=int, default=0, help="stop after N frames (0: never)")
@@ -286,9 +290,8 @@ def run(args: argparse.Namespace) -> int:
                     print("C needs --crosses FILE (the machine mm of the crosses the plotter drew)")
                 else:
                     try:
-                        res = calibrate_from_image(
-                            img, crosses, lens=lens, prior=OrientationPrior(up=args.up)
-                        )
+                        prior = "auto" if args.up == "auto" else OrientationPrior(up=args.up)
+                        res = calibrate_from_image(img, crosses, lens=lens, prior=prior)
                     except CalibrationError as e:
                         print(f"calibration failed: {e}")
                     else:

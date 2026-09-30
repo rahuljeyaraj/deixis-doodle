@@ -297,17 +297,39 @@ class OrientationPrior:
     camera looking down at a right-handed bed frame (x right, y away from the user), which
     always maps with a negative determinant; set True for a mirrored (selfie) feed, or None
     to allow both.
+
+    `y_dir_px`, when set, replaces `up`: the image direction in which machine +y points.
+    `from_markers` reads it off the bed markers, which are stuck on upright as the user reads
+    them (printed top away from the user, i.e. towards +y). That is the default in
+    `calibrate_from_image`, so it works whichever way round the camera is mounted.
     """
 
     up: str = "+y"
     mirrored: bool | None = False
+    y_dir_px: tuple[float, float] | None = None
+
+    @classmethod
+    def from_markers(
+        cls, markers: list[MarkerDetection], mirrored: bool | None = False
+    ) -> OrientationPrior | None:
+        """+y image direction = mean of each marker's bottom-to-top edge, or None."""
+        if not markers:
+            return None
+        v = np.zeros(2)
+        for m in markers:
+            tl, tr, br, bl = m.corners_px
+            up = (tl + tr) / 2 - (bl + br) / 2
+            v += up / (np.linalg.norm(up) + 1e-12)
+        return cls(mirrored=mirrored, y_dir_px=(float(v[0]), float(v[1])))
 
 
 DEFAULT_PRIOR = OrientationPrior()
 
 
-def _orientation(H_mm_to_px: np.ndarray, centre: np.ndarray) -> tuple[float, dict[str, float]]:
-    """(det of the local Jacobian, cosine of each machine axis with image-up)."""
+def _orientation(
+    H_mm_to_px: np.ndarray, centre: np.ndarray
+) -> tuple[float, np.ndarray, dict[str, float]]:
+    """(det of the local Jacobian, image direction of +y, cosine of each axis with image-up)."""
     p0, px_, py_ = apply_homography(
         H_mm_to_px, np.array([centre, centre + (1.0, 0.0), centre + (0.0, 1.0)])
     )
@@ -317,7 +339,7 @@ def _orientation(H_mm_to_px: np.ndarray, centre: np.ndarray) -> tuple[float, dic
     def up(v: np.ndarray) -> float:
         return float(-v[1] / (np.linalg.norm(v) + 1e-12))
 
-    return det, {"+x": up(dx), "-x": -up(dx), "+y": up(dy), "-y": -up(dy)}
+    return det, dy, {"+x": up(dx), "-x": -up(dx), "+y": up(dy), "-y": -up(dy)}
 
 
 def match_crosses(
@@ -396,9 +418,14 @@ def match_crosses(
         H, _ = cv2.findHomography(mm[i_mm], px[i_px], 0)
         if H is None:
             continue
-        det, ups = _orientation(H, centre)
+        det, dy, ups = _orientation(H, centre)
         hand_ok = prior.mirrored is None or ((det > 0) == prior.mirrored)
-        scored.append((hand_ok, ups.get(prior.up, 0.0), -err, pairs))
+        if prior.y_dir_px is not None:
+            ref = np.asarray(prior.y_dir_px)
+            align = float(dy @ ref / (np.linalg.norm(dy) * np.linalg.norm(ref) + 1e-12))
+        else:
+            align = ups.get(prior.up, 0.0)
+        scored.append((hand_ok, align, -err, pairs))
     if not scored:
         raise CalibrationError("could not match the detected crosses to the known grid")
     scored.sort(key=lambda s: (s[0], s[1], s[2]), reverse=True)
@@ -485,12 +512,14 @@ def calibrate_from_image(
     params: CrossParams = DEFAULT_CROSS_PARAMS,
     H_guess_px_to_mm: np.ndarray | None = None,
     lens: LensModel | None = None,
-    prior: OrientationPrior | None = DEFAULT_PRIOR,
+    prior: OrientationPrior | None | str = "auto",
 ) -> CalibrationResult:
     """Detect crosses and markers in one image and build a `BedCalibration`.
 
     With a `lens` model, cross centres and marker corners are undistorted before fitting, and
     the saved homography and marker corners then refer to undistorted pixels.
+    `prior="auto"` takes the grid's orientation from the bed markers when any are visible
+    (see `OrientationPrior.from_markers`), else uses `DEFAULT_PRIOR`.
     """
     markers = detect_markers(image)
     crosses = detect_crosses(image, params, markers)
@@ -506,6 +535,9 @@ def calibrate_from_image(
 
     px_u = fix(px)
     machine_mm = np.asarray(machine_mm, dtype=np.float64).reshape(-1, 2)
+    if prior == "auto":
+        prior = OrientationPrior.from_markers(markers) or DEFAULT_PRIOR
+    assert not isinstance(prior, str), "prior must be 'auto', an OrientationPrior or None"
     pairs = match_crosses(px_u, machine_mm, H_guess_px_to_mm, prior=prior)
     ip = [i for i, _ in pairs]
     im = [j for _, j in pairs]

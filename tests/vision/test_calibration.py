@@ -184,3 +184,19 @@ def test_load_cross_points_formats(tmp_path):
         p = tmp_path / "c.json"
         p.write_text(json.dumps(payload))
         assert load_cross_points(p).tolist() == [[0, 0], [50, 0]]
+
+
+@pytest.mark.parametrize("deg", [180, 90])
+def test_auto_prior_from_markers_handles_any_mount(deg):
+    """Camera on the printer's top bar sees the user's side at the image top (180 degrees).
+
+    The 3x3 grid is symmetric, so "+y is up" would pick a rotated match; the auto prior reads
+    the orientation off the upright bed markers instead.
+    """
+    scene, H = syn.default_scene()
+    Hr = _rotate_camera(H, deg)
+    img = syn.render(scene, Hr, seed=4)
+    res = calibrate_from_image(img, scene.crosses)  # prior="auto"
+    assert _max_err(res.fit.H, Hr) < 0.3
+    wrong = calibrate_from_image(img, scene.crosses, prior=OrientationPrior(up="+y"))
+    assert _max_err(wrong.fit.H, Hr) > 20  # the fixed prior is fooled
