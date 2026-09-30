@@ -58,6 +58,52 @@ def test_user_message_format():
     assert user_message(["yes"]) == 'Utterance: "yes"\nWords: 0=yes'
 
 
+def test_user_message_with_pending_question():
+    ctx = AgentContext(
+        scene_labels=["house", "tree"],
+        pending_question="The house or the tree?",
+        options=["house", "tree"],
+    )
+    assert user_message(["the", "house"], ctx).splitlines() == [
+        "Scene: house, tree",
+        "Asked: The house or the tree? Options: house, tree",
+        'Utterance: "the house"',
+        "Words: 0=the 1=house",
+    ]
+    only_q = AgentContext(pending_question="What should I write?")
+    assert only_q.lines() == ["Asked: What should I write?"]
+    assert AgentContext(options=["cat", "dog"]).lines() == ["Options: cat, dog"]
+
+
+def test_context_from_dict_reads_question_and_is_backward_compatible():
+    ctx = AgentContext.from_dict(
+        {"previewing": "place_drawing(sun)", "pending_question": "Which?", "options": ["a", "b"]}
+    )
+    assert ctx.pending_question == "Which?" and ctx.options == ["a", "b"]
+    old = AgentContext.from_dict({"scene_labels": ["cow"], "last_label": "cow"})
+    assert old.pending_question is None and old.options == []
+    assert old.lines() == ["Scene: cow (last)"]
+    assert AgentContext.from_dict(None) == AgentContext()
+    assert AgentContext().lines() == []
+
+
+# sha256 of system_prompt(BUILTIN_CATEGORIES, version), pinned on 30 Sep 2026. The R3 numbers
+# in docs/spikes/r3-nemotron.md were measured with these exact bytes: if a change here is
+# intended, re-run R3 and update the hash in the same commit.
+SYSTEM_PROMPT_SHA256 = {
+    "v0": "6301ad4ee0e049f10310e9ccadf9a5edea1644267a44fd5b9f92414fae4e7fca",
+    "v1": "1a871707ade6b10e21568cc2c7de5a7efca97c7cb7b3218b8cc2d518a0998771",
+}
+
+
+@pytest.mark.parametrize("version", sorted(PROMPTS))
+def test_system_prompt_is_pinned(version):
+    import hashlib
+
+    p = system_prompt(list(BUILTIN_CATEGORIES), version)
+    assert hashlib.sha256(p.encode("utf-8")).hexdigest() == SYSTEM_PROMPT_SHA256[version]
+
+
 @pytest.mark.parametrize(
     "content",
     [

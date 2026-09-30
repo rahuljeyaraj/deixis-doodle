@@ -148,3 +148,37 @@ def test_understand_falls_back_to_rules():
     res = understand(WORDS, agent=agent(FakeClient(reply(("place_drawing", GOOD)))))
     assert res.source == "nemotron"
     assert understand(["stop"]).calls[0].name == "stop"  # no agent at all
+
+
+class _DownAgent:
+    """Stands in for NemotronAgent when Token Factory is down; only `categories` is read."""
+
+    def __init__(self, categories):
+        self.categories = categories
+        self.runs = 0
+
+    def run(self, words, context=None):
+        self.runs += 1
+        raise AgentUnavailable("ConnectionError: offline")
+
+
+def test_understand_fallback_uses_the_agents_categories():
+    down = _DownAgent(["robot", "cross"])
+    res = understand("a robot here".split(), agent=down)
+    assert down.runs == 1 and res.source == "fallback" and "offline" in res.errors[0]
+    assert [c.to_dict() for c in res.calls] == [
+        {
+            "name": "place_drawing",
+            "args": {"object": "robot", "place": {"deixis": "here", "word_index": 2}},
+        }
+    ]
+    # "tree" is drawable by default but not for this agent, so the parser must ask.
+    res = understand("a tree here".split(), agent=down)
+    assert [c.name for c in res.calls] == ["ask_user"]
+
+
+def test_understand_fallback_after_empty_reply_uses_the_agents_categories():
+    a = agent(FakeClient(reply(content="hmm"), reply(content="hmm")))
+    a.categories = ["robot"]
+    res = understand("a robot here".split(), agent=a)
+    assert res.source == "fallback" and res.calls[0].args.object == "robot"
