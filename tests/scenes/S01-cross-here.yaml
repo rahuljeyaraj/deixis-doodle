@@ -1,0 +1,21 @@
+id: S1
+title: "A cross here"
+tests: "M1 in words: place_drawing with a deictic place; the pen lands under the finger"
+# The finger arrives, rests on the target, the person says the line, then takes the hand
+# away. The preview traces the cross's box, then (quiet for 2 s) the cross is drawn.
+lines:
+  - at: 1.6
+    text: "A cross here."
+hand:
+  - enter: [150, -40]
+    at: 0.3
+  - move: [62, 88]
+    dur: 0.7
+  - hold: 1.6
+  - leave: true
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: cross, center: [62, 88], tol_mm: 1.0, size: 10}
+  asks: 0
+  states: [UNDERSTAND, PREVIEW, WAIT_HANDS_CLEAR, DRAW, LISTEN]

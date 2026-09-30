@@ -1,0 +1,894 @@
+"""The agent runtime (plan 4.4): a deterministic state machine around the agent's tool calls.
+
+    LISTEN -> UNDERSTAND -> (CLARIFY) -> PREVIEW <-> ADJUST -> WAIT_HANDS_CLEAR -> DRAW -> LISTEN
+    STOP works from any state. NEW_SHEET clears the scene.
+
+Inputs, all stamped on one clock (real or simulated):
+
+- `on_frame(HandsFrame)` every camera frame: holds, size gestures, the hands-clear interlock.
+- `on_speech_start(t)` when the voice detector hears speech (blocks the auto-confirm).
+- `on_utterance(words, t)` when a transcript with word times is ready.
+- `tick(t)`: timers, agent results that are due, and the plotter's progress.
+
+The agent (Nemotron, the recorded-reply cache or the rule parser) only returns typed tool
+calls. Places, sizes and objects are resolved here by the deixis resolver and the scene
+model; the language model never produces coordinates or G-code (plan 4.1).
+
+Confirmation: a request is previewed (the pen traces its box, pen up), then drawn when the
+person says "yes", or on its own after `confirm_quiet_s` of quiet once the trace is done
+(so "an ear here ... an eye next to it" flows without a "yes" each time). Corrections
+("bigger", "a bit left", "no, there") during the preview change it and trace it again.
+A new, different request during a preview confirms the preview first.
+
+"Stop" is spotted in the transcript before the agent is called, so it doesn't wait for a
+model reply.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+from deixis.geometry import Box, Point
+from deixis.resolver import ResolverParams
+from deixis.types import Word
+from pointdraw.agent.nemotron import AgentResult
+from pointdraw.agent.prompts import AgentContext
+from pointdraw.agent.schema import (
+    DeicticObject,
+    DeicticPlace,
+    RelationPlace,
+    ToolCall,
+    norm_word,
+)
+from pointdraw.controller.config import MachineConfig
+from pointdraw.drawing import Placed, optimize
+from pointdraw.runtime.events import EventLog
+from pointdraw.runtime.gestures import GestureTracker
+from pointdraw.runtime.planner import Planner
+from pointdraw.runtime.references import NeedAsk, Question, References, Utterance
+from pointdraw.scene.ink import segment_ink
+from pointdraw.scene.model import SceneModel, SceneObject, union_box
+
+LISTEN, UNDERSTAND, CLARIFY, PREVIEW, ADJUST, WAIT_HANDS_CLEAR, DRAW = (
+    "LISTEN",
+    "UNDERSTAND",
+    "CLARIFY",
+    "PREVIEW",
+    "ADJUST",
+    "WAIT_HANDS_CLEAR",
+    "DRAW",
+)
+
+STOP_WORDS = {"stop", "halt", "freeze"}
+WRITE_VERBS = {"write", "label", "print"}
+FILLERS = {"please", "um", "uh", "er", "erm", "okay", "ok", "oh", "now", "wait", "robot"}
+CANCEL_ANSWERS = {"cancel", "nevermind", "never", "forget", "nothing"}
+
+
+class AgentPort(Protocol):
+    def understand(self, words: list[str], context: AgentContext) -> AgentResult: ...
+
+
+class CameraPort(Protocol):
+    def paper_image(self, t: float) -> tuple[Any, float]:
+        """A top-down image of the paper (user at the bottom) and its mm per pixel."""
+
+
+class VisionPort(Protocol):
+    def label(self, image: Any, mark: Any, mm_per_px: float) -> str | None: ...
+
+    def look(self, query: str, image: Any, mm_per_px: float, scene: SceneModel) -> str: ...
+
+
+class PlotterPort(Protocol):
+    """`PlotterController` plus what the runtime needs to follow jobs (VirtualPlotter)."""
+
+    events: list[Any]
+    busy: bool
+
+    def preview_box(self, box: Box, tag: Any = None) -> None: ...
+    def draw_polylines(self, polylines: list, speed: str = "normal", tag: Any = None) -> None: ...
+    def park(self, tag: Any = None) -> None: ...
+    def stop(self) -> None: ...
+    def set_hands_clear(self, clear: bool) -> None: ...
+    def ink_polylines(self, tag: Any = None) -> list: ...
+
+
+@dataclass
+class RuntimeParams:
+    default_size_mm: float = 40.0  # when no size is spoken or shown
+    cross_size_mm: float = 10.0
+    label_cap_mm: float = 5.0  # label cap height when no size is given
+    label_gap_mm: float = 3.0
+    step_mm: float = 5.0  # one "a bit" step for adjust
+    auto_confirm: bool = True
+    confirm_quiet_s: float = 2.0
+    resolver: ResolverParams = field(default_factory=ResolverParams)
+
+
+@dataclass
+class Proposal:
+    items: list[SceneObject]
+    utt: int
+    t: float
+    previews: set[str] = field(default_factory=set)  # preview job tags still running
+    preview_done: float | None = None
+    drawing: set[str] = field(default_factory=set)  # draw job tags still running
+    confirmed_t: float | None = None
+
+
+@dataclass
+class Pending:
+    t_ready: float
+    utt: Utterance
+    result: AgentResult
+
+
+@dataclass
+class OpenQuestion:
+    q: Question
+    utt: Utterance | None
+    call: ToolCall | None
+    t: float
+
+
+class Runtime:
+    def __init__(
+        self,
+        agent: AgentPort,
+        plotter: PlotterPort,
+        machine: MachineConfig,
+        planner: Planner | None = None,
+        *,
+        camera: CameraPort | None = None,
+        vision: VisionPort | None = None,
+        params: RuntimeParams | None = None,
+        log: EventLog | None = None,
+        on_new_sheet: Callable[[float], None] | None = None,
+    ) -> None:
+        self.agent = agent
+        self.plotter = plotter
+        self.machine = machine
+        self.params = params or RuntimeParams()
+        paper = machine.paper_box
+        self.origin: Point = (paper.x, paper.y)
+        d = machine.drawable
+        self.drawable = Box(d.x - paper.x, d.y - paper.y, d.w, d.h)  # paper frame
+        self.planner = planner or Planner(drawable=self.drawable)
+        if self.planner.drawable is None:
+            self.planner.drawable = self.drawable
+        self.scene = SceneModel(self.drawable)
+        self.tracker = GestureTracker(paper)
+        self.camera = camera
+        self.vision = vision
+        self.log = log or EventLog()
+        self.on_new_sheet = on_new_sheet
+        self.state = LISTEN
+        self.t = 0.0
+        self.pending: list[Pending] = []
+        self.proposal: Proposal | None = None
+        self.queue: list[Proposal] = []
+        self.drawing: Proposal | None = None
+        self.question: OpenQuestion | None = None
+        self.speech_active = False
+        self.last_heard = -math.inf
+        self.utts: list[Utterance] = []
+        self.samples: list[Any] = []
+        self._ev = 0  # plotter events read so far
+        self._clear: bool | None = None
+        self._tags = 0
+
+    # ------------------------------------------------------------------ inputs
+
+    def start(self, t: float) -> None:
+        self.t = t
+        self.log.add(t, "state", state=self.state)
+        self.refresh_scene(t)
+
+    def on_frame(self, frame: Any) -> None:
+        s = self.tracker.update(frame)
+        self.samples.append(s)
+        self.plotter.set_hands_clear(self.tracker.hands_clear)
+        if self.tracker.hands_clear != self._clear:
+            self._clear = self.tracker.hands_clear
+            self.log.add(frame.t, "interlock", clear=self._clear)
+        h = self.tracker.ended_hold
+        if h is not None:
+            self.log.add(
+                h.t1,
+                "hold",
+                t0=round(h.t0, 3),
+                t1=round(h.t1, 3),
+                mean=[round(h.mean[0], 2), round(h.mean[1], 2)],
+                spread=round(max(h.spread), 2),
+            )
+        sp = self.tracker.ended_span
+        if sp is not None:
+            self.log.add(
+                sp.t1,
+                "span",
+                t0=round(sp.t0, 3),
+                t1=round(sp.t1, 3),
+                span=round(sp.span_mm, 2),
+                span_kind=sp.kind,
+            )
+
+    def on_speech_start(self, t: float) -> None:
+        self.speech_active = True
+        self.log.add(t, "speech_start")
+
+    def on_utterance(self, words: list[Word], t: float) -> None:
+        self.t = max(self.t, t)
+        self.speech_active = False
+        self.last_heard = t
+        utt = Utterance(len(self.utts), list(words), t)
+        self.utts.append(utt)
+        self.log.add(
+            t,
+            "utterance",
+            id=utt.id,
+            text=utt.text,
+            words=[[w.text, round(w.t0, 3), round(w.t1, 3)] for w in words],
+        )
+        if not words:
+            return
+        if self._is_stop(utt):
+            self.log.add(
+                t,
+                "tool_calls",
+                utt=utt.id,
+                source="fast_path",
+                latency_s=0.0,
+                calls=[{"name": "stop", "args": {}}],
+            )
+            self.do_stop(t, "stop word")
+            return
+        if self.question is not None and self._answer(utt, t):
+            return
+        if not self.plotter.busy:
+            self.refresh_scene(t)
+        ctx = self.context()
+        res = self.agent.understand(utt.tokens(), ctx)
+        self.log.add(
+            t,
+            "tool_calls",
+            utt=utt.id,
+            source=res.source,
+            model=res.model,
+            latency_s=round(res.latency_s, 3),
+            calls=[c.to_dict() for c in res.calls],
+            speech=res.speech,
+            context=ctx.lines(),
+        )
+        self.pending.append(Pending(t + res.latency_s, utt, res))
+        if self.state == LISTEN:
+            self._set_state(UNDERSTAND, t)
+
+    def tick(self, t: float) -> None:
+        self.t = max(self.t, t)
+        self._plotter_events()
+        due = [p for p in self.pending if p.t_ready <= t]
+        for p in due:
+            self.pending.remove(p)
+            self._apply(p.utt, p.result, p.t_ready)
+        self._auto_confirm(t)
+        if self.state == UNDERSTAND and not self.pending:
+            self._set_state(self._rest_state(), t)
+
+    # ------------------------------------------------------------------ context
+
+    def context(self) -> AgentContext:
+        last = self.scene.last()
+        prev = None
+        if self.proposal is not None and self.proposal.items:
+            it = self.proposal.items[-1]
+            tool = {"object": "place_drawing", "label": "write_label", "arrow": "draw_connector"}
+            prev = f"{tool.get(it.kind, 'place_drawing')}({it.label or it.text or it.kind})"
+        ctx = AgentContext(
+            scene_labels=self.scene.labels(),
+            last_label=last.label if last else None,
+            previewing=prev,
+        )
+        if self.question is not None and hasattr(ctx, "pending_question"):
+            ctx.pending_question = self.question.q.text  # type: ignore[attr-defined]
+            ctx.options = list(self.question.q.options)  # type: ignore[attr-defined]
+        return ctx
+
+    def refresh_scene(self, t: float) -> None:
+        """Look at the paper: segment the user's marks (minus the robot's own ink)."""
+        if self.camera is None:
+            return
+        img, mmpp = self.camera.paper_image(t)
+        robot = [[self._to_paper(p) for p in pl] for pl in self.plotter.ink_polylines()]
+        marks = segment_ink(img, mmpp, robot)
+
+        def labeler(m: Any) -> str | None:
+            return self.vision.label(img, m, mmpp) if self.vision else None
+
+        added = self.scene.set_user_marks(marks, labeler, t)
+        self.log.add(
+            t,
+            "scene",
+            marks=len(self.scene.marks),
+            new=[{"id": o.id, "label": o.label, "box": _box(o.box)} for o in added],
+        )
+
+    # ------------------------------------------------------------------ agent results
+
+    def _apply(self, utt: Utterance, res: AgentResult, t: float) -> None:
+        if not res.calls:
+            self.say(t, res.speech or "Sorry, I didn't catch that. Could you say it again?")
+            return
+        refs = self._refs(utt)
+        refs.prepare(res.calls)
+        new: list[SceneObject] = []
+        for call in res.calls:
+            try:
+                self._handle(call, refs, new, t)
+            except NeedAsk as e:
+                self._ask(e.q, utt, call, t)
+                break
+            finally:
+                for entry in refs.log:
+                    self.log.add(t, "resolve", utt=utt.id, tool=call.name, **entry)
+                refs.log.clear()
+        if new:
+            self._propose(new, utt.id, t)
+
+    def _refs(self, utt: Utterance, overrides: dict | None = None) -> References:
+        holds = self.tracker.holds.holds()
+        spans = self.tracker.spans.holds()
+        return References(
+            utt,
+            holds,
+            spans,
+            self.scene,
+            self.params.resolver,
+            self.params.default_size_mm,
+            overrides,
+        )
+
+    def _handle(self, call: ToolCall, refs: References, new: list[SceneObject], t: float) -> None:
+        name, a = call.name, call.args
+        if name == "stop":
+            self.do_stop(t, "tool call")
+        elif name == "new_sheet":
+            self.new_sheet(t)
+        elif name == "confirm":
+            self.confirm(t)
+        elif name == "cancel":
+            self.cancel(t)
+        elif name == "adjust":
+            self.adjust(a.dx, a.dy, a.scale, t)  # type: ignore[attr-defined]
+        elif name == "ask_user":
+            q = Question(a.question, "agent", list(a.options))  # type: ignore[attr-defined]
+            self._ask(q, refs.utt, None, t)
+        elif name == "look":
+            self.look(a.query, t)  # type: ignore[attr-defined]
+        elif name == "place_drawing":
+            self._place_drawing(call, refs, new, t)
+        elif name == "write_label":
+            self._write_label(call, refs, new, t)
+        elif name == "draw_connector":
+            self._connector(call, refs, new, t)
+        else:
+            self.say(t, f"I can't do '{name}' yet.")
+
+    # ------------------------------------------------------------------ drawing requests
+
+    def _commit_preview_for(self, t: float) -> None:
+        """A different request arrived during a preview: confirm the preview first."""
+        if self.proposal is not None:
+            self.confirm(t, reason="new request")
+
+    def _place_drawing(self, call: ToolCall, refs: References, new: list, t: float) -> None:
+        a = call.args
+        cat = self.planner.resolve(a.object)  # type: ignore[attr-defined]
+        if cat is None:
+            obj = a.object  # type: ignore[attr-defined]
+            opts = self.planner.suggestions(obj)
+            text = f"I can't draw a {obj} yet." + (
+                f" Would a {' or a '.join(opts)} do?" if opts else " What else shall I draw?"
+            )
+            raise NeedAsk(Question(text, "unknown_object", opts))
+        prev = self._previewed_item()
+        if prev is not None and prev.label == cat and not new:
+            # "no, there" / "about this big" / "put it here": change the preview in place.
+            size = refs.size(a.size, max(prev.box.w, prev.box.h)) if a.size else None  # type: ignore[attr-defined]
+            if a.place is not None:  # type: ignore[attr-defined]
+                s = size or max(prev.box.w, prev.box.h)
+                pl = refs.place(a.place, s)  # type: ignore[attr-defined]
+                center, where = pl.center, pl.where.model_dump(mode="json")
+                s = pl.size or s
+            else:
+                center, where, s = prev.center, None, size or max(prev.box.w, prev.box.h)
+            self._replace(prev, self.planner.object(cat, center, s, id=prev.id), t, where)
+            return
+        if prev is not None or (self.proposal is not None and not new):
+            self._commit_preview_for(t)
+        default = self.params.cross_size_mm if cat == "cross" else None
+        size = refs.size(a.size, default)  # type: ignore[attr-defined]
+        pl = refs.place(a.place, size)  # type: ignore[attr-defined]
+        size = pl.size or size
+        placed = self.planner.object(cat, pl.center, size, id=self.scene.new_id(cat))
+        self._add_item(
+            placed, "object", cat, None, pl.where.model_dump(mode="json"), new, t, target=pl.target
+        )
+
+    def _write_label(self, call: ToolCall, refs: References, new: list, t: float) -> None:
+        a = call.args
+        text: str = a.text  # type: ignore[attr-defined]
+        if self._previewed_item() is not None and not new:
+            self._commit_preview_for(t)
+        cap = self.params.label_cap_mm
+        if a.size is not None:  # type: ignore[attr-defined]
+            s = refs.size(a.size)  # type: ignore[attr-defined]
+            probe = self.planner.label(text, (0, 0), cap)
+            cap = cap * s / max(probe.box.w, 1e-6)
+        probe = self.planner.label(text, (0, 0), cap)
+        w, h = probe.box.w, probe.box.h
+        g = self.params.label_gap_mm
+        place = a.place  # type: ignore[attr-defined]
+        target: SceneObject | None = None
+        where: dict | None = None
+        if place is None or isinstance(place, DeicticPlace):
+            if place is None:
+                p, wh = refs.last_point()
+            else:
+                p, wh = refs.point_for_word(place.word_index)
+            where = wh.model_dump(mode="json")
+            if place is None or place.deixis in ("this", "that", "these", "those"):
+                target, cands = self.scene.object_at(p)
+                if target is None and len(cands) > 1:
+                    opts = [c.label or c.id for c in cands]
+                    raise NeedAsk(
+                        Question(
+                            "The " + " or the ".join(opts) + "?", "ambiguous_object", opts, cands
+                        )
+                    )
+            center = (target.center[0], target.box.y - g - h / 2) if target else p
+        elif isinstance(place, RelationPlace) and place.relation != "between":
+            target = refs.obj(place.target)
+            tb = target.box
+            cx, cy = tb.center
+            center = {
+                "below": (cx, tb.y - g - h / 2),
+                "next_to": (cx, tb.y - g - h / 2),
+                "above": (cx, tb.y2 + g + h / 2),
+                "left_of": (tb.x - g - w / 2, cy),
+                "right_of": (tb.x2 + g + w / 2, cy),
+                "inside": (cx, cy),
+                "on": (cx, cy),
+            }[place.relation]
+            where = {"relation": place.relation, "target": target.id}
+        else:
+            pl = refs.place(place, w)
+            center, where = pl.center, pl.where.model_dump(mode="json")
+        placed = self.planner.label(text, center, cap, id=self.scene.new_id(f"label_{text}"))
+        self._add_item(placed, "label", None, text, where, new, t, target=target)
+
+    def _connector(self, call: ToolCall, refs: References, new: list, t: float) -> None:
+        a = call.args
+        if self._previewed_item() is not None and not new:
+            self._commit_preview_for(t)
+        ends = []
+        for ref in (a.from_, a.to):  # type: ignore[attr-defined]
+            if isinstance(ref, DeicticObject):
+                p, _ = refs.point_for_word(ref.word_index)
+                o, cands = self.scene.object_at(p)
+                if o is None and len(cands) > 1:
+                    opts = [c.label or c.id for c in cands]
+                    raise NeedAsk(
+                        Question(
+                            "The " + " or the ".join(opts) + "?", "ambiguous_object", opts, cands
+                        )
+                    )
+                ends.append((o.center, o.box, o.id) if o else (p, None, None))
+            else:
+                o = refs.obj(ref)
+                ends.append((o.center, o.box, o.id))
+        (pa, ba, ia), (pb, bb, ib) = ends
+        kind = a.kind  # type: ignore[attr-defined]
+        placed = self.planner.arrow(pa, pb, ba, bb, kind, id=self.scene.new_id(kind))
+        where = {
+            "kind": "path",
+            "from": ia or [round(pa[0], 2), round(pa[1], 2)],
+            "to": ib or [round(pb[0], 2), round(pb[1], 2)],
+        }
+        self._add_item(placed, "arrow", None, None, where, new, t, anchor=f"{ia}->{ib}")
+
+    def _add_item(
+        self,
+        placed: Placed,
+        kind: str,
+        label: str | None,
+        text: str | None,
+        where: dict | None,
+        new: list,
+        t: float,
+        target: SceneObject | None = None,
+        anchor: str | None = None,
+    ) -> SceneObject:
+        placed, moved = self.planner.keep_inside(placed)
+        obj = SceneObject(
+            placed.id,
+            "robot",
+            label,
+            placed.box,
+            kind,
+            placed.polylines,
+            text,
+            t,
+            pending=True,
+            anchor=anchor or (target.id if target else None),
+        )
+        self.scene.add(obj)
+        new.append(obj)
+        self.log.add(
+            t,
+            "item",
+            id=obj.id,
+            type=kind,
+            label=label,
+            text=text,
+            box=_box(obj.box),
+            center=_pt(obj.center),
+            where=where,
+            moved=moved,
+        )
+        if moved:
+            self.say(t, "I moved it a little so it fits on the page.")
+        return obj
+
+    def _replace(self, old: SceneObject, placed: Placed, t: float, where: dict | None) -> None:
+        placed, moved = self.planner.keep_inside(placed)
+        old.polylines, old.box = placed.polylines, placed.box
+        self.log.add(
+            t,
+            "item",
+            id=old.id,
+            type=old.kind,
+            label=old.label,
+            text=old.text,
+            box=_box(old.box),
+            center=_pt(old.center),
+            where=where,
+            moved=moved,
+            replaced=True,
+        )
+        self._preview(t)
+
+    def _previewed_item(self) -> SceneObject | None:
+        if self.proposal is None or not self.proposal.items:
+            return None
+        return self.proposal.items[-1]
+
+    # ------------------------------------------------------------------ preview and draw
+
+    def _propose(self, items: list[SceneObject], utt: int, t: float) -> None:
+        prop = Proposal(items, utt, t)
+        if self.drawing is not None or self.proposal is not None:
+            self.queue.append(prop)
+            self.log.add(t, "queued", items=[o.id for o in items])
+            return
+        self.proposal = prop
+        self._preview(t)
+
+    def _preview(self, t: float) -> None:
+        prop = self.proposal
+        if prop is None:
+            return
+        prop.preview_done = None
+        for obj in prop.items:
+            tag = self._tag("preview")
+            self.plotter.preview_box(self._box_to_bed(obj.box), tag=tag)
+            prop.previews.add(tag)
+        self.log.add(
+            t,
+            "preview",
+            items=[o.id for o in prop.items],
+            box=_box(union_box([o.box for o in prop.items])),
+        )
+        self._set_state(PREVIEW, t)
+
+    def adjust(self, dx: int, dy: int, scale: float, t: float) -> None:
+        obj = self._previewed_item()
+        if obj is None:
+            self.say(t, "There's nothing to adjust right now.")
+            return
+        self._set_state(ADJUST, t)
+        step = self.params.step_mm
+        p = Placed(obj.id, obj.kind, obj.polylines, obj.box, obj.label)
+        p = self.planner.shift(p, dx * step, dy * step, scale)
+        self.log.add(t, "adjust", id=obj.id, dx=dx, dy=dy, scale=scale)
+        self._replace(obj, p, t, None)
+
+    def confirm(self, t: float, reason: str = "confirm") -> None:
+        prop = self.proposal
+        if prop is None:
+            if self.state != DRAW:
+                self.say(t, "There's nothing to confirm.")
+            return
+        self.proposal = None
+        prop.confirmed_t = t
+        for obj in prop.items:
+            obj.pending = False
+            obj.t = t
+            poly, _ = optimize(obj.polylines)
+            bed = [[self._to_bed(p) for p in pl] for pl in poly]
+            self.plotter.draw_polylines(bed, "normal", tag=obj.id)
+            prop.drawing.add(obj.id)
+        park = self._tag("park")
+        self.plotter.park(tag=park)
+        prop.drawing.add(park)
+        self.drawing = prop
+        self.log.add(t, "confirm", items=[o.id for o in prop.items], reason=reason)
+        self._set_state(WAIT_HANDS_CLEAR, t)
+        if self.queue:  # the next proposal is previewed once this one is drawn
+            pass
+
+    def cancel(self, t: float) -> None:
+        if self.question is not None:
+            self.question = None
+            self.say(t, "OK, never mind.")
+        prop = self.proposal
+        if prop is not None:
+            for obj in prop.items:
+                self.scene.remove(obj)
+            self.proposal = None
+            self.log.add(t, "cancel", items=[o.id for o in prop.items])
+            self.say(t, "Cancelled.")
+        self._set_state(self._rest_state(), t)
+
+    def do_stop(self, t: float, why: str) -> None:
+        self.plotter.stop()
+        dropped = []
+        for prop in ([self.proposal] if self.proposal else []) + self.queue:
+            for obj in prop.items:
+                if obj.pending:
+                    self.scene.remove(obj)
+                    dropped.append(obj.id)
+        self.proposal, self.queue, self.pending, self.question = None, [], [], None
+        if self.drawing is not None:
+            self.drawing = None
+        self.log.add(t, "stop", why=why, dropped=dropped)
+        self.say(t, "Stopped.")
+        self._set_state(LISTEN, t)
+
+    def new_sheet(self, t: float) -> None:
+        if self.plotter.busy:
+            self.plotter.stop()
+        self.proposal, self.queue, self.drawing, self.question = None, [], None, None
+        self.scene.clear()
+        if self.on_new_sheet is not None:
+            self.on_new_sheet(t)
+        self.log.add(t, "new_sheet")
+        self.say(t, "New page. Ready when you are.")
+        self._set_state(LISTEN, t)
+
+    def look(self, query: str, t: float) -> None:
+        if self.vision is None or self.camera is None:
+            self.say(t, "I can't see the paper right now.")
+            return
+        self.say(t, "Let me look.")
+        img, mmpp = self.camera.paper_image(t)
+        answer = self.vision.look(query, img, mmpp, self.scene)
+        self.log.add(t, "look", query=query, answer=answer)
+        self.say(t, answer)
+        self._set_state(self._rest_state(), t)
+
+    def _auto_confirm(self, t: float) -> None:
+        p = self.params
+        prop = self.proposal
+        if not p.auto_confirm or prop is None or self.state != PREVIEW:
+            return
+        if prop.preview_done is None or self.pending or self.speech_active:
+            return
+        if self.question is not None:
+            return
+        if t - max(prop.preview_done, self.last_heard) >= p.confirm_quiet_s:
+            self.confirm(t, reason="quiet")
+
+    def _plotter_events(self) -> None:
+        evs = self.plotter.events
+        while self._ev < len(evs):
+            e = evs[self._ev]
+            self._ev += 1
+            tag = e.tag
+            prop = self.proposal
+            if prop is not None and tag in prop.previews and e.kind in ("job_end", "halted"):
+                prop.previews.discard(tag)
+                if not prop.previews:
+                    prop.preview_done = e.t
+                    self.log.add(e.t, "preview_done", items=[o.id for o in prop.items])
+            d = self.drawing
+            if d is not None and tag in d.drawing:
+                if e.kind == "job_start" and self.state == WAIT_HANDS_CLEAR:
+                    self._set_state(DRAW, e.t)
+                if e.kind == "job_end":
+                    d.drawing.discard(tag)
+                    obj = next((o for o in d.items if o.id == tag), None)
+                    if obj is not None:
+                        self._drawn(obj, e.t)
+                    if not d.drawing:
+                        self.drawing = None
+                        self._next(e.t)
+            if e.kind == "halted":
+                self.drawing = None
+
+    def _drawn(self, obj: SceneObject, t: float) -> None:
+        ink = self.plotter.ink_polylines(obj.id)
+        pts = [self._to_paper(p) for pl in ink for p in pl]
+        box = None
+        if pts:
+            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+            box = Box(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+        self.log.add(
+            t,
+            "drawn",
+            id=obj.id,
+            type=obj.kind,
+            label=obj.label,
+            text=obj.text,
+            planned_box=_box(obj.box),
+            ink_box=_box(box) if box else None,
+            ink_center=_pt(box.center) if box else None,
+        )
+
+    def _next(self, t: float) -> None:
+        if self.queue:
+            self.proposal = self.queue.pop(0)
+            self._preview(t)
+        else:
+            self._set_state(self._rest_state(), t)
+            self.refresh_scene(t)
+
+    # ------------------------------------------------------------------ questions
+
+    def _ask(self, q: Question, utt: Utterance | None, call: ToolCall | None, t: float) -> None:
+        self.question = OpenQuestion(q, utt, call, t)
+        self.log.add(t, "ask", question=q.text, reason=q.reason, options=q.options)
+        self.say(t, q.text)
+        self._set_state(CLARIFY, t)
+
+    def _answer(self, utt: Utterance, t: float) -> bool:
+        """Try to answer the open question from this utterance. True if it was handled."""
+        oq = self.question
+        assert oq is not None
+        toks = [norm_word(w.text) for w in utt.words]
+        if set(toks) & CANCEL_ANSWERS or toks[:1] == ["no"] and len(toks) == 1:
+            self.cancel(t)
+            return True
+        q = oq.q
+        chosen = None
+        for opt in q.options:
+            if all(p in toks for p in opt.lower().split()) or norm_word(opt) in toks:
+                chosen = opt
+                break
+        if chosen is not None and oq.call is not None:
+            self.question = None
+            self.log.add(t, "answer", question=q.text, answer=chosen)
+            call = oq.call
+            overrides: dict = {}
+            if q.reason == "unknown_object":
+                call = ToolCall(
+                    name=call.name, args=call.args.model_copy(update={"object": chosen})
+                )
+            elif q.candidates:
+                obj = next(c for c in q.candidates if (c.label or c.id) == chosen)
+                call = _retarget(call, obj)
+            self._rerun(oq.utt, call, t, overrides)
+            return True
+        demos = [i for i, w in enumerate(toks) if w in ("here", "there", "this", "that")]
+        if q.reason in ("no_gesture", "unsteady", "ambiguous") and demos and oq.call is not None:
+            refs = self._refs(utt)
+            try:
+                _, where = refs.point_for_word(demos[-1])
+            except NeedAsk as e:
+                self._ask(e.q, oq.utt, oq.call, t)
+                return True
+            pick = refs.picks[demos[-1]]
+            self.question = None
+            self.log.add(t, "answer", question=q.text, answer="pointing", where=where.mean_mm)
+            assert oq.utt is not None
+            idx = _deictic_indices(oq.call) or [-1]
+            self._rerun(oq.utt, oq.call, t, {i: pick.hold for i in idx})  # type: ignore[union-attr]
+            return True
+        if chosen is not None and oq.call is None:
+            return False  # an agent question: let the agent read the answer in context
+        self.question = None  # not an answer: treat it as a new request
+        return False
+
+    def _rerun(self, utt: Utterance | None, call: ToolCall, t: float, overrides: dict) -> None:
+        assert utt is not None
+        refs = self._refs(utt, overrides)
+        refs.prepare([call])
+        new: list[SceneObject] = []
+        try:
+            self._handle(call, refs, new, t)
+        except NeedAsk as e:
+            self._ask(e.q, utt, call, t)
+        for entry in refs.log:
+            self.log.add(t, "resolve", utt=utt.id, tool=call.name, **entry)
+        if new:
+            self._propose(new, utt.id, t)
+        elif self.state == CLARIFY and self.question is None:
+            self._set_state(self._rest_state(), t)
+
+    # ------------------------------------------------------------------ helpers
+
+    def say(self, t: float, text: str) -> None:
+        self.log.add(t, "say", text=text)
+
+    def _is_stop(self, utt: Utterance) -> bool:
+        toks = [norm_word(w.text) for w in utt.words]
+        toks = [w for w in toks if w and w not in FILLERS]
+        return bool(toks) and toks[0] in STOP_WORDS
+
+    def _rest_state(self) -> str:
+        if self.question is not None:
+            return CLARIFY
+        if self.drawing is not None:
+            return DRAW if self.state == DRAW else WAIT_HANDS_CLEAR
+        if self.proposal is not None:
+            return PREVIEW
+        if self.pending:
+            return UNDERSTAND
+        return LISTEN
+
+    def _set_state(self, s: str, t: float) -> None:
+        if s != self.state:
+            self.log.add(t, "state", state=s, prev=self.state)
+            self.state = s
+
+    def _tag(self, base: str) -> str:
+        self._tags += 1
+        return f"{base}#{self._tags}"
+
+    def _to_bed(self, p: Point) -> Point:
+        return (p[0] + self.origin[0], p[1] + self.origin[1])
+
+    def _to_paper(self, p: Point) -> Point:
+        return (p[0] - self.origin[0], p[1] - self.origin[1])
+
+    def _box_to_bed(self, b: Box) -> Box:
+        return Box(b.x + self.origin[0], b.y + self.origin[1], b.w, b.h)
+
+
+def _retarget(call: ToolCall, obj: SceneObject) -> ToolCall:
+    """Replace every deictic object reference in a call with the chosen object's label.
+
+    Used after "the house or the tree?" -> "the house"."""
+    from pointdraw.agent.schema import LabelObject
+
+    def walk(m: Any) -> Any:
+        if isinstance(m, DeicticObject):
+            return LabelObject(label=obj.label or obj.id)
+        if isinstance(m, DeicticPlace) and call.name == "write_label":
+            return RelationPlace(relation="below", target=LabelObject(label=obj.label or obj.id))
+        if hasattr(m, "model_fields"):
+            upd = {f: walk(getattr(m, f)) for f in type(m).model_fields}
+            return m.model_copy(update=upd)
+        return m
+
+    return ToolCall(name=call.name, args=walk(call.args))
+
+
+def _deictic_indices(call: ToolCall) -> list[int]:
+    from pointdraw.runtime.references import deictic_words
+
+    places, _ = deictic_words(call.args)
+    return places
+
+
+def _box(b: Box | None) -> list[float] | None:
+    if b is None:
+        return None
+    return [round(b.x, 2), round(b.y, 2), round(b.w, 2), round(b.h, 2)]
+
+
+def _pt(p: Point) -> list[float]:
+    return [round(p[0], 2), round(p[1], 2)]
