@@ -93,6 +93,7 @@ def test_context_from_dict_reads_question_and_is_backward_compatible():
 SYSTEM_PROMPT_SHA256 = {
     "v0": "6301ad4ee0e049f10310e9ccadf9a5edea1644267a44fd5b9f92414fae4e7fca",
     "v1": "1a871707ade6b10e21568cc2c7de5a7efca97c7cb7b3218b8cc2d518a0998771",
+    "v2": "2e11884e5c27f3eb1c4c9a2b19c22972a97a33c1a578afd1186a77209f07a2ff",
 }
 
 

@@ -9,7 +9,7 @@ from typing import Any
 
 from pointdraw.agent.schema import norm_word
 
-PROMPT_VERSION = "v1"  # the default; see PROMPTS
+PROMPT_VERSION = "v2"  # the default; see PROMPTS (v2: session VIRTUAL, R3 53/61 vs v1 51/61)
 
 #: Used when `library/index.json` doesn't exist yet. All are Quick, Draw! category names
 #: (https://github.com/googlecreativelab/quickdraw-dataset, CC-BY-4.0).
@@ -241,9 +241,40 @@ FEW_SHOT_V1: tuple[tuple[str, str, str], ...] = FEW_SHOT + (
     ),
 )
 
+#: v2 (session VIRTUAL, 30 Sep): two failures seen in the live virtual-world runs.
+#: "about this big" while an ear was previewed came back as a *circle* this big, and
+#: "a brain up here, a bit bigger" became the preset "big" (80 mm) instead of a correction.
+SYSTEM_TEMPLATE_V2 = SYSTEM_TEMPLATE_V1.replace(
+    'previewed object at the new place (it replaces the preview). "stop", "halt", "freeze" -> '
+    "stop at any time.",
+    'previewed object at the new place (it replaces the preview); "this big", "about this '
+    'big", "that size" -> place_drawing again with the previewed object and only the size '
+    '(never another object). "stop", "halt", "freeze" -> stop at any time.',
+).replace(
+    "12. Questions about the sheet",
+    '12. "a bit bigger", "a bit smaller", "a bit to the left" and the like right after a '
+    "request in the same utterance correct that request: add an adjust call after it. They "
+    "are never a size preset.\n13. Questions about the sheet",
+)
+
+FEW_SHOT_V2: tuple[tuple[str, str, str], ...] = FEW_SHOT_V1 + (
+    (
+        "about this big",
+        "Previewing: place_drawing(moon)",
+        'place_drawing({"object": "moon", "size": {"word_index": 1}})',
+    ),
+    (
+        "a boat over there a bit smaller",
+        "",
+        'place_drawing({"object": "boat", "place": {"deixis": "there", "word_index": 3}})\n'
+        'adjust({"scale": 0.8})',
+    ),
+)
+
 PROMPTS: dict[str, tuple[str, tuple[tuple[str, str, str], ...]]] = {
     "v0": (SYSTEM_TEMPLATE, FEW_SHOT),
     "v1": (SYSTEM_TEMPLATE_V1, FEW_SHOT_V1),
+    "v2": (SYSTEM_TEMPLATE_V2, FEW_SHOT_V2),
 }
 
 

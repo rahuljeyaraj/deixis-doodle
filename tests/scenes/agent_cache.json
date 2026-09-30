@@ -1,113 +1,5 @@
 {
- "00f3bf7484e02161": {
-  "words": "A sun here",
-  "context": [],
-  "calls": [
-   {
-    "name": "place_drawing",
-    "args": {
-     "object": "sun",
-     "place": {
-      "deixis": "here",
-      "word_index": 2
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.499,
-  "recorded": "2026-09-30"
- },
- "1686bf1f24bc167f": {
-  "words": "A tree here about this big",
-  "context": [],
-  "calls": [
-   {
-    "name": "place_drawing",
-    "args": {
-     "object": "tree",
-     "place": {
-      "deixis": "here",
-      "word_index": 2
-     },
-     "size": {
-      "word_index": 4
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.441,
-  "recorded": "2026-09-30"
- },
- "177197ab38a0578d": {
-  "words": "An arrow from the brain to the hand",
-  "context": [
-   "Scene: brain (last), hand"
-  ],
-  "calls": [
-   {
-    "name": "draw_connector",
-    "args": {
-     "kind": "arrow",
-     "from": {
-      "label": "brain"
-     },
-     "to": {
-      "label": "hand"
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 2.791,
-  "recorded": "2026-09-30"
- },
- "1a0cf016466fcce6": {
-  "words": "An ear here",
-  "context": [],
-  "calls": [
-   {
-    "name": "place_drawing",
-    "args": {
-     "object": "ear",
-     "place": {
-      "deixis": "here",
-      "word_index": 2
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.544,
-  "recorded": "2026-09-30"
- },
- "25b389c2c4e6a235": {
-  "words": "A flower in an empty spot",
-  "context": [
-   "Scene: house, tree, sun, car, heart (last)"
-  ],
-  "calls": [
-   {
-    "name": "place_drawing",
-    "args": {
-     "object": "flower",
-     "place": {
-      "empty_space": true
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.01,
-  "recorded": "2026-09-30"
- },
- "26851b034ab2ba91": {
+ "044e32cddd71b4e2": {
   "words": "Put a hand inside that",
   "context": [
    "Scene: box (last)"
@@ -129,10 +21,341 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.432,
-  "recorded": "2026-09-30"
+  "latency_s": 1.175,
+  "recorded": "2026-10-01"
  },
- "3286f997f945d1a7": {
+ "0b347d573fe54ea2": {
+  "words": "A flower in an empty spot",
+  "context": [
+   "Scene: house, tree, sun, car, heart (last)"
+  ],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "flower",
+     "place": {
+      "empty_space": true
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.032,
+  "recorded": "2026-10-01"
+ },
+ "0ec5c7edf001992b": {
+  "words": "New page",
+  "context": [
+   "Scene: house, tree, star (last)"
+  ],
+  "calls": [
+   {
+    "name": "new_sheet",
+    "args": {}
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.302,
+  "recorded": "2026-10-01"
+ },
+ "19818918094a77dc": {
+  "words": "a bit lower",
+  "context": [
+   "Scene: ear, eye, brain, box, hand (last)",
+   "Previewing: write_label(Nemotron)"
+  ],
+  "calls": [
+   {
+    "name": "adjust",
+    "args": {
+     "dx": 0,
+     "dy": -1,
+     "scale": 1.0
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.606,
+  "recorded": "2026-10-01"
+ },
+ "1b1f2f9f4126e7dc": {
+  "words": "Label this 'Cosmos' and this 'ASR'",
+  "context": [
+   "Scene: ear, eye, brain, box, hand (last)"
+  ],
+  "calls": [
+   {
+    "name": "write_label",
+    "args": {
+     "text": "Cosmos",
+     "place": {
+      "deixis": "this",
+      "word_index": 1
+     }
+    }
+   },
+   {
+    "name": "write_label",
+    "args": {
+     "text": "ASR",
+     "place": {
+      "deixis": "this",
+      "word_index": 4
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.1,
+  "recorded": "2026-10-01"
+ },
+ "1c34e186e9572947": {
+  "words": "Draw a dragon",
+  "context": [],
+  "calls": [
+   {
+    "name": "ask_user",
+    "args": {
+     "question": "Which animal should I draw?",
+     "options": [
+      "cat",
+      "dog",
+      "rabbit"
+     ]
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.784,
+  "recorded": "2026-10-01"
+ },
+ "24d3069045a97711": {
+  "words": "Now an arrow from the brain to the hand",
+  "context": [
+   "Scene: ear, eye, brain, box, hand (last)"
+  ],
+  "calls": [
+   {
+    "name": "draw_connector",
+    "args": {
+     "kind": "arrow",
+     "from": {
+      "label": "brain"
+     },
+     "to": {
+      "label": "hand"
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.395,
+  "recorded": "2026-10-01"
+ },
+ "2c60a1b2c4752217": {
+  "words": "Label that one Nemotron",
+  "context": [
+   "Scene: ear, eye, brain, box, hand (last)"
+  ],
+  "calls": [
+   {
+    "name": "write_label",
+    "args": {
+     "text": "Nemotron",
+     "place": {
+      "deixis": "that",
+      "word_index": 1
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.585,
+  "recorded": "2026-10-01"
+ },
+ "3b3c44e46dd1eb36": {
+  "words": "A tree here",
+  "context": [],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "tree",
+     "place": {
+      "deixis": "here",
+      "word_index": 2
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.517,
+  "recorded": "2026-10-01"
+ },
+ "4462d90f12c15f73": {
+  "words": "An arrow from this to that",
+  "context": [
+   "Scene: ear, eye, brain, box, hand (last)"
+  ],
+  "calls": [
+   {
+    "name": "draw_connector",
+    "args": {
+     "kind": "arrow",
+     "from": {
+      "deixis": "this",
+      "word_index": 3
+     },
+     "to": {
+      "deixis": "that",
+      "word_index": 5
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.658,
+  "recorded": "2026-10-01"
+ },
+ "4cd7fb13d7fab299": {
+  "words": "What did I draw",
+  "context": [
+   "Scene: circle (last), star"
+  ],
+  "calls": [
+   {
+    "name": "look",
+    "args": {
+     "query": "what did I draw"
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.385,
+  "recorded": "2026-10-01"
+ },
+ "5ebdcbe4ca1726a0": {
+  "words": "A bit to the left",
+  "context": [
+   "Scene: tree (last)",
+   "Previewing: place_drawing(tree)"
+  ],
+  "calls": [
+   {
+    "name": "adjust",
+    "args": {
+     "dx": -1,
+     "dy": 0,
+     "scale": 1.0
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.694,
+  "recorded": "2026-10-01"
+ },
+ "62fc66220f8b4ab4": {
+  "words": "A cross here",
+  "context": [],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "cross",
+     "place": {
+      "deixis": "here",
+      "word_index": 2
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 2.401,
+  "recorded": "2026-10-01"
+ },
+ "64420132d9aabda4": {
+  "words": "Put a hand inside that",
+  "context": [
+   "Scene: ear, eye, brain, box (last)"
+  ],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "hand",
+     "place": {
+      "relation": "inside",
+      "target": {
+       "deixis": "that",
+       "word_index": 4
+      }
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.609,
+  "recorded": "2026-10-01"
+ },
+ "6fb0586e3801b65a": {
+  "words": "An ear here",
+  "context": [],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "ear",
+     "place": {
+      "deixis": "here",
+      "word_index": 2
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.541,
+  "recorded": "2026-10-01"
+ },
+ "7168d4353345f11f": {
+  "words": "An eye next to it",
+  "context": [
+   "Scene: ear (last)"
+  ],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "eye",
+     "place": {
+      "relation": "next_to",
+      "target": {
+       "last": true
+      }
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.921,
+  "recorded": "2026-10-01"
+ },
+ "73bcfbf5785cb97a": {
   "words": "A big house in the top left",
   "context": [],
   "calls": [
@@ -151,33 +374,17 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.411,
-  "recorded": "2026-09-30"
+  "latency_s": 1.095,
+  "recorded": "2026-10-01"
  },
- "3364622bdd8fa15f": {
-  "words": "A tree",
+ "846d9be787d88730": {
+  "words": "A house here",
   "context": [],
   "calls": [
    {
     "name": "place_drawing",
     "args": {
-     "object": "tree"
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.394,
-  "recorded": "2026-09-30"
- },
- "4795123411d8a913": {
-  "words": "A star here",
-  "context": [],
-  "calls": [
-   {
-    "name": "place_drawing",
-    "args": {
-     "object": "star",
+     "object": "house",
      "place": {
       "deixis": "here",
       "word_index": 2
@@ -187,38 +394,150 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.601,
-  "recorded": "2026-09-30"
+  "latency_s": 1.061,
+  "recorded": "2026-10-01"
  },
- "587943082117bf35": {
-  "words": "A dog here the same size as that",
+ "a179dec39a2ac4ae": {
+  "words": "Draw an ear here",
+  "context": [],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "ear",
+     "place": {
+      "deixis": "here",
+      "word_index": 3
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.564,
+  "recorded": "2026-10-01"
+ },
+ "a19ed2cd7d1b6fac": {
+  "words": "Bigger",
   "context": [
-   "Scene: cat (last)"
+   "Scene: tree (last)",
+   "Previewing: place_drawing(tree)"
   ],
   "calls": [
    {
-    "name": "place_drawing",
+    "name": "adjust",
     "args": {
-     "object": "dog",
+     "dx": 0,
+     "dy": 0,
+     "scale": 1.25
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.671,
+  "recorded": "2026-10-01"
+ },
+ "a7dabbfc12b072b4": {
+  "words": "Label that one 'garden'",
+  "context": [
+   "Scene: house (last), tree"
+  ],
+  "calls": [
+   {
+    "name": "write_label",
+    "args": {
+     "text": "garden",
      "place": {
-      "deixis": "here",
-      "word_index": 2
-     },
-     "size": {
-      "same_as": {
-       "deixis": "that",
-       "word_index": 7
-      }
+      "deixis": "that",
+      "word_index": 1
      }
     }
    }
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.141,
-  "recorded": "2026-09-30"
+  "latency_s": 1.241,
+  "recorded": "2026-10-01"
  },
- "61982f08dcec5bbe": {
+ "ae501e4272ccfdab": {
+  "words": "No there",
+  "context": [
+   "Scene: sun (last)",
+   "Previewing: place_drawing(sun)"
+  ],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "sun",
+     "place": {
+      "deixis": "there",
+      "word_index": 1
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.721,
+  "recorded": "2026-10-01"
+ },
+ "b919ac85af7f1458": {
+  "words": "Label this Cosmos and this ASR",
+  "context": [
+   "Scene: ear, eye, brain, box, hand (last)"
+  ],
+  "calls": [
+   {
+    "name": "write_label",
+    "args": {
+     "text": "Cosmos",
+     "place": {
+      "deixis": "this",
+      "word_index": 1
+     }
+    }
+   },
+   {
+    "name": "write_label",
+    "args": {
+     "text": "ASR",
+     "place": {
+      "deixis": "this",
+      "word_index": 4
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.734,
+  "recorded": "2026-10-01"
+ },
+ "bc99e665d4201d34": {
+  "words": "Label that one 'Nemotron'",
+  "context": [
+   "Scene: ear, eye, brain, box, hand (last)"
+  ],
+  "calls": [
+   {
+    "name": "write_label",
+    "args": {
+     "text": "Nemotron",
+     "place": {
+      "deixis": "that",
+      "word_index": 1
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.828,
+  "recorded": "2026-10-01"
+ },
+ "c02bf7e8c06c3ec5": {
   "words": "A house here and a tree there",
   "context": [],
   "calls": [
@@ -245,17 +564,17 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.558,
-  "recorded": "2026-09-30"
+  "latency_s": 1.459,
+  "recorded": "2026-10-01"
  },
- "6edcfd52403bb954": {
-  "words": "A house here",
+ "c1653010efd33010": {
+  "words": "A star here",
   "context": [],
   "calls": [
    {
     "name": "place_drawing",
     "args": {
-     "object": "house",
+     "object": "star",
      "place": {
       "deixis": "here",
       "word_index": 2
@@ -265,46 +584,27 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.209,
-  "recorded": "2026-09-30"
+  "latency_s": 1.489,
+  "recorded": "2026-10-01"
  },
- "701804471a906a09": {
-  "words": "New page",
+ "cb4e80d592c40cb3": {
+  "words": "Yes",
   "context": [
-   "Scene: house, tree, star (last)"
+   "Scene: tree (last)",
+   "Previewing: place_drawing(tree)"
   ],
   "calls": [
    {
-    "name": "new_sheet",
+    "name": "confirm",
     "args": {}
    }
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.385,
-  "recorded": "2026-09-30"
+  "latency_s": 0.639,
+  "recorded": "2026-10-01"
  },
- "8799a263fec75f65": {
-  "words": "A tree here",
-  "context": [],
-  "calls": [
-   {
-    "name": "place_drawing",
-    "args": {
-     "object": "tree",
-     "place": {
-      "deixis": "here",
-      "word_index": 2
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.052,
-  "recorded": "2026-09-30"
- },
- "8805d555481906ff": {
+ "dc162f63be1680ec": {
   "words": "A bird between the tree and the house",
   "context": [
    "Scene: house (last), tree"
@@ -328,77 +628,10 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.434,
-  "recorded": "2026-09-30"
+  "latency_s": 1.553,
+  "recorded": "2026-10-01"
  },
- "8bf276d67a47d466": {
-  "words": "An eye next to it",
-  "context": [
-   "Scene: ear (last)"
-  ],
-  "calls": [
-   {
-    "name": "place_drawing",
-    "args": {
-     "object": "eye",
-     "place": {
-      "relation": "next_to",
-      "target": {
-       "last": true
-      }
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.679,
-  "recorded": "2026-09-30"
- },
- "8e581dfebda8ac6c": {
-  "words": "Label that one 'Nemotron'",
-  "context": [
-   "Scene: brain (last)"
-  ],
-  "calls": [
-   {
-    "name": "write_label",
-    "args": {
-     "text": "Nemotron",
-     "place": {
-      "deixis": "that",
-      "word_index": 1
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.378,
-  "recorded": "2026-09-30"
- },
- "904e1bcb37d81fb9": {
-  "words": "A bit to the left",
-  "context": [
-   "Scene: tree (last)",
-   "Previewing: place_drawing(tree)"
-  ],
-  "calls": [
-   {
-    "name": "adjust",
-    "args": {
-     "dx": -1,
-     "dy": 0,
-     "scale": 1.0
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.545,
-  "recorded": "2026-09-30"
- },
- "97dceca2c0e0cfa5": {
+ "ded1538f3800a070": {
   "words": "A cat here this big",
   "context": [],
   "calls": [
@@ -418,152 +651,125 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.096,
-  "recorded": "2026-09-30"
+  "latency_s": 1.099,
+  "recorded": "2026-10-01"
  },
- "9891c662273473d2": {
-  "words": "Yes",
-  "context": [
-   "Scene: tree (last)",
-   "Previewing: place_drawing(tree)"
-  ],
-  "calls": [
-   {
-    "name": "confirm",
-    "args": {}
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.478,
-  "recorded": "2026-09-30"
- },
- "b4d72c2c5a499c74": {
-  "words": "Draw a dragon",
-  "context": [],
-  "calls": [
-   {
-    "name": "ask_user",
-    "args": {
-     "question": "Which animal should I draw?",
-     "options": [
-      "cat",
-      "dog",
-      "rabbit"
-     ]
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 2.029,
-  "recorded": "2026-09-30"
- },
- "b61402e65eb0e8bd": {
-  "words": "Label that one 'garden'",
-  "context": [
-   "Scene: house (last), tree"
-  ],
-  "calls": [
-   {
-    "name": "write_label",
-    "args": {
-     "text": "garden",
-     "place": {
-      "deixis": "that",
-      "word_index": 1
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.424,
-  "recorded": "2026-09-30"
- },
- "bf17f1770e20c2aa": {
-  "words": "No there",
-  "context": [
-   "Scene: sun (last)",
-   "Previewing: place_drawing(sun)"
-  ],
-  "calls": [
-   {
-    "name": "place_drawing",
-    "args": {
-     "object": "sun",
-     "place": {
-      "deixis": "there",
-      "word_index": 1
-     }
-    }
-   }
-  ],
-  "speech": null,
-  "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.599,
-  "recorded": "2026-09-30"
- },
- "c2c7cc5a4420b2f1": {
-  "words": "A cross here",
+ "df2db330dec6b7de": {
+  "words": "A tree",
   "context": [],
   "calls": [
    {
     "name": "place_drawing",
     "args": {
-     "object": "cross",
+     "object": "tree"
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.418,
+  "recorded": "2026-10-01"
+ },
+ "e46ba79894c2db34": {
+  "words": "A dog here the same size as that",
+  "context": [
+   "Scene: cat (last)"
+  ],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "dog",
      "place": {
       "deixis": "here",
       "word_index": 2
+     },
+     "size": {
+      "same_as": {
+       "deixis": "that",
+       "word_index": 7
+      }
      }
     }
    }
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 2.63,
-  "recorded": "2026-09-30"
+  "latency_s": 1.589,
+  "recorded": "2026-10-01"
  },
- "c3bf4bd20e9eb14c": {
-  "words": "Bigger",
+ "e7e36c42c861cde3": {
+  "words": "About this big",
   "context": [
-   "Scene: tree (last)",
-   "Previewing: place_drawing(tree)"
+   "Scene: ear (last)",
+   "Previewing: place_drawing(ear)"
   ],
   "calls": [
    {
-    "name": "adjust",
+    "name": "place_drawing",
     "args": {
-     "dx": 0,
-     "dy": 0,
-     "scale": 1.25
+     "object": "ear",
+     "size": {
+      "word_index": 1
+     }
     }
    }
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.553,
-  "recorded": "2026-09-30"
+  "latency_s": 0.56,
+  "recorded": "2026-10-01"
  },
- "f8a9f8442340f287": {
-  "words": "What did I draw",
+ "eab0cbb9e23e5528": {
+  "words": "An eye under it",
   "context": [
-   "Scene: circle (last), star"
+   "Scene: ear (last)",
+   "Previewing: place_drawing(ear)"
   ],
   "calls": [
    {
-    "name": "look",
+    "name": "place_drawing",
     "args": {
-     "query": "what did the user draw"
+     "object": "eye",
+     "place": {
+      "relation": "below",
+      "target": {
+       "last": true
+      }
+     }
     }
    }
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.332,
-  "recorded": "2026-09-30"
+  "latency_s": 0.577,
+  "recorded": "2026-10-01"
  },
- "fbab511bc07d61c1": {
+ "eb841350996735c2": {
+  "words": "An arrow from the brain to the hand",
+  "context": [
+   "Scene: brain (last), hand"
+  ],
+  "calls": [
+   {
+    "name": "draw_connector",
+    "args": {
+     "kind": "arrow",
+     "from": {
+      "label": "brain"
+     },
+     "to": {
+      "label": "hand"
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.833,
+  "recorded": "2026-10-01"
+ },
+ "ec9f3ec000b65978": {
   "words": "An arrow from this to that",
   "context": [
    "Scene: ear (last), brain"
@@ -586,7 +792,50 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.468,
-  "recorded": "2026-09-30"
+  "latency_s": 1.542,
+  "recorded": "2026-10-01"
+ },
+ "fc05dbee20b0465f": {
+  "words": "A sun here",
+  "context": [],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "sun",
+     "place": {
+      "deixis": "here",
+      "word_index": 2
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.21,
+  "recorded": "2026-10-01"
+ },
+ "fc32de4336cb8a50": {
+  "words": "A tree here about this big",
+  "context": [],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "tree",
+     "place": {
+      "deixis": "here",
+      "word_index": 2
+     },
+     "size": {
+      "word_index": 4
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 1.473,
+  "recorded": "2026-10-01"
  }
 }

@@ -183,6 +183,7 @@ class Runtime:
         self.samples: list[Any] = []
         self._ev = 0  # plotter events read so far
         self._clear: bool | None = None
+        self.backlog: list[Utterance] = []  # heard while an earlier one was being understood
         self._tags = 0
 
     # ------------------------------------------------------------------ inputs
@@ -258,6 +259,15 @@ class Runtime:
             )
             self.do_stop(t, "stop word")
             return
+        if self.pending:
+            # One utterance at a time: "draw an ear here ... about this big" needs the ear's
+            # preview in the context of the second call (live 30 Sep: a race otherwise).
+            self.backlog.append(utt)
+            self.log.add(t, "waiting", utt=utt.id, behind=[p.utt.id for p in self.pending])
+            return
+        self._understand(utt, t)
+
+    def _understand(self, utt: Utterance, t: float) -> None:
         if self.question is not None and self._answer(utt, t):
             return
         if not self.plotter.busy:
@@ -295,6 +305,8 @@ class Runtime:
             if p.deferred:
                 self.refresh_scene(t)
             self._apply(p.utt, p.result, max(p.t_ready, t) if p.deferred else p.t_ready)
+        while self.backlog and not self.pending:
+            self._understand(self.backlog.pop(0), t)
         self._auto_confirm(t)
         if self.state == UNDERSTAND and not self.pending:
             self._set_state(self._rest_state(), t)
@@ -418,6 +430,17 @@ class Runtime:
             )
             raise NeedAsk(Question(text, "unknown_object", opts))
         prev = self._previewed_item()
+        if (
+            prev is not None
+            and prev.kind == "object"
+            and prev.label != cat
+            and not new
+            and not self._named(cat, refs.utt)
+        ):
+            # Live 30 Sep: "about this big" while an ear was previewed came back as a
+            # *circle* this big. Nobody said "circle": it means the previewed object.
+            self.log.add(t, "guard", said=refs.utt.text, model_object=cat, used=prev.label)
+            cat = prev.label or cat
         if prev is not None and prev.label == cat and not new:
             # "no, there" / "about this big" / "put it here": change the preview in place.
             size = refs.size(a.size, max(prev.box.w, prev.box.h)) if a.size else None  # type: ignore[attr-defined]
@@ -590,6 +613,12 @@ class Runtime:
         )
         self._preview(t)
 
+    def _named(self, cat: str, utt: Utterance) -> bool:
+        """Whether the person said this category (or a synonym of it) in the utterance."""
+        toks = [norm_word(w.text) for w in utt.words]
+        spans = toks + [" ".join(toks[i : i + 2]) for i in range(len(toks) - 1)]
+        return any(self.planner.resolve(x) == cat for x in spans if x)
+
     def _previewed_item(self) -> SceneObject | None:
         if self.proposal is None or not self.proposal.items:
             return None
@@ -707,6 +736,7 @@ class Runtime:
                     self.scene.remove(obj)
                     dropped.append(obj.id)
         self.proposal, self.queue, self.pending, self.question = None, [], [], None
+        self.backlog = []
         if self.drawing is not None:
             self.drawing = None
         self.log.add(t, "stop", why=why, dropped=dropped)
