@@ -21,7 +21,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.175,
+  "latency_s": 1.054,
   "recorded": "2026-10-01"
  },
  "0b347d573fe54ea2": {
@@ -42,7 +42,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.032,
+  "latency_s": 1.449,
   "recorded": "2026-10-01"
  },
  "0ec5c7edf001992b": {
@@ -58,7 +58,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.302,
+  "latency_s": 0.945,
   "recorded": "2026-10-01"
  },
  "19818918094a77dc": {
@@ -79,7 +79,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.606,
+  "latency_s": 0.541,
   "recorded": "2026-10-01"
  },
  "1b1f2f9f4126e7dc": {
@@ -111,7 +111,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.1,
+  "latency_s": 0.828,
   "recorded": "2026-10-01"
  },
  "1c34e186e9572947": {
@@ -132,7 +132,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.784,
+  "latency_s": 2.093,
   "recorded": "2026-10-01"
  },
  "24d3069045a97711": {
@@ -156,7 +156,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.395,
+  "latency_s": 2.007,
   "recorded": "2026-10-01"
  },
  "2c60a1b2c4752217": {
@@ -178,7 +178,29 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.585,
+  "latency_s": 0.602,
+  "recorded": "2026-10-01"
+ },
+ "32856401274c8db5": {
+  "words": "MM a tree um here",
+  "context": [
+   "Scene: house (last)"
+  ],
+  "calls": [
+   {
+    "name": "place_drawing",
+    "args": {
+     "object": "tree",
+     "place": {
+      "deixis": "here",
+      "word_index": 4
+     }
+    }
+   }
+  ],
+  "speech": null,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "latency_s": 0.709,
   "recorded": "2026-10-01"
  },
  "3b3c44e46dd1eb36": {
@@ -198,7 +220,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.517,
+  "latency_s": 1.486,
   "recorded": "2026-10-01"
  },
  "4462d90f12c15f73": {
@@ -224,7 +246,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.658,
+  "latency_s": 0.685,
   "recorded": "2026-10-01"
  },
  "4cd7fb13d7fab299": {
@@ -242,7 +264,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.385,
+  "latency_s": 0.953,
   "recorded": "2026-10-01"
  },
  "5ebdcbe4ca1726a0": {
@@ -263,7 +285,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.694,
+  "latency_s": 0.626,
   "recorded": "2026-10-01"
  },
  "62fc66220f8b4ab4": {
@@ -283,7 +305,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 2.401,
+  "latency_s": 2.061,
   "recorded": "2026-10-01"
  },
  "64420132d9aabda4": {
@@ -308,7 +330,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.609,
+  "latency_s": 0.615,
   "recorded": "2026-10-01"
  },
  "6fb0586e3801b65a": {
@@ -328,7 +350,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.541,
+  "latency_s": 1.039,
   "recorded": "2026-10-01"
  },
  "7168d4353345f11f": {
@@ -352,7 +374,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.921,
+  "latency_s": 0.584,
   "recorded": "2026-10-01"
  },
  "73bcfbf5785cb97a": {
@@ -374,7 +396,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.095,
+  "latency_s": 1.52,
   "recorded": "2026-10-01"
  },
  "846d9be787d88730": {
@@ -394,7 +416,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.061,
+  "latency_s": 1.04,
   "recorded": "2026-10-01"
  },
  "a179dec39a2ac4ae": {
@@ -414,7 +436,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.564,
+  "latency_s": 1.191,
   "recorded": "2026-10-01"
  },
  "a19ed2cd7d1b6fac": {
@@ -435,7 +457,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.671,
+  "latency_s": 0.673,
   "recorded": "2026-10-01"
  },
  "a7dabbfc12b072b4": {
@@ -457,7 +479,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.241,
+  "latency_s": 1.016,
   "recorded": "2026-10-01"
  },
  "ae501e4272ccfdab": {
@@ -480,7 +502,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.721,
+  "latency_s": 0.59,
   "recorded": "2026-10-01"
  },
  "b919ac85af7f1458": {
@@ -492,7 +514,7 @@
    {
     "name": "write_label",
     "args": {
-     "text": "Cosmos",
+     "text": "Cosmos and ASR",
      "place": {
       "deixis": "this",
       "word_index": 1
@@ -502,7 +524,7 @@
    {
     "name": "write_label",
     "args": {
-     "text": "ASR",
+     "text": "Cosmos and ASR",
      "place": {
       "deixis": "this",
       "word_index": 4
@@ -512,7 +534,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.734,
+  "latency_s": 0.89,
   "recorded": "2026-10-01"
  },
  "bc99e665d4201d34": {
@@ -534,7 +556,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.828,
+  "latency_s": 0.579,
   "recorded": "2026-10-01"
  },
  "c02bf7e8c06c3ec5": {
@@ -564,7 +586,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.459,
+  "latency_s": 1.709,
   "recorded": "2026-10-01"
  },
  "c1653010efd33010": {
@@ -584,7 +606,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.489,
+  "latency_s": 1.475,
   "recorded": "2026-10-01"
  },
  "cb4e80d592c40cb3": {
@@ -601,7 +623,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.639,
+  "latency_s": 0.588,
   "recorded": "2026-10-01"
  },
  "dc162f63be1680ec": {
@@ -628,7 +650,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.553,
+  "latency_s": 1.451,
   "recorded": "2026-10-01"
  },
  "ded1538f3800a070": {
@@ -651,7 +673,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.099,
+  "latency_s": 1.081,
   "recorded": "2026-10-01"
  },
  "df2db330dec6b7de": {
@@ -667,7 +689,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.418,
+  "latency_s": 1.381,
   "recorded": "2026-10-01"
  },
  "e46ba79894c2db34": {
@@ -695,7 +717,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.589,
+  "latency_s": 1.521,
   "recorded": "2026-10-01"
  },
  "e7e36c42c861cde3": {
@@ -717,7 +739,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.56,
+  "latency_s": 0.581,
   "recorded": "2026-10-01"
  },
  "eab0cbb9e23e5528": {
@@ -742,7 +764,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.577,
+  "latency_s": 0.602,
   "recorded": "2026-10-01"
  },
  "eb841350996735c2": {
@@ -766,7 +788,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.833,
+  "latency_s": 1.707,
   "recorded": "2026-10-01"
  },
  "ec9f3ec000b65978": {
@@ -792,7 +814,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.542,
+  "latency_s": 1.484,
   "recorded": "2026-10-01"
  },
  "fc05dbee20b0465f": {
@@ -812,7 +834,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.21,
+  "latency_s": 1.048,
   "recorded": "2026-10-01"
  },
  "fc32de4336cb8a50": {
@@ -835,7 +857,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.473,
+  "latency_s": 1.535,
   "recorded": "2026-10-01"
  }
 }

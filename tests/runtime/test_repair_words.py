@@ -35,3 +35,17 @@ def test_times_stay_ordered():
     ws = repair_words([Word("across", 1.0, 1.6), Word("here", 1.7, 2.0)], CATS)
     assert [w.text for w in ws] == ["a", "cross", "here"]
     assert ws[0].t0 == 1.0 and ws[0].t1 <= ws[1].t0 and ws[1].t1 == 1.6
+
+
+def test_shared_label_text_is_split():
+    """Live 30 Sep: two labels both came back as "Cosmos and ASR"."""
+    from pointdraw.agent.schema import parse_call
+    from pointdraw.runtime.runtime import split_shared_labels
+
+    two = [
+        parse_call("write_label", {"text": "Cosmos and ASR"}),
+        parse_call("write_label", {"text": "Cosmos and ASR"}),
+    ]
+    assert [c.args.text for c in split_shared_labels(two)] == ["Cosmos", "ASR"]
+    one = [parse_call("write_label", {"text": "salt and pepper"})]
+    assert split_shared_labels(one) == one

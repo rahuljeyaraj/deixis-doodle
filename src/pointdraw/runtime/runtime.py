@@ -27,6 +27,7 @@ model reply.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -355,10 +356,13 @@ class Runtime:
         if not res.calls:
             self.say(t, res.speech or "Sorry, I didn't catch that. Could you say it again?")
             return
+        calls = split_shared_labels(res.calls)
+        if calls != res.calls:
+            self.log.add(t, "guard", said=utt.text, why="one label text shared by several labels")
         refs = self._refs(utt)
-        refs.prepare(res.calls)
+        refs.prepare(calls)
         new: list[SceneObject] = []
-        for call in res.calls:
+        for call in calls:
             try:
                 self._handle(call, refs, new, t)
             except NeedAsk as e:
@@ -946,6 +950,26 @@ class Runtime:
 
 
 _DEMONSTRATIVE_WORDS = {"here", "there", "this", "that"}
+
+
+def split_shared_labels(calls: list[ToolCall]) -> list[ToolCall]:
+    """Live 30 Sep: "label this Cosmos and this ASR" once came back as two write_label calls
+    both with the text "Cosmos and ASR". If k labels share one text that splits on "and" into
+    k parts, give each label its own part, in order."""
+    labels = [c for c in calls if c.name == "write_label"]
+    if len(labels) < 2 or len({c.args.text for c in labels}) != 1:  # type: ignore[attr-defined]
+        return calls
+    parts = [x.strip(" ,") for x in re.split(r",?\s+and\s+|,\s*", labels[0].args.text)]  # type: ignore[attr-defined]
+    parts = [x for x in parts if x]
+    if len(parts) != len(labels):
+        return calls
+    it = iter(parts)
+    return [
+        ToolCall(name=c.name, args=c.args.model_copy(update={"text": next(it)}))
+        if c.name == "write_label"
+        else c
+        for c in calls
+    ]
 
 
 def _needs_view(calls: list[ToolCall]) -> bool:
