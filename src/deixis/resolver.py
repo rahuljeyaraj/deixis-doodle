@@ -123,7 +123,8 @@ def _ranked(
 ) -> list[Hold | SpanHold]:
     """Nearest midpoint first; ties to the earlier hold; `avoid` ones last."""
     avoid = avoid or set()
-    return sorted(cands, key=lambda h: (h in avoid, abs(h.mid - _wmid(word)), h.t0))
+    # Distances are rounded to 1 ms so equal ones really tie (0.4 vs 0.40000000000000013).
+    return sorted(cands, key=lambda h: (h in avoid, round(abs(h.mid - _wmid(word)), 3), h.t0))
 
 
 def pick_hold(

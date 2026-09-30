@@ -23,6 +23,9 @@ from pointdraw.virtual.scenefile import DrawnExpect
 PAUSE_MAX_S = 1.7  # CTRL: pause or stop within ~50 mm, ~1.7 s without EMERGENCY_PARSER
 PAUSE_MAX_MM = 50.0
 STOP_SPOKEN_MAX_S = 3.0
+# A hovering finger is seen shifted by parallax (VIS report: about 135 mm x h / 370 mm), and
+# no height correction is built yet, so hover runs use the plan's general 5 mm rule.
+HOVER_TOL_MM = 5.0
 
 
 def _check(out: list, name: str, ok: bool, detail: str = "", **extra: Any) -> None:
@@ -74,7 +77,9 @@ def score(res: Any) -> dict[str, Any]:
             if i >= len(drawn):
                 break
             got = drawn[i]
-            errors.append(_score_drawn(checks, i, want, got, drawn, log, objects))
+            errors.append(
+                _score_drawn(checks, i, want, got, drawn, log, objects, res.cfg.hover_mm > 0)
+            )
         errs = [e for e in errors if e is not None]
         if errs:
             metrics["center_error_mm"] = {
@@ -190,7 +195,14 @@ def score(res: Any) -> dict[str, Any]:
 
 
 def _score_drawn(
-    checks: list, i: int, want: DrawnExpect, got: dict, drawn: list, log: Any, objects: dict
+    checks: list,
+    i: int,
+    want: DrawnExpect,
+    got: dict,
+    drawn: list,
+    log: Any,
+    objects: dict,
+    hover: bool = False,
 ) -> float | None:
     tag = f"drawn[{i}]"
     if want.kind != got["type"]:
@@ -207,14 +219,16 @@ def _score_drawn(
     err = None
     if want.center is not None:
         err = math.dist(c, want.center)
+        tol = max(want.tol_mm, HOVER_TOL_MM) if hover else want.tol_mm
         _check(
             checks,
             f"{tag}.center",
-            err <= want.tol_mm,
+            err <= tol,
             f"{got.get('label') or got.get('text') or got['type']} at "
-            f"({c[0]:.1f}, {c[1]:.1f}), want {tuple(want.center)}: {err:.2f} mm",
+            f"({c[0]:.1f}, {c[1]:.1f}), want {tuple(want.center)}: {err:.2f} mm"
+            + (" (hovering: no parallax correction yet)" if hover else ""),
             value=round(err, 3),
-            limit=want.tol_mm,
+            limit=tol,
         )
     if want.size is not None:
         size = max(box.w, box.h)

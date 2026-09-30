@@ -1,0 +1,16 @@
+id: S5
+title: "A sun here, said after the finger has left"
+tests: "the gesture comes before the word: the hold ended before 'here' but is inside its window (1.5 s)"
+lines:
+  - at: 2.3
+    text: "A sun here."
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [150, 100], dur: 0.6}
+  - {hold: 1.0}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: sun, center: [150, 100], size: 40}
+  asks: 0

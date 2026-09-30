@@ -1,0 +1,15 @@
+id: S4
+title: "A big house in the top left"
+tests: "spoken place and size, no pointing: named place, preset size (big = 80 mm)"
+# Drawable area (paper frame): x 8..202, y 8..140. Top left for an 80 mm drawing is
+# centred at (8 + 40, 140 - 40) = (48, 100).
+lines:
+  - at: 1.0
+    text: "A big house in the top left."
+hand: []
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: house, center: [48, 100], size: 80}
+  asks: 0
+variations: {hover_mm: null}

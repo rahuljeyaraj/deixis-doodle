@@ -1,0 +1,21 @@
+id: S2
+title: "A cat here, this big (pinch)"
+tests: "place plus a one-hand size gesture: deictic place, deictic size"
+# Point at the spot on "here", then lift the hand a little and show the size with the
+# thumb and index finger on "this big".
+lines:
+  - at: 1.4
+    text: "A cat here, this big."
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [60, 90], dur: 0.6}
+  - {hold: 1.3}
+  - {move: [72, 96], dur: 0.25}
+  - {pinch: 45}
+  - {hold: 1.2}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: cat, center: [60, 90], size: 45}
+  asks: 0

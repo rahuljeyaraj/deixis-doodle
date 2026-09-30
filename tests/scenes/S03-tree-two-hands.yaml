@@ -1,0 +1,18 @@
+id: S3
+title: "A tree here, about this big (two hands)"
+tests: "two-hand size: the distance between the two index fingertips"
+lines:
+  - at: 1.4
+    text: "A tree here, about this big."
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [110, 70], dur: 0.6}
+  - {hold: 1.4}
+  - {two_hands: 72}
+  - {hold: 1.4}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: tree, center: [110, 70], size: 72}
+  asks: 0

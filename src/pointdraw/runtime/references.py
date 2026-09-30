@@ -230,7 +230,8 @@ class References:
                 raise NeedAsk(Question(pick.question, pick.reason))
             span = pick.hold
             assert isinstance(span, SpanHold)
-            self.log.append({"size": round(span.span_mm, 2), "kind": span.kind, "word": w.text})
+            entry = {"size": round(span.span_mm, 2), "size_kind": span.kind, "word": w.text}
+            self.log.append(entry)
             return span.span_mm
         raise TypeError(f"not a size reference: {ref!r}")
 

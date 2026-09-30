@@ -1,0 +1,19 @@
+id: S7
+title: "A house here and a tree there"
+tests: "two places in one sentence: two demonstratives take two holds in time order"
+lines:
+  - at: 1.2
+    text: "A house here and a tree there."
+hand:
+  - {at: 0.2, enter: [100, -40]}
+  - {move: [55, 75], dur: 0.6}
+  - {hold: 1.5}
+  - {move: [150, 80], dur: 0.5}
+  - {hold: 1.1}
+  - {leave: true}
+expect:
+  calls: [place_drawing, place_drawing]
+  drawn:
+    - {kind: object, label: house, center: [55, 75], size: 40}
+    - {kind: object, label: tree, center: [150, 80], size: 40}
+  asks: 0

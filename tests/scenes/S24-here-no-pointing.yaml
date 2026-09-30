@@ -1,0 +1,20 @@
+id: S24
+title: "Here, with no pointing at all"
+tests: "a demonstrative with no gesture: ask, don't guess; the answer is a point and 'here'"
+lines:
+  - at: 1.0
+    text: "A star here."
+  - at: 5.6
+    text: "Here."
+hand:
+  - {at: 4.5, enter: [150, -40]}
+  - {move: [100, 70], dur: 0.6}
+  - {hold: 1.3}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: star, center: [100, 70], size: 40}
+  asks: 1
+  ask_contains: ["point"]
+  states: [CLARIFY, PREVIEW, DRAW]
