@@ -503,7 +503,7 @@ def check_against_transcript(
         if norm_word(label) in _NOT_NAMES:
             problems.append(
                 f"{call.name}.{path}: '{label}' is not a name; use the object's label "
-                "from the Scene line, e.g. {\"label\": \"house\"}"
+                'from the Scene line, e.g. {"label": "house"}'
             )
     if categories and call.name == "place_drawing":
         obj = call.args.object.strip().lower()  # type: ignore[attr-defined]
