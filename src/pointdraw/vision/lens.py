@@ -203,7 +203,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "board":
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(out), board_image())
+        img = board_image()
+        try:  # tag 300 dpi so "actual size" printing comes out right
+            from PIL import Image
+
+            Image.fromarray(img).save(out, dpi=(300, 300))
+        except ImportError:
+            cv2.imwrite(str(out), img)
         w, h = BOARD_SQUARES[0] * BOARD_SQUARE_MM, BOARD_SQUARES[1] * BOARD_SQUARE_MM
         print(f"wrote {out} ({w:.0f} x {h:.0f} mm at 300 dpi); print at 100%, check a square")
         return 0
