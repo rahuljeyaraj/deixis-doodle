@@ -1,0 +1,16 @@
+id: S16
+title: "What did I draw?"
+tests: "look: the vision model (Cosmos mock) names the user's own marks"
+sheet:
+  user:
+    - {shape: circle, at: [60, 80], size: 35, ink: blue crayon, label: circle}
+    - {shape: star, at: [150, 70], size: 35, ink: pencil, label: star}
+lines:
+  - at: 1.0
+    text: "What did I draw?"
+hand: []
+expect:
+  calls: [look]
+  drawn: []
+  look_contains: [circle, star]
+variations: {hover_mm: null}

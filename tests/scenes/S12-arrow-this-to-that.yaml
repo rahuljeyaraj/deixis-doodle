@@ -1,0 +1,22 @@
+id: S12
+title: "An arrow from this to that"
+tests: "draw_connector between two pointed objects (k demonstratives, in order)"
+sheet:
+  robot:
+    - {object: ear, at: [40, 90], size: 35}
+    - {object: brain, at: [150, 80], size: 45}
+lines:
+  - at: 1.2
+    text: "An arrow from this to that."
+hand:
+  - {at: 0.2, enter: [60, -40]}
+  - {move: [40, 90], dur: 0.6}
+  - {hold: 1.8}
+  - {move: [150, 80], dur: 0.4}
+  - {hold: 1.0}
+  - {leave: true}
+expect:
+  calls: [draw_connector]
+  drawn:
+    - {kind: arrow, from: ear, to: brain}
+  asks: 0

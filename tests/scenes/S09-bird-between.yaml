@@ -1,0 +1,17 @@
+id: S9
+title: "A bird between the tree and the house"
+tests: "relation 'between' two objects named by label"
+sheet:
+  robot:
+    - {object: house, at: [50, 70], size: 40}
+    - {object: tree, at: [160, 70], size: 40}
+lines:
+  - at: 1.0
+    text: "A bird between the tree and the house."
+hand: []
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: bird, center: [105, 70], between: [tree, house], empty: true}
+  asks: 0
+variations: {hover_mm: null}

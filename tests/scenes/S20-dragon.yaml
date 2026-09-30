@@ -1,0 +1,12 @@
+id: S20
+title: "Draw a dragon"
+tests: "not in the library: ask_user with close matches, draw nothing"
+lines:
+  - at: 1.0
+    text: "Draw a dragon."
+hand: []
+expect:
+  drawn: []
+  asks: 1
+  ask_contains: [dragon]
+variations: {hover_mm: null}

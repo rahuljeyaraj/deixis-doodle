@@ -1,0 +1,21 @@
+id: S10
+title: "A dog here, the same size as that"
+tests: "relative size from a pointed object; two demonstratives (a place and an object) in order"
+sheet:
+  robot:
+    - {object: cat, at: [60, 80], size: 50}
+lines:
+  - at: 1.2
+    text: "A dog here, the same size as that."
+hand:
+  - {at: 0.2, enter: [170, -40]}
+  - {move: [150, 80], dur: 0.6}
+  - {hold: 1.6}
+  - {move: [60, 80], dur: 0.6}
+  - {hold: 1.2}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: dog, center: [150, 80], size: 50}
+  asks: 0

@@ -1,0 +1,21 @@
+id: S11
+title: "A flower in an empty spot"
+tests: "free space on a busy sheet: the largest empty square, avoiding robot drawings and user marks"
+sheet:
+  robot:
+    - {object: house, at: [50, 100], size: 45}
+    - {object: tree, at: [150, 100], size: 45}
+    - {object: sun, at: [35, 40], size: 30}
+    - {object: car, at: [160, 40], size: 45}
+  user:
+    - {shape: heart, at: [100, 112], size: 25, ink: red crayon, label: heart}
+lines:
+  - at: 1.0
+    text: "A flower in an empty spot."
+hand: []
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: flower, empty: true}
+  asks: 0
+variations: {hover_mm: null}

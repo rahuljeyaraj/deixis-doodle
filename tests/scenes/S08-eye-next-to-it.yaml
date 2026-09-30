@@ -1,0 +1,19 @@
+id: S8
+title: "An eye next to it"
+tests: "relation to the robot's own drawing: next_to the last object ('it'), said while it draws"
+lines:
+  - at: 1.4
+    text: "An ear here."
+  - at: 16.0
+    text: "An eye next to it."
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [50, 90], dur: 0.6}
+  - {hold: 1.6}
+  - {leave: true}
+expect:
+  calls: [place_drawing, place_drawing]
+  drawn:
+    - {kind: object, label: ear, center: [50, 90], size: 40}
+    - {kind: object, label: eye, near: ear, near_mm: 10, empty: true}
+  asks: 0

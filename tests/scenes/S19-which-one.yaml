@@ -1,0 +1,25 @@
+id: S19
+title: "Pointing between the house and the tree: label that one 'garden'"
+tests: "ambiguous object: ask 'the house or the tree?', then use the answer"
+notes: "The brief said 'colour that one'. The plotter has no colouring tool, so the same ambiguity is tested with a label."
+sheet:
+  robot:
+    - {object: house, at: [70, 80], size: 40}
+    - {object: tree, at: [130, 80], size: 40}
+lines:
+  - at: 1.4
+    text: "Label that one 'garden'."
+  - at: 6.0
+    text: "The house."
+hand:
+  - {at: 0.2, enter: [100, -40]}
+  - {move: [100, 80], dur: 0.6}
+  - {hold: 1.8}
+  - {leave: true}
+expect:
+  calls: [write_label]
+  drawn:
+    - {kind: label, text: garden, below: house}
+  asks: 1
+  ask_options: [house, tree]
+  states: [CLARIFY, PREVIEW, DRAW]

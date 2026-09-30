@@ -272,7 +272,7 @@ def _score_drawn(
         _check(checks, f"{tag}.between", ok, f"centre {c} between {want.between}")
     if want.near is not None:
         b = find(want.near)
-        ok = b is not None and _dist_to_box(c, b) <= want.near_mm and not _overlaps(box, b)
+        ok = b is not None and _gap(box, b) <= want.near_mm and not _overlaps(box, b)
         _check(checks, f"{tag}.near", ok, f"{box} near {want.near} {b}")
     if want.from_ is not None or want.to is not None:
         ends = [x for x in (want.from_, want.to) if x]
@@ -297,6 +297,13 @@ def _nearest_end(got: dict, b: Box) -> tuple[float, float]:
     x, y, w, h = got["ink_box"]
     corners = [(x, y), (x + w, y), (x, y + h), (x + w, y + h), (x + w / 2, y + h / 2)]
     return min(corners, key=lambda p: _dist_to_box(p, b))
+
+
+def _gap(a: Box, b: Box) -> float:
+    """Distance between two boxes (0 if they touch or overlap)."""
+    dx = max(0.0, b.x - a.x2, a.x - b.x2)
+    dy = max(0.0, b.y - a.y2, a.y - b.y2)
+    return math.hypot(dx, dy)
 
 
 def _overlaps(a: Box, b: Box) -> bool:

@@ -1,0 +1,17 @@
+id: S13
+title: "An arrow from the brain to the hand"
+tests: "draw_connector between objects named by label, no pointing"
+sheet:
+  robot:
+    - {object: brain, at: [60, 90], size: 45}
+    - {object: hand, at: [160, 60], size: 40}
+lines:
+  - at: 1.0
+    text: "An arrow from the brain to the hand."
+hand: []
+expect:
+  calls: [draw_connector]
+  drawn:
+    - {kind: arrow, from: brain, to: hand}
+  asks: 0
+variations: {hover_mm: null}

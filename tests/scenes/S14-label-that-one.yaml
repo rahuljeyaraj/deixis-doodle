@@ -1,0 +1,19 @@
+id: S14
+title: "Label that one 'Nemotron'"
+tests: "write_label below a pointed object"
+sheet:
+  robot:
+    - {object: brain, at: [105, 85], size: 45}
+lines:
+  - at: 1.4
+    text: "Label that one 'Nemotron'."
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [105, 85], dur: 0.6}
+  - {hold: 1.8}
+  - {leave: true}
+expect:
+  calls: [write_label]
+  drawn:
+    - {kind: label, text: nemotron, below: brain}
+  asks: 0
