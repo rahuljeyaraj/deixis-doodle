@@ -40,6 +40,7 @@ from pointdraw.controller.config import (
 from pointdraw.controller.controller import Controller
 from pointdraw.controller.safety import SafetyError, validate_points
 from pointdraw.controller.serial_link import SerialLink, list_ports
+from pointdraw.controller.shapes import cross, cross_grid
 from pointdraw.controller.simulator import SimulatedPlotter
 from pointdraw.controller.transport import LinkError, Transport
 
@@ -69,11 +70,6 @@ def circle(center: Point, diameter: float, max_chord_mm: float = 1.0) -> list[Po
     return [pts + [pts[0]]]
 
 
-def cross(center: Point, size: float) -> list[Polyline]:
-    cx, cy, h = center[0], center[1], size / 2
-    return [[(cx - h, cy), (cx + h, cy)], [(cx, cy - h), (cx, cy + h)]]
-
-
 def parse_grid(text: str) -> tuple[int, int]:
     """'3x3' -> (columns, rows)."""
     try:
@@ -83,19 +79,6 @@ def parse_grid(text: str) -> tuple[int, int]:
     if cols < 1 or rows < 1:
         raise argparse.ArgumentTypeError("grid needs at least 1x1")
     return cols, rows
-
-
-def cross_grid(center: Point, cols: int, rows: int, spacing: float) -> list[dict[str, Any]]:
-    """Cross centres, row by row from the front (low y), left to right."""
-    x0 = center[0] - spacing * (cols - 1) / 2
-    y0 = center[1] - spacing * (rows - 1) / 2
-    out = []
-    for r in range(rows):
-        for c in range(cols):
-            out.append(
-                {"id": len(out), "col": c, "row": r, "x": x0 + c * spacing, "y": y0 + r * spacing}
-            )
-    return out
 
 
 def square_and_circle(center: Point, size: float) -> list[Polyline]:
