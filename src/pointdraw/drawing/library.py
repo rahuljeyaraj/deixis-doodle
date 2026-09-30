@@ -6,7 +6,7 @@ Layout (written by scripts/build_library.py):
     library/quickdraw/<name>.json    variants, each a list of strokes
 
 Strokes are in library units: y up, the bbox's min corner at (0, 0), and the larger side
-255 units long (the Quick, Draw! simplified scale). `place.fit` turns them into mm.
+about 255 units long (the Quick, Draw! simplified scale). `place.fit` turns them into mm.
 Works offline: nothing here touches the network.
 """
 

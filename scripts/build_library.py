@@ -79,7 +79,7 @@ def main() -> int:
             "category": cat,
             "source": "Quick, Draw! by Google Creative Lab",
             "license": "CC BY 4.0",
-            "units": "larger side 255, y up, bbox min corner at (0, 0)",
+            "units": "larger side about 255, y up, bbox min corner at (0, 0)",
             "variants": variants,
         }
         (LIB / fname).write_text(json.dumps(doc, separators=(",", ":")) + "\n", encoding="utf-8")

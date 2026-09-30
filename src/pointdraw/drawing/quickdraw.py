@@ -124,8 +124,9 @@ def _resample(stroke: Sequence[tuple[int, int]], step: float = 4.0) -> np.ndarra
 def count_stray(strokes: Sequence[Sequence[tuple[int, int]]], gap: float) -> int:
     """Strokes that lie outside the bbox of all the others and more than `gap` from them.
 
-    A pupil inside an eye is not stray (it is inside the outline's bbox); rain drops
-    under a cloud, or a stray tick beside the drawing, are.
+    A pupil inside an eye is not stray (it is inside the outline's bbox), nor is the
+    outline around it (it contains the rest); rain drops under a cloud, or a stray tick
+    beside the drawing, are.
     """
     if len(strokes) < 2:
         return 0
@@ -135,7 +136,9 @@ def count_stray(strokes: Sequence[Sequence[tuple[int, int]]], gap: float) -> int
         rest = np.vstack([d for j, d in enumerate(dense) if j != i])
         lo, hi = rest.min(axis=0), rest.max(axis=0)
         inside = np.all((s >= lo - gap) & (s <= hi + gap))
-        if inside:
+        contains = np.all((rest >= s.min(axis=0) - gap) & (rest <= s.max(axis=0) + gap))
+        major = len(s) >= len(rest)  # resampled point counts ~ ink: the main body isn't stray
+        if inside or contains or major:
             continue
         dmin = np.min(np.hypot(s[:, None, 0] - rest[None, :, 0], s[:, None, 1] - rest[None, :, 1]))
         if dmin > gap:

@@ -64,10 +64,14 @@ def text(
     for i, ln in enumerate(lines):
         if not ln.strip():
             continue
-        lc = vp.text_line(ln, font, size=size, align=align)
+        # vpype aligns on the advance width, which includes the first glyph's side
+        # bearing; align on the ink instead so a centred label is centred on the point.
+        lc = vp.text_line(ln, font, size=size, align="left")
+        x0, _, x1, _ = lc.bounds()
+        dx = {"left": -x0, "center": -(x0 + x1) / 2, "right": -x1}[align]
         base_y = anchor[1] + first_base - i * pitch
         for path in lc:
-            pts = [(anchor[0] + z.real, base_y - (z.imag - base1 * size)) for z in path]
+            pts = [(anchor[0] + dx + z.real, base_y - (z.imag - base1 * size)) for z in path]
             if len(pts) >= 2:
                 out.append(pts)
     return out

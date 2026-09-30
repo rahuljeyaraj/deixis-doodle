@@ -52,8 +52,12 @@ def candidates_path(cat: str) -> Path:
     return CANDIDATES / f"{cat}.json"
 
 
-def score_category(cat: str) -> list[dict] | None:
-    """Rank from the cache and write library/candidates/<cat>.json. None if no cache."""
+def score_category(cat: str, keep: set[str] = frozenset()) -> list[dict] | None:
+    """Rank from the cache and write library/candidates/<cat>.json. None if no cache.
+
+    Picked key_ids in `keep` that fall out of the new top 30 are carried over from the
+    previous candidates file, appended after it, so re-scoring never loses a pick.
+    """
     src = cache_file(CACHE, cat)
     if not src.exists():
         return None
@@ -67,6 +71,10 @@ def score_category(cat: str) -> list[dict] | None:
         }
         for i, s in enumerate(ranked)
     ]
+    have = {c["key_id"] for c in cands}
+    for old in load_candidates(cat) or []:
+        if old["key_id"] in keep and old["key_id"] not in have:
+            cands.append({**old, "rank": len(cands) + 1, "kept": True})
     CANDIDATES.mkdir(parents=True, exist_ok=True)
     doc = {"category": cat, "source": "Quick, Draw! (CC BY 4.0)", "candidates": cands}
     candidates_path(cat).write_text(json.dumps(doc, separators=(",", ":")), encoding="utf-8")
@@ -177,7 +185,14 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     all_cands: dict[str, list[dict]] = {}
     for cat in cats:
-        cands = None if args.no_rescore else score_category(cat)
+        old = load_candidates(cat) or []
+        # ranks refer to the current candidates file: pin them to key_ids before re-scoring
+        picks[cat] = [
+            old[k - 1]["key_id"] if isinstance(k, int) and 0 < k <= len(old) else str(k)
+            for k in picks.get(cat, [])
+        ]
+        keep = set() if args.reset_picks else set(picks[cat])
+        cands = None if args.no_rescore else score_category(cat, keep)
         cands = cands or load_candidates(cat)
         if not cands:
             print(f"{cat:14s} no data: run scripts/fetch_quickdraw.py", file=sys.stderr)
@@ -185,8 +200,7 @@ def main() -> int:
         all_cands[cat] = cands
         if args.reset_picks or not picks.get(cat):
             picks[cat] = [c["key_id"] for c in cands[:DEFAULT_PICKS]]
-        picked = {str(k) for k in picks[cat]}
-        picked |= {cands[k - 1]["key_id"] for k in picks[cat] if isinstance(k, int)}
+        picked = set(picks[cat])
         sheet(cat, cands, picked).save(OUT / f"{cat}.png")
         print(f"{cat:14s} {len(cands)} candidates, {len(picks[cat])} picked")
     PICKS.write_text(json.dumps({"_help": PICKS_HELP, **picks}, indent=1) + "\n", encoding="utf-8")
