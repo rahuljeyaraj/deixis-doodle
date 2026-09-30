@@ -117,12 +117,17 @@ def _timeline_static(c: _Canvas, d: ImageDraw.ImageDraw) -> None:
     for name, y in lanes.items():
         d.text((8, y + 2), name, fill=MUTED, font=c.small)
         d.line([(c.tx(0), y + 18), (c.tx(c.t_end), y + 18)], fill=GRID)
+    free_x = 0.0  # sentence labels are skipped when they would overlap the previous one
     for u in res.log.of("utterance"):
         y = lanes["said"]
         for _text, t0, t1 in u["words"]:
             d.rectangle([c.tx(t0), y + 3, max(c.tx(t1) - 1, c.tx(t0) + 2), y + 15], fill=BLUE)
         if u["words"]:
-            d.text((c.tx(u["words"][0][1]), y - 10), u["text"][:40], fill=INK, font=c.small)
+            x = c.tx(u["words"][0][1])
+            label = u["text"][:40]
+            if x >= free_x:
+                d.text((x, y - 10), label, fill=INK, font=c.small)
+                free_x = x + d.textlength(label, font=c.small) + 6
     for h in res.log.of("hold"):
         y = lanes["holds"]
         d.rounded_rectangle(
@@ -169,7 +174,8 @@ def _timeline_static(c: _Canvas, d: ImageDraw.ImageDraw) -> None:
             run0 = None
     if run0 is not None:
         d.rectangle([c.tx(run0), y + 6, c.tx(c.t_end), y + 12], fill=(200, 200, 196))
-    for sec in range(0, int(c.t_end) + 1, 5):
+    step = 5 if c.t_end <= 45 else 10 if c.t_end <= 90 else 30
+    for sec in range(0, int(c.t_end) + 1, step):
         d.text((c.tx(sec) - 4, c.h - 16), f"{sec}s", fill=MUTED, font=c.small)
 
 

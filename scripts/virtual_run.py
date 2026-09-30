@@ -45,14 +45,14 @@ def variants(spec: scenefile.SceneSpec, base: RunConfig, all_variations: bool) -
     return out
 
 
-def run_one(spec, cfg: RunConfig, out_root: Path, gif: bool) -> dict:
+def run_one(spec, cfg: RunConfig, out_root: Path, gif: bool, speed: float = 1.0) -> dict:
     res = world.run(spec, cfg)
     d = out_root / spec.id / cfg.variant
     replay.write_report(res, d / "report.json")
     replay.write_timeline(res, d / "timeline.jsonl")
     replay.render_final(res, d / "final.png")
     if gif:
-        replay.render_gif(res, d / "replay.gif")
+        replay.render_gif(res, d / "replay.gif", speed=speed)
     replay.write_page(res, d / "index.html", "replay.gif" if gif else None, "final.png")
     rep = res.report
     rep["_dir"] = str(d)
@@ -116,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--variations", action="store_true", help="also the scene's variations")
     ap.add_argument("--out", type=Path, default=Path("out/virtual"))
     ap.add_argument("--no-gif", action="store_true", help="skip the replay GIF (faster)")
+    ap.add_argument("--speed", type=float, default=1.0, help="replay speed, e.g. 4 for the hero")
     ap.add_argument("--open", action="store_true", help="open the page in a browser")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
@@ -143,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
     for spec in specs:
         for cfg in variants(spec, base, a.variations):
             try:
-                rep = run_one(spec, cfg, a.out, gif=not a.no_gif)
+                rep = run_one(spec, cfg, a.out, gif=not a.no_gif, speed=a.speed)
             except Exception as e:  # noqa: BLE001 - one broken scene must not stop the rest
                 logging.exception("%s %s crashed", spec.id, cfg.variant)
                 rep = {
