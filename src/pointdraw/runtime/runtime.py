@@ -31,6 +31,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from pydantic import BaseModel
+
 from deixis.geometry import Box, Point
 from deixis.resolver import ResolverParams
 from deixis.types import Word
@@ -879,7 +881,7 @@ def _retarget(call: ToolCall, obj: SceneObject) -> ToolCall:
             return LabelObject(label=obj.label or obj.id)
         if isinstance(m, DeicticPlace) and call.name == "write_label":
             return RelationPlace(relation="below", target=LabelObject(label=obj.label or obj.id))
-        if hasattr(m, "model_fields"):
+        if isinstance(m, BaseModel):
             upd = {f: walk(getattr(m, f)) for f in type(m).model_fields}
             return m.model_copy(update=upd)
         return m
