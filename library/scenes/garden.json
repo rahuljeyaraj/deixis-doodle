@@ -1,0 +1,13 @@
+{
+ "_about": "Plan 9.2 alternative hero session: a garden scene. mm on A5 landscape, y up.",
+ "paper": [0, 0, 210, 148],
+ "items": [
+  {"type": "object", "id": "house", "name": "house", "at": [48, 86], "size": 52},
+  {"type": "object", "id": "tree", "name": "tree", "at": [118, 90], "size": 52},
+  {"type": "object", "id": "sun", "name": "sun", "at": [182, 122], "size": 26},
+  {"type": "object", "id": "pond", "name": "pond", "at": [168, 42], "size": 42},
+  {"type": "object", "id": "fence", "name": "fence", "at": [50, 30], "size": 50},
+  {"type": "object", "id": "bench", "name": "bench", "at": [112, 32], "size": 34},
+  {"type": "label", "text": "a quiet spot", "below": "bench", "size": 4}
+ ]
+}

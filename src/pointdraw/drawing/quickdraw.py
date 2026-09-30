@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Iterator, Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from statistics import median
 
@@ -82,6 +82,7 @@ class ScoreParams:
     dot_length: float = 3.0  # strokes shorter than this are dots: rejected
     tiny_length: float = 12.0  # strokes shorter than this are penalised
     max_aspect: float = 4.0  # w/h or h/w beyond this is rejected
+    stray_gap: float = 15.0  # a stroke this far from the rest, and outside it, is stray
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,7 @@ class Features:
     n_tiny: int
     aspect: float  # w / h, both at least 1 unit
     n_points: int
+    n_stray: int = 0  # strokes floating outside the rest (rain under a cloud, a stray tick)
 
 
 @dataclass(frozen=True)
@@ -109,7 +111,41 @@ def stroke_length(stroke: Iterable[tuple[float, float]]) -> float:
     return float(np.sum(np.hypot(*np.diff(pts, axis=0).T)))
 
 
-def features(d: RawDrawing, tiny_length: float = ScoreParams.tiny_length) -> Features:
+def _resample(stroke: Sequence[tuple[int, int]], step: float = 4.0) -> np.ndarray:
+    pts = np.asarray(stroke, dtype=float).reshape(-1, 2)
+    out = [pts[:1]]
+    for a, b in zip(pts, pts[1:], strict=False):
+        n = max(1, int(np.hypot(*(b - a)) // step))
+        t = np.linspace(0, 1, n + 1)[1:, None]
+        out.append(a + (b - a) * t)
+    return np.vstack(out)
+
+
+def count_stray(strokes: Sequence[Sequence[tuple[int, int]]], gap: float) -> int:
+    """Strokes that lie outside the bbox of all the others and more than `gap` from them.
+
+    A pupil inside an eye is not stray (it is inside the outline's bbox); rain drops
+    under a cloud, or a stray tick beside the drawing, are.
+    """
+    if len(strokes) < 2:
+        return 0
+    dense = [_resample(s) for s in strokes]
+    n = 0
+    for i, s in enumerate(dense):
+        rest = np.vstack([d for j, d in enumerate(dense) if j != i])
+        lo, hi = rest.min(axis=0), rest.max(axis=0)
+        inside = np.all((s >= lo - gap) & (s <= hi + gap))
+        if inside:
+            continue
+        dmin = np.min(np.hypot(s[:, None, 0] - rest[None, :, 0], s[:, None, 1] - rest[None, :, 1]))
+        if dmin > gap:
+            n += 1
+    return n
+
+
+def features(d: RawDrawing, params: ScoreParams | None = None, stray: bool = True) -> Features:
+    """Measurements for scoring. `stray=False` skips the (slower) stray-stroke count."""
+    p = params or ScoreParams()
     lengths = [stroke_length(s) for s in d.strokes] or [0.0]
     pts = np.array([p for s in d.strokes for p in s] or [(0, 0)], dtype=float)
     w = max(float(pts[:, 0].max() - pts[:, 0].min()), 1.0)
@@ -118,9 +154,10 @@ def features(d: RawDrawing, tiny_length: float = ScoreParams.tiny_length) -> Fea
         n_strokes=len(d.strokes),
         ink=float(sum(lengths)),
         shortest=float(min(lengths)),
-        n_tiny=sum(1 for ln in lengths if ln < tiny_length),
+        n_tiny=sum(1 for ln in lengths if ln < p.tiny_length),
         aspect=w / h,
         n_points=int(len(pts)),
+        n_stray=count_stray(d.strokes, p.stray_gap) if stray else 0,
     )
 
 
@@ -143,8 +180,8 @@ def score(f: Features, typical: tuple[float, float]) -> float:
     """Higher is better. `typical` is the category's median (stroke count, log ink).
 
     Terms: closeness to the category's typical drawing (so the doodle reads as the object),
-    a mild preference for fewer strokes (fewer pen lifts), and penalties for tiny strokes
-    and very elongated shapes.
+    a mild preference for fewer strokes (fewer pen lifts), and penalties for tiny strokes,
+    stray strokes and very elongated shapes.
     """
     med_strokes, med_log_ink = typical
     s = 0.0
@@ -152,6 +189,7 @@ def score(f: Features, typical: tuple[float, float]) -> float:
     s -= abs(f.n_strokes - med_strokes) / max(med_strokes, 1.0)
     s -= 0.03 * f.n_strokes
     s -= 0.25 * f.n_tiny
+    s -= 1.0 * f.n_stray
     s -= 0.3 * max(0.0, abs(math.log(f.aspect)) - math.log(2.0))
     return s
 
@@ -161,17 +199,23 @@ def rank(
 ) -> list[Scored]:
     """Score recognised drawings and return the best `top`, best first.
 
-    If fewer than `top` pass the stroke-count filter, it is relaxed to 1..15 so every
-    category still gets candidates (a one-stroke moon is fine for a plotter).
+    The minimum stroke count drops to 1 when the category's typical (median) drawing is a
+    single stroke (clouds, moons). If fewer than `top` pass, the stroke-count filter is
+    relaxed to 1..15 so every category still gets candidates.
     """
     params = params or ScoreParams()
-    pool = [(d, features(d, params.tiny_length)) for d in drawings if d.recognized]
+    pool = [(d, features(d, params, stray=False)) for d in drawings if d.recognized]
+    if pool and median(f.n_strokes for _, f in pool) < params.min_strokes:
+        params = ScoreParams(**{**params.__dict__, "min_strokes": 1})
     passing = [(d, f) for d, f in pool if reject_reason(f, params) is None]
     if len(passing) < top:
         relaxed = ScoreParams(**{**params.__dict__, "min_strokes": 1, "max_strokes": 15})
         passing = [(d, f) for d, f in pool if reject_reason(f, relaxed) is None]
     if not passing:
         return []
+    passing = [
+        (d, replace(f, n_stray=count_stray(d.strokes, params.stray_gap))) for d, f in passing
+    ]
     typical = (
         float(median(f.n_strokes for _, f in passing)),
         float(median(math.log(f.ink) for _, f in passing)),

@@ -1,0 +1,20 @@
+{
+ "_about": "Plan 9.2 hero session end state: the robot draws its own senses. Inputs left, brain centre, outputs right. mm on A5 landscape, y up.",
+ "paper": [0, 0, 210, 148],
+ "items": [
+  {"type": "object", "id": "ear", "name": "ear", "at": [32, 102], "size": 32},
+  {"type": "object", "id": "eye", "name": "eye", "at": [32, 50], "size": 34},
+  {"type": "object", "id": "brain", "name": "brain", "at": [105, 78], "size": 46},
+  {"type": "object", "id": "mouth", "name": "mouth", "at": [178, 102], "size": 32},
+  {"type": "object", "id": "hand", "name": "hand", "at": [178, 50], "size": 34},
+  {"type": "arrow", "from": "ear", "to": "brain"},
+  {"type": "arrow", "from": "eye", "to": "brain"},
+  {"type": "arrow", "from": "brain", "to": "mouth"},
+  {"type": "arrow", "from": "brain", "to": "hand"},
+  {"type": "label", "text": "ASR", "below": "ear", "size": 5},
+  {"type": "label", "text": "Cosmos", "below": "eye", "size": 5},
+  {"type": "label", "text": "Nemotron", "below": "brain", "size": 5},
+  {"type": "label", "text": "Magpie", "below": "mouth", "size": 5},
+  {"type": "label", "text": "Plotter", "below": "hand", "size": 5}
+ ]
+}
