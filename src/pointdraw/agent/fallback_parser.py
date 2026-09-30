@@ -2,12 +2,17 @@
 
 It returns the same `ToolCall` objects as the Nemotron client, so the runtime doesn't
 care which one answered. Coverage (plan 4.4): "<object> here", "this big", "arrow from
-this to that", "write <text> here", yes/no/stop/cancel, bigger/smaller, left/right/up/down,
-new sheet, simple relations ("next to the house"), named places ("in the middle"),
-empty space, and self-corrections ("a cat, sorry, a dog here").
+this to that", "write <text> here", "label that one <text>", yes/no/stop/cancel,
+bigger/smaller, left/right/up/down (also trailing: "a brain here a bit bigger"), new sheet,
+simple relations ("next to the house"), named places ("in the middle"), empty space,
+self-corrections ("a cat, sorry, a dog here"), re-pointing or re-sizing a preview ("no,
+there", "this big"), and unknown objects ("a dragon" -> ask_user with close categories).
 """
 
 from __future__ import annotations
+
+import difflib
+import re
 
 from pointdraw.agent.prompts import AgentContext, load_categories
 from pointdraw.agent.schema import (
@@ -60,6 +65,26 @@ SYNONYMS = {
     "plane": "airplane",
     "aeroplane": "airplane",
     "smiley": "smiley face",
+    # Library names (library/index.json); used only when the name itself isn't drawable.
+    "boat": "sailboat",
+    "tv": "television",
+    "telly": "television",
+    "sofa": "couch",
+    "lamp": "floor lamp",
+    "bulb": "light bulb",
+    "lightbulb": "light bulb",
+    "mic": "microphone",
+}
+#: "draw an animal": general kinds get "Which animal?" with drawable members as options.
+GENERAL_KINDS: dict[str, tuple[str, ...]] = {
+    "animal": ("cat", "dog", "bird", "fish", "rabbit", "cow", "horse", "pig"),
+    "vehicle": ("car", "bicycle", "sailboat", "bus", "truck", "train", "airplane", "boat"),
+    "food": ("apple", "cake", "pizza", "banana", "pear"),
+    "fruit": ("apple", "banana", "pear"),
+    "furniture": ("chair", "table", "bed", "couch", "bench"),
+    "plant": ("tree", "flower", "bush", "grass", "mushroom"),
+    "shape": ("circle", "square", "triangle", "star", "cross", "heart"),
+    "building": ("house", "castle", "windmill", "tent"),
 }
 RELATIONS: list[tuple[tuple[str, ...], str]] = [
     (("to", "the", "left", "of"), "left_of"),
@@ -103,10 +128,22 @@ EMPTY_PHRASES: list[tuple[str, ...]] = [
     ("somewhere",),
     ("wherever",),
     ("empty", "space"),
+    ("empty", "spot"),
+    ("empty", "place"),
+    ("empty", "area"),
+    ("empty", "bit"),
     ("free", "space"),
+    ("free", "spot"),
+    ("free", "place"),
+    ("free", "area"),
+    ("blank", "space"),
+    ("blank", "spot"),
+    ("open", "space"),
     ("where", "there's", "room"),
     ("where", "there", "is", "room"),
 ]
+#: "where there's (some) room/space", "where it fits": "where" and one of these soon after.
+ROOM_WORDS = {"room", "space", "fits"}
 CONFIRM = {
     ("yes",), ("yeah",), ("yep",), ("yup",), ("ok",), ("okay",), ("sure",), ("perfect",),
     ("great",), ("fine",), ("good",), ("do", "it"), ("go", "ahead"), ("go",), ("draw", "it"),
@@ -126,6 +163,35 @@ RELATION_HEADS = {
     "on", "by", "as", "underneath", "beneath", "from", "and", "in",
 }  # fmt: skip
 QUESTION_STARTS = {"what", "what's", "whats", "is", "are", "where", "where's", "how", "which"}
+PRONOUNS = {"it", "him", "her", "them"}
+
+# A correction spoken after the place: "a brain up here a bit bigger".
+COMPARATIVES = {"bigger", "larger", "smaller", "tinier", "higher", "lower", "further", "closer"}
+DEGREES = {"bit", "little", "lot", "lots", "much", "way", "slightly", "tad", "touch"}
+DIRECTIONS = {"left", "right", "up", "down", "away"}
+ADJUST_TAIL = COMPARATIVES | DEGREES | DIRECTIONS | {
+    "a", "more", "to", "the", "and", "but", "make", "move", "it", "just", "please", "then",
+}  # fmt: skip
+#: After "little", these mean an amount ("a little bit"), not a size ("a little bird").
+AMOUNT_AFTER_LITTLE = {"bit", "more", "less", "to"} | COMPARATIVES | DIRECTIONS
+
+# Unknown objects: the noun after the first article or draw verb ("draw me a dragon").
+DRAW_VERBS = {"draw", "add", "make", "put", "sketch", "place"}
+NOUN_STARTS = {"a", "an", "another", "some", "the"} | DRAW_VERBS
+NOUN_SKIP = set(PRESETS) | {
+    "me", "us", "a", "an", "the", "some", "another", "nice", "cute", "pretty", "cool", "funny",
+    "very", "really", "different", "other", "new", "second", "red", "blue", "green", "yellow",
+    "black", "orange", "purple", "pink", "brown", "white", "grey", "gray",
+}  # fmt: skip
+NOT_NOUNS = (
+    PLACE_WORDS | POINT_WORDS | PRONOUNS | FILLERS | NEGATIONS | RELATION_HEADS
+    | QUESTION_STARTS | DIRECTIONS | DEGREES | COMPARATIVES | SPOT_NOUNS | {
+        "one", "ones", "thing", "things", "something", "anything", "stuff", "few", "couple",
+        "same", "sheet", "page", "paper", "picture", "drawing", "room", "space", "top",
+        "bottom", "middle", "center", "centre", "corner", "edge", "at", "for", "with",
+        "instead", "again", "more", "less", "too", "there's", "it's", "i", "you", "we",
+    }
+)  # fmt: skip
 
 
 def _find(w: list[str], phrase: tuple[str, ...], start: int = 0, end: int | None = None) -> int:
@@ -134,6 +200,25 @@ def _find(w: list[str], phrase: tuple[str, ...], start: int = 0, end: int | None
         if tuple(w[i : i + len(phrase)]) == phrase:
             return i
     return -1
+
+
+_JSON_ARG = r'"{key}"\s*:\s*"([^"]+)"'
+_KW_ARG = r"\b{key}\s*=\s*['\"]?([^'\",)]+)"
+
+
+def previewed(previewing: str) -> tuple[str, str] | None:
+    """(tool, object or text) of the preview string, e.g. "place_drawing(tree)" ->
+    ("place_drawing", "tree"). Also reads str(ToolCall) JSON and object=... forms."""
+    s = previewing.strip()
+    m = re.match(r"([a-z_]+)\s*\((.*)\)\s*$", s, re.S)
+    tool, inner = (m.group(1), m.group(2)) if m else ("place_drawing", s)
+    key = "text" if tool == "write_label" else "object"
+    for pattern in (_JSON_ARG, _KW_ARG):
+        found = re.search(pattern.format(key=key), inner)
+        if found:
+            return tool, found.group(1).strip()
+    value = inner.split(",")[0].strip().strip("'\"{} ")
+    return (tool, value) if value and ":" not in value and "=" not in value else None
 
 
 class _Parser:
@@ -162,6 +247,8 @@ class _Parser:
             if last.endswith("s") and tuple([*seg[:-1], last[:-1]]) == parts:
                 return cat, len(parts)
         syn = SYNONYMS.get(self.w[i]) if i < len(self.w) else None
+        if syn and syn not in self.cats:
+            syn = SYNONYMS.get(syn)  # "ship" -> "boat" -> "sailboat"
         if syn and syn in self.cats:
             return syn, 1
         return None
@@ -211,6 +298,10 @@ class _Parser:
             if self.w[i] in PRESETS:
                 if i > a and self.w[i - 1] in POINT_WORDS | {"so"}:
                     continue
+                if self.w[i] in ("little", "tiny") and (
+                    i + 1 >= b or self.w[i + 1] in AMOUNT_AFTER_LITTLE
+                ):
+                    continue  # "a little bit", "a tiny bit to the left": an amount
                 return PresetSize(preset=PRESETS[self.w[i]]), {i}
         return None, set()
 
@@ -218,6 +309,9 @@ class _Parser:
         """A place reference in words[a:b], skipping indices already used for size."""
         for phrase in EMPTY_PHRASES:
             if _find(self.w, phrase, a, b) >= 0:
+                return EmptySpace()
+        for j in range(a, b):
+            if self.w[j] == "where" and ROOM_WORDS & set(self.w[j + 1 : min(b, j + 5)]):
                 return EmptySpace()
         for phrase, name in NAMED_PLACES:
             if _find(self.w, phrase, a, b) >= 0:
@@ -246,13 +340,25 @@ class _Parser:
                 continue
             return RelationPlace(relation=rel, target=target)
         for i in range(a, b):
-            if i in used:
-                continue
-            if self.w[i] in PLACE_WORDS:
-                return DeicticPlace(deixis=self.w[i], word_index=i)
-            if self.w[i] in POINT_WORDS and i + 1 < b and self.w[i + 1] in SPOT_NOUNS:
+            if i not in used and self._pointed_place(i, b):
                 return DeicticPlace(deixis=self.w[i], word_index=i)
         return None
+
+    def _pointed_place(self, i: int, b: int) -> bool:
+        """Word i is a pointed place: "here", "there", "this spot"."""
+        if self.w[i] in PLACE_WORDS:
+            return True
+        return self.w[i] in POINT_WORDS and i + 1 < b and self.w[i + 1] in SPOT_NOUNS
+
+    def repoint_place(self, a: int, b: int, used: set[int]) -> object | None:
+        """The new place for a preview: the last pointed place wins ("not there here",
+        "there, no, here") and one right after "not" is rejected; else a spoken relation,
+        region or empty space."""
+        skip = used | {i for i in range(max(a, 1), b) if self.w[i - 1] == "not"}
+        for i in range(b - 1, a - 1, -1):
+            if i not in skip and self._pointed_place(i, b):
+                return DeicticPlace(deixis=self.w[i], word_index=i)
+        return self.place_in(a, b, skip)
 
     # ------------------------------------------------------------------ commands
 
@@ -279,8 +385,14 @@ class _Parser:
                 return [ToolCall(name="confirm", args=NoArgs())]
         if tuple(self.w[:2]) in {("okay", "do"), ("ok", "do")} and len(c) <= 2:
             return [ToolCall(name="confirm", args=NoArgs())]
-        if c[0] in NEGATIONS and len(c) <= 3 and not self.has_object():
-            if self.adjust_args() is None and self.place_in(0, len(self.w), set()) is None:
+        if c[0] in NEGATIONS | {"not"} and len(c) <= 3 and not self.has_object():
+            # "no" / "not there" reject; "no, there" / "no, this big" re-point (see requests)
+            size, used = self.size_in(0, len(self.w))
+            if (
+                self.adjust_args() is None
+                and size is None
+                and self.repoint_place(0, len(self.w), used) is None
+            ):
                 return [ToolCall(name="cancel", args=NoArgs())]
         if c[0] in QUESTION_STARTS:
             return [ToolCall(name="look", args=Look(query=" ".join(self.raw)))]
@@ -289,8 +401,8 @@ class _Parser:
     def has_object(self) -> bool:
         return any(self.object_at(i) for i in range(len(self.w)))
 
-    def adjust_args(self) -> Adjust | None:
-        w = self.w
+    def adjust_args(self, a: int = 0, b: int | None = None) -> Adjust | None:
+        w = self.w[a:b]
         ws = set(w)
         strong = bool({"lot", "much", "way", "lots", "loads"} & ws)
         step = 3 if strong else 1
@@ -326,8 +438,10 @@ class _Parser:
                 for c, p, s in self.drawings(0, v)
             ]
         start = v + 1
-        if w[v] == "label" and start < len(w) and w[start] in ("it", "that", "this"):
-            start += 1
+        if w[v] == "label":
+            on_objects = self.labels_on_objects(start)
+            if on_objects is not None:
+                return [*before, *on_objects]
         for skip in (("the", "words"), ("the", "word"), ("the", "text"), ("that", "says")):
             if tuple(w[start : start + len(skip)]) == skip:
                 start += len(skip)
@@ -337,10 +451,61 @@ class _Parser:
         if cut is not None:
             place = self.place_in(cut, end, set())
             end = cut
-        text = " ".join(t.strip(" ,.!?\"'") for t in self.raw[start:end]).strip()
+        text = self.text(start, end)
         if not text:
             return [ToolCall(name="ask_user", args=AskUser(question="What should I write?"))]
         return [*before, ToolCall(name="write_label", args=WriteLabel(text=text, place=place))]
+
+    def text(self, a: int, b: int) -> str:
+        """Words a..b as spoken, without surrounding punctuation."""
+        return " ".join(t.strip(" ,.!?\"'") for t in self.raw[a:b]).strip()
+
+    def label_target(self, i: int) -> tuple[object, int] | None:
+        """The object a label goes on, at word i: "it", "this"/"that" (+ "one"/"thing"),
+        or "the <scene label>". Returns (ObjectRef, index after it)."""
+        w = self.w
+        if i >= len(w):
+            return None
+        if w[i] in PRONOUNS:
+            return LastObject(), i + 1
+        if w[i] in POINT_WORDS:
+            if i + 1 < len(w) and w[i + 1] == "says":
+                return None  # "label that says hello"
+            nxt = i + 2 if i + 1 < len(w) and w[i + 1] in ("one", "thing") else i + 1
+            return DeicticObject(deixis=w[i], word_index=i), nxt
+        if w[i] == "the":
+            for label in sorted(self.scene, key=lambda s: -len(s.split())):
+                parts = tuple(label.split())
+                if tuple(w[i + 1 : i + 1 + len(parts)]) == parts:
+                    return LabelObject(label=label), i + 1 + len(parts)
+        return None
+
+    def labels_on_objects(self, start: int) -> list[ToolCall] | None:
+        """Labels on objects ("label that one nemotron", "label it magpie", "label this
+        cosmos and this asr"): one write_label per object, below it. None if no object
+        follows "label"."""
+        w = self.w
+        first = self.label_target(start)
+        if first is None:
+            return None
+        out: list[ToolCall] = []
+        todo: tuple[object, int] | None = first
+        while todo is not None:
+            target, a = todo
+            b, todo = a, None
+            while b < len(w):
+                if w[b] == "and":
+                    nxt = self.label_target(b + 1)
+                    if nxt is not None and nxt[1] < len(w):  # it has text of its own
+                        todo = nxt
+                        break
+                b += 1
+            text = self.text(a, b)
+            if not text:
+                return [ToolCall(name="ask_user", args=AskUser(question="What should I write?"))]
+            place = RelationPlace(relation="below", target=target)
+            out.append(ToolCall(name="write_label", args=WriteLabel(text=text, place=place)))
+        return out
 
     def _trailing_place_start(self, a: int, b: int) -> int | None:
         w = self.w
@@ -441,8 +606,8 @@ class _Parser:
                 return calls
         return self.requests()
 
-    def _correction_cut(self) -> int:
-        w = self.w
+    def _correction_cut(self, end: int) -> int:
+        w = self.w[:end]
         cut = 0
         for marker in CORRECTION_MARKERS:
             for i in range(1, len(w)):
@@ -450,16 +615,40 @@ class _Parser:
                     cut = max(cut, i + len(marker))
         return cut
 
-    def requests(self) -> list[ToolCall]:
+    def _adjust_tail(self) -> int | None:
+        """Start of a trailing correction ("... a bit bigger", "... a bit to the left")."""
         w = self.w
+        t = len(w)
+        while t > 0 and w[t - 1] in ADJUST_TAIL:
+            t -= 1
+        tail = set(w[t:])
+        if 0 < t < len(w) and (tail & COMPARATIVES or (tail & DEGREES and tail & DIRECTIONS)):
+            return t
+        return None
+
+    def requests(self) -> list[ToolCall]:
+        """Drawing requests; a place spoken before a trailing correction ("a brain up here
+        a bit bigger") gives place_drawing then adjust."""
+        tail = self._adjust_tail()
+        if tail is not None:
+            calls = self._requests(tail)
+            last = calls[-1] if calls else None
+            if last and last.name == "place_drawing" and last.args.place is not None:  # type: ignore[attr-defined]
+                adj = self.adjust_args(tail)
+                if adj is not None:
+                    return [*calls, ToolCall(name="adjust", args=adj)]
+        return self._requests(len(self.w))
+
+    def _requests(self, end: int) -> list[ToolCall]:
+        w = self.w[:end]
         # Self-corrections: parse the last segment, fill missing slots from the one before.
-        cut = self._correction_cut()
-        latest = self.drawings(cut, len(w))
+        cut = self._correction_cut(end)
+        latest = self.drawings(cut, end)
         earlier = self.drawings(0, cut) if cut else []
         if cut and earlier:
             if not latest:
-                size, used = self.size_in(cut, len(w))
-                latest = [(earlier[-1][0], self.place_in(cut, len(w), used), size)]
+                size, used = self.size_in(cut, end)
+                latest = [(earlier[-1][0], self.place_in(cut, end, used), size)]
             cat, place, size = latest[-1]
             _, e_place, e_size = earlier[-1]
             latest[-1] = (cat, place or e_place, size or e_size)
@@ -476,22 +665,69 @@ class _Parser:
         ]
         if calls:
             return calls
-        size, used = self.size_in(0, len(w))
-        place = self.place_in(0, len(w), used)
-        prev = self.ctx.previewing
-        if (place or size) and {"it", "put", "move"} & set(w):
-            if prev:
-                obj = prev.split("(", 1)[-1].rstrip(")") if "(" in prev else prev
-                args = PlaceDrawing(object=obj, place=place, size=size)
+        unknown = self.unknown_object(end)
+        if unknown is not None:
+            return [ToolCall(name="ask_user", args=unknown)]
+        size, used = self.size_in(0, end)
+        place = self.repoint_place(cut, end, used)
+        prev = previewed(self.ctx.previewing) if self.ctx.previewing else None
+        if prev and (place or size):
+            # "no, there", "put it here instead", "this big": the preview moves or resizes;
+            # a missing place means the runtime keeps the preview's place.
+            tool, what = prev
+            if tool == "write_label":
+                return [
+                    ToolCall(name="write_label", args=WriteLabel(text=what, place=place, size=size))
+                ]
+            if tool == "place_drawing":
+                args = PlaceDrawing(object=what, place=place, size=size)
                 return [ToolCall(name="place_drawing", args=args)]
+        if (place or size) and {"it", "put", "move"} & set(w):
             q = AskUser(question="What should I draw there?")
             return [ToolCall(name="ask_user", args=q)]
-        adj = self.adjust_args()
+        adj = self.adjust_args(0, end)
         if adj is not None:
             return [ToolCall(name="adjust", args=adj)]
         if {"draw", "put", "add", "make"} & set(w):
             return [ToolCall(name="ask_user", args=AskUser(question="What should I draw?"))]
         return []
+
+    def unknown_object(self, end: int) -> AskUser | None:
+        """A question for a thing that isn't drawable: the noun after the first article or
+        draw verb ("draw me a dragon", "a unicorn here"), with close categories as options."""
+        w = self.w[:end]
+        i = next((k for k, x in enumerate(w) if x in NOUN_STARTS), None)
+        if i is None:
+            return None
+        article = w[i] if w[i] in ("a", "an", "some") else ""
+        i += 1
+        while i < len(w) and w[i] in NOUN_SKIP:
+            if w[i] in ("a", "an", "some"):
+                article = w[i]
+            i += 1
+        if i >= len(w) or w[i] in NOT_NOUNS or not w[i].isalpha():
+            return None
+        if self.object_at(i) or w[i] in self.scene or self._is_target(i):
+            return None  # drawable, on the sheet, or the target of "next to the ..."
+        noun = w[i]
+        kind = GENERAL_KINDS.get(noun) or GENERAL_KINDS.get(noun.rstrip("s"))
+        members = [c for c in kind or () if c in self.cats]
+        if members:
+            base = noun.rstrip("s") if noun not in GENERAL_KINDS else noun
+            return AskUser(question=f"Which {base} should I draw?", options=members[:4])
+        options: list[str] = []
+        for probe in dict.fromkeys((noun, noun[:-1] if noun.endswith("s") else noun)):
+            for c in difflib.get_close_matches(probe, self.cats, n=3, cutoff=0.5):
+                if c not in options:
+                    options.append(c)
+        if article in ("a", "an") and w[i - 1] != article:
+            article = "an" if noun[0] in "aeiou" else "a"  # "a big owl" -> "an owl"
+        thing = f"{article} {noun}".strip()
+        if options:
+            return AskUser(
+                question=f"I can't draw {thing} yet. Which one instead?", options=options[:3]
+            )
+        return AskUser(question=f"I can't draw {thing} yet. What should I draw instead?")
 
 
 def parse(
