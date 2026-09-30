@@ -189,7 +189,7 @@ def _capture(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m pointdraw.vision.lens", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("board", help="write the ChArUco board PNG (print at 100%, A4 landscape)")
+    b = sub.add_parser("board", help="write the ChArUco board PNG (print at 100%%, A4 landscape)")
     b.add_argument("out", nargs="?", default="out/charuco-board.png")
     c = sub.add_parser("capture", help="collect views from the camera, calibrate, save")
     c.add_argument("--camera", type=int, default=0)
