@@ -1,0 +1,99 @@
+# Prompts for the generated line-art library (docs/virtual-test-plan.md section 6).
+# Read by scripts/nebius/library_job.py inside the Nebius Serverless Job.
+#
+# One style for every object, so the whole library looks like one hand drew it. `{subject}`
+# is the object's entry in `subjects` below, or "a <object>" when it has none.
+
+style: >-
+  a clean line drawing of {subject}, thin even black lines, white background,
+  no shading, no text, simple, centred
+
+negative: >-
+  shading, hatching, cross-hatching, grey fill, solid black areas, colour, gradient,
+  texture, shadow, text, letters, words, watermark, signature, frame, border, photo,
+  photorealistic, 3d render, multiple objects, cropped, blurry
+
+# Sampling. SANA 1600M model-card defaults: 20 steps, guidance 4.5, 1024 x 1024.
+params:
+  width: 1024
+  height: 1024
+  steps: 20
+  guidance: 4.5
+  seed_base: 1000  # image i of every object uses seed seed_base + i
+
+# How the object is named in the prompt, where plain "a <object>" is vague.
+subjects:
+  ear: a human ear, side view
+  eye: a human eye, front view
+  brain: a human brain, side view
+  hand: an open human hand, palm facing the viewer, fingers spread
+  mouth: a pair of smiling lips
+  microphone: a handheld microphone
+  camera: a photo camera
+  laptop: an open laptop
+  cloud: a fluffy cloud
+  sun: the sun with short rays
+  moon: a crescent moon
+  star: a five-pointed star
+  smiley face: a smiley face
+  light bulb: a light bulb
+  floor lamp: a floor lamp
+  television: an old television set
+  pond: a small pond with reeds
+  mountain: a mountain
+  sailboat: a small sailboat
+  apple: an apple
+  key: a door key
+
+sets:
+  # 5 hero-demo objects x 4 images: proves generation + centre-line tracing before the full run
+  pilot:
+    per_object: 4
+    max_minutes: 15  # library_job.py stops by itself after this (the Job's own timeout is 1 h)
+    objects: [ear, eye, brain, hand, tree]
+  # every current library category (library/index.json), about 10 images each
+  full:
+    per_object: 10
+    max_minutes: 40
+    objects:
+      - apple
+      - bed
+      - bench
+      - bicycle
+      - bird
+      - brain
+      - bush
+      - camera
+      - car
+      - cat
+      - chair
+      - cloud
+      - couch
+      - crown
+      - cup
+      - dog
+      - door
+      - ear
+      - eye
+      - fence
+      - fish
+      - floor lamp
+      - flower
+      - hand
+      - hat
+      - house
+      - key
+      - laptop
+      - light bulb
+      - microphone
+      - moon
+      - mountain
+      - mouth
+      - pond
+      - sailboat
+      - smiley face
+      - star
+      - sun
+      - table
+      - television
+      - tree

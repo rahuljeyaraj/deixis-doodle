@@ -163,6 +163,37 @@ def test_round_trip_of_library_drawings_meets_the_targets(category, variant):
     assert len(res.strokes) <= len(orig) + 2
 
 
+def test_job_output_traces_into_a_loadable_library_file(tmp_path):
+    """The Nebius job script (fake model, no GPU) -> trace_library.py --job -> Library."""
+    pytest.importorskip("yaml")
+    import subprocess
+    import sys
+
+    from pointdraw.drawing.library import Library
+
+    root = Path(__file__).resolve().parents[2]
+    job, traced_dir = tmp_path / "job", tmp_path / "traced"
+    run = [sys.executable, str(root / "scripts" / "nebius" / "library_job.py")]
+    subprocess.run(
+        [*run, "--model", "fake", "--set", "pilot", "--objects", "ear", "floor lamp"]
+        + ["--per-object", "2", "--out", str(job)],
+        check=True,
+        capture_output=True,
+    )
+    manifest = json.loads((job / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["images"]) == 4 and not manifest["stopped_early"]
+    trace_cmd = [sys.executable, str(root / "scripts" / "trace_library.py"), "--job", str(job)]
+    subprocess.run(
+        [*trace_cmd, "--out-dir", str(traced_dir), "--no-sheet"], check=True, capture_output=True
+    )
+    index = {"categories": {c: {"file": f"{c}.json"} for c in ("ear", "floor lamp")}}
+    lib = Library(traced_dir, index)
+    for cat in ("ear", "floor lamp"):  # names with spaces keep them, like library/quickdraw
+        d = lib.get(cat, 1)
+        assert d.key_id.endswith("_s1001")
+        assert max(d.size) == pytest.approx(LIBRARY_SIDE, abs=0.2)
+
+
 def test_trace_to_library_output_loads_as_library_strokes():
     img, _, _ = render_strokes([[(0, 0), (60, 100), (120, 0)], [(30, 50), (90, 50)]], 512, 8)
     lib = trace_to_library(img)
