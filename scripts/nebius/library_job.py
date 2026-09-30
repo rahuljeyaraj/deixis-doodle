@@ -16,7 +16,9 @@ usable set. Then, on the laptop: `uv run python scripts/trace_library.py --job <
 
 Model: SANA 1600M (Efficient-Large-Model/Sana_1600M_1024px_diffusers, Apache-2.0 on its model
 card, checked 2026-09-30; its Gemma-2-2B-IT text encoder adds Google's Gemma terms). If SANA
-fails to load, FLUX.1 [schnell] (Apache-2.0) is used instead, unless --no-fallback.
+fails to load, FLUX.1 [schnell] (Apache-2.0) is used instead, unless --no-fallback. FLUX.1
+[schnell] is gated on Hugging Face (checked 2026-09-30): the fallback needs HF_TOKEN from an
+account that accepted its terms; SANA needs no token.
 
 Time limits, three layers: this script stops starting new images after --max-minutes; a
 watchdog thread kills the process 3 minutes after that if something hangs; the Job itself has
@@ -50,7 +52,7 @@ LICENCES = {
     "Terms of Use and Prohibited Use Policy",
     "sana-4.8b": "Apache-2.0 (model card, checked 2026-09-30); text encoder Gemma-2-2B-IT: "
     "Gemma Terms of Use and Prohibited Use Policy",
-    "flux": "Apache-2.0 (FLUX.1 [schnell] model card; re-check before use)",
+    "flux": "Apache-2.0 (FLUX.1 [schnell] model card, checked 2026-09-30; gated: accept the terms)",
     "fake": "n/a",
 }
 GRACE_S = 180  # the watchdog kills the process this long after the soft limit

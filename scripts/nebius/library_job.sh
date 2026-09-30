@@ -98,6 +98,11 @@
 #   - the JSON field names of a job's status (`status` prints the raw status block);
 #   - the S3 endpoint for uk-south2 (the docs give the pattern, with eu-north1 as the example);
 #   - DISK_SIZE 100Gi (the default is 250Gi; 100Gi is plenty for a 10 GB model and a 9 GB image).
+#
+# Models (Hugging Face model cards, read 2026-09-30): SANA 1600M and SANA1.5 4.8B are Apache-2.0,
+# not gated, text encoder Gemma-2-2B-IT under Gemma terms; FLUX.1 [schnell] is Apache-2.0 but
+# GATED, so MODEL=flux (or the automatic fallback) needs HF_TOKEN in .env from an account that
+# accepted its terms.
 
 set -euo pipefail
 
