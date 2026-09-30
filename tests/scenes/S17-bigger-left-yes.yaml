@@ -1,0 +1,23 @@
+id: S17
+title: "Preview, then bigger, a bit left, yes"
+tests: "corrections during the preview: adjust (scale, then one 5 mm step left), then confirm"
+lines:
+  - at: 1.4
+    text: "A tree here."
+  - at: 5.5
+    text: "Bigger."
+  - at: 7.5
+    text: "A bit to the left."
+  - at: 10.0
+    text: "Yes."
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [100, 70], dur: 0.6}
+  - {hold: 1.6}
+  - {leave: true}
+expect:
+  calls: [place_drawing, adjust, adjust, confirm]
+  drawn:
+    - {kind: object, label: tree, center: [95, 70], size: 50}
+  asks: 0
+  states: [PREVIEW, ADJUST, PREVIEW, ADJUST, PREVIEW, WAIT_HANDS_CLEAR, DRAW]

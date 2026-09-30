@@ -69,6 +69,10 @@ class Controller:
         self._closing = False
         self._pen_down = False
         self._needs_home = False
+        # Where the head will be when the queued jobs are done (None = unknown). Each job's
+        # G-code starts from here, so its first move is split into short pieces too, and a
+        # pause during it still takes effect within ~sync_every_mm (session VIRTUAL).
+        self._end: Point | None = None
         self._worker: threading.Thread | None = None
 
     # ------------------------------------------------------------------ lifecycle
@@ -111,7 +115,8 @@ class Controller:
         x0, y0 = max(box.x, d.x), max(box.y, d.y)  # clamps only sub-tolerance rounding
         x1, y1 = min(box.x2, d.x2), min(box.y2, d.y2)
         clamped = Box(x0, y0, x1 - x0, y1 - y0)
-        self._submit("preview", gcode.preview_box_gcode(clamped, self.config), "previewing")
+        lines = gcode.preview_box_gcode(clamped, self.config, start=self._end)
+        self._submit("preview", lines, "previewing")
 
     def draw_polylines(self, polylines: list[Polyline], speed: Speed = "normal") -> None:
         self.draw_polylines_at(polylines, self.config.feed_for(speed))
@@ -119,10 +124,11 @@ class Controller:
     def draw_polylines_at(self, polylines: Sequence[Sequence[Point]], feed: float) -> None:
         """Like draw_polylines, with an explicit drawing feedrate in mm/min (for feed tests)."""
         clean = validate_polylines(polylines, self.config)
-        self._submit("draw", gcode.polylines_to_gcode(clean, self.config, feed), "drawing")
+        lines = gcode.polylines_to_gcode(clean, self.config, feed, start=self._end)
+        self._submit("draw", lines, "drawing")
 
     def park(self) -> None:
-        self._submit("park", gcode.park_gcode(self.config), "moving")
+        self._submit("park", gcode.park_gcode(self.config, start=self._end), "moving")
 
     def home(self) -> None:
         self._submit("home", gcode.home_gcode(self.config), "moving")
@@ -145,6 +151,7 @@ class Controller:
             self._state = "stopped"
             self._message = "stopped"
             self._needs_home = self.config.rehome_after_stop
+            self._end = (0.0, 0.0) if self._needs_home else None
             self._cond.notify_all()
 
     def set_hands_clear(self, clear: bool) -> None:
@@ -194,6 +201,7 @@ class Controller:
                 if lines[:1] != ["G28"]:
                     lines = gcode.home_gcode(self.config) + lines
                 self._needs_home = False
+            self._end = gcode.end_position(lines, self._end)
             self._jobs.append(_Job(label, lines, state, self._gen))
             self._cond.notify_all()
 

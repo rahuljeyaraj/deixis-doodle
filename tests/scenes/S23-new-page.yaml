@@ -1,0 +1,19 @@
+id: S23
+title: "New page"
+tests: "new_sheet clears the scene (robot drawings and the user's marks)"
+sheet:
+  robot:
+    - {object: house, at: [60, 80], size: 45}
+    - {object: tree, at: [140, 80], size: 45}
+  user:
+    - {shape: star, at: [100, 30], size: 25, ink: blue crayon, label: star}
+lines:
+  - at: 1.0
+    text: "New page."
+hand: []
+expect:
+  calls: [new_sheet]
+  drawn: []
+  scene_empty: true
+  say_contains: ["New page"]
+variations: {hover_mm: null}

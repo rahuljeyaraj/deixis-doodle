@@ -103,6 +103,7 @@ class VirtualPlotter:
         self.track: list[tuple[float, float, float, bool]] = []  # t, x, y, pen down
         self.sent: list[str] = []
         self._job_started = False
+        self._end: Point | None = (self.config.park_x, self.config.park_y)  # queued jobs' end
 
     # ------------------------------------------------------------------ PlotterController
 
@@ -112,16 +113,17 @@ class VirtualPlotter:
         validate_points([corners], d, self.config.clamp_tolerance_mm)
         x0, y0 = max(box.x, d.x), max(box.y, d.y)
         x1, y1 = min(box.x2, d.x2), min(box.y2, d.y2)
-        lines = gcode.preview_box_gcode(Box(x0, y0, x1 - x0, y1 - y0), self.config)
+        lines = gcode.preview_box_gcode(Box(x0, y0, x1 - x0, y1 - y0), self.config, start=self._end)
         self._submit("preview", lines, "previewing", tag)
 
     def draw_polylines(self, polylines: list[Polyline], speed: Speed = "normal", tag: Any = None):
         clean = validate_polylines(polylines, self.config)
         feed = self.config.feed_for(speed)
-        self._submit("draw", gcode.polylines_to_gcode(clean, self.config, feed), "drawing", tag)
+        lines = gcode.polylines_to_gcode(clean, self.config, feed, start=self._end)
+        self._submit("draw", lines, "drawing", tag)
 
     def park(self, tag: Any = None) -> None:
-        self._submit("park", gcode.park_gcode(self.config), "moving", tag)
+        self._submit("park", gcode.park_gcode(self.config, start=self._end), "moving", tag)
 
     def stop(self) -> None:
         self.events.append(PlotEvent(self.t, "stop_request", self.job.label if self.job else ""))
@@ -209,6 +211,7 @@ class VirtualPlotter:
         if self.needs_home and lines[:1] != ["G28"]:
             lines = gcode.home_gcode(self.config) + lines
             self.needs_home = False
+        self._end = gcode.end_position(lines, self._end)
         self.jobs.append(_Job(label, lines, state, tag))
 
     def _moving(self) -> bool:
@@ -333,6 +336,7 @@ class VirtualPlotter:
         if self.sim.pen_is_down:
             self.sim.send(gcode.pen_up(self.config))
         self.needs_home = self.config.rehome_after_stop
+        self._end = (0.0, 0.0) if self.needs_home else None
         self._set_state("stopped")
 
     def _finish_job(self) -> None:

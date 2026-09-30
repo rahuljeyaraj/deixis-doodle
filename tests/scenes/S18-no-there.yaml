@@ -1,0 +1,22 @@
+id: S18
+title: "Preview, then 'no, there' and a new point"
+tests: "re-pointing during the preview replaces the previewed place"
+lines:
+  - at: 1.4
+    text: "A sun here."
+  - at: 7.2
+    text: "No, there."
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [60, 100], dur: 0.6}
+  - {hold: 1.6}
+  - {leave: true}
+  - {at: 6.0, enter: [150, -40]}
+  - {move: [150, 60], dur: 0.6}
+  - {hold: 1.6}
+  - {leave: true}
+expect:
+  calls: [place_drawing, place_drawing]
+  drawn:
+    - {kind: object, label: sun, center: [150, 60], size: 40}
+  asks: 0

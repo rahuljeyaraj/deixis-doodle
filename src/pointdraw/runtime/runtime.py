@@ -118,6 +118,7 @@ class Proposal:
     preview_done: float | None = None
     drawing: set[str] = field(default_factory=set)  # draw job tags still running
     confirmed_t: float | None = None
+    dirty: bool = False  # changed while a trace was running: trace again when it ends
 
 
 @dataclass
@@ -582,10 +583,10 @@ class Runtime:
         if prop is None:
             return
         prop.preview_done = None
-        for obj in prop.items:
-            tag = self._tag("preview")
-            self.plotter.preview_box(self._box_to_bed(obj.box), tag=tag)
-            prop.previews.add(tag)
+        if prop.previews:  # a trace is still running: trace the new box when it ends
+            prop.dirty = True
+        else:
+            self._trace(prop)
         self.log.add(
             t,
             "preview",
@@ -593,6 +594,13 @@ class Runtime:
             box=_box(union_box([o.box for o in prop.items])),
         )
         self._set_state(PREVIEW, t)
+
+    def _trace(self, prop: Proposal) -> None:
+        prop.dirty = False
+        for obj in prop.items:
+            tag = self._tag("preview")
+            self.plotter.preview_box(self._box_to_bed(obj.box), tag=tag)
+            prop.previews.add(tag)
 
     def adjust(self, dx: int, dy: int, scale: float, t: float) -> None:
         obj = self._previewed_item()
@@ -701,7 +709,9 @@ class Runtime:
             prop = self.proposal
             if prop is not None and tag in prop.previews and e.kind in ("job_end", "halted"):
                 prop.previews.discard(tag)
-                if not prop.previews:
+                if not prop.previews and prop.dirty and e.kind == "job_end":
+                    self._trace(prop)
+                elif not prop.previews:
                     prop.preview_done = e.t
                     self.log.add(e.t, "preview_done", items=[o.id for o in prop.items])
             d = self.drawing

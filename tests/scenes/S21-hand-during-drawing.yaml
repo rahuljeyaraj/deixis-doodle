@@ -1,0 +1,22 @@
+id: S21
+title: "A hand comes back over the paper while drawing"
+tests: "interlock: the pen pauses within 1.7 s and 50 mm, lifts, and resumes after the hand leaves"
+lines:
+  - at: 1.4
+    text: "A house here."
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [70, 80], dur: 0.6}
+  - {hold: 1.6}
+  - {leave: true}
+  - {at: 19.0, enter: [180, -40], pose: open}
+  - {move: [160, 40], dur: 0.5}
+  - {hold: 2.5}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: house, center: [70, 80], size: 40}
+  asks: 0
+  pause: true
+variations: {hover_mm: null}

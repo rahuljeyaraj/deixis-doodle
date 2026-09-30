@@ -1,0 +1,20 @@
+id: S22
+title: "Stop! in the middle of a drawing"
+tests: "stop: spotted before the agent; the plotter halts within 1.7 s and 50 mm, 3 s from the word"
+lines:
+  - at: 1.4
+    text: "A house here."
+  - at: 20.0
+    text: "Stop!"
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {move: [70, 80], dur: 0.6}
+  - {hold: 1.6}
+  - {leave: true}
+expect:
+  calls: [place_drawing, stop]
+  drawn: []
+  stop: true
+  min_pen_mm: 5
+  say_contains: ["Stopped"]
+variations: {hover_mm: null}
