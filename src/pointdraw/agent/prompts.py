@@ -254,6 +254,9 @@ class AgentContext:
     scene_labels: list[str] = field(default_factory=list)
     last_label: str | None = None
     previewing: str | None = None  # e.g. "place_drawing(tree)"
+    #: The ask_user question still waiting for an answer, and its options (if any).
+    pending_question: str | None = None
+    options: list[str] = field(default_factory=list)
 
     def lines(self) -> list[str]:
         out = []
@@ -262,6 +265,13 @@ class AgentContext:
             out.append("Scene: " + ", ".join(labels))
         if self.previewing:
             out.append("Previewing: " + self.previewing)
+        asked = []
+        if self.pending_question:
+            asked.append("Asked: " + self.pending_question)
+        if self.options:
+            asked.append("Options: " + ", ".join(self.options))
+        if asked:
+            out.append(" ".join(asked))
         return out
 
     @classmethod
@@ -271,6 +281,8 @@ class AgentContext:
             scene_labels=list(d.get("scene_labels", [])),
             last_label=d.get("last_label"),
             previewing=d.get("previewing"),
+            pending_question=d.get("pending_question"),
+            options=list(d.get("options") or []),
         )
 
 
