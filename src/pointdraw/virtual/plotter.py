@@ -4,9 +4,9 @@ It reuses the real controller's pure parts, so jobs are checked and built exactl
 the machine:
 
 - `safety.validate_polylines` / `validate_points` (the drawable area, job limits)
-- `gcode.*` (pen up and down, splitting into 10 mm pieces, preview trace, park, home)
+- `gcode.*` (pen up and down, splitting into 2.5 mm pieces, preview trace, park, home)
 - `safety.check_line` on every line (the whitelist: no heater, fan or extrusion commands)
-- `gcode.insert_syncs` (an `M400` every 30 mm)
+- `gcode.insert_syncs` (an `M400` every 30 mm, held until the pen is next up)
 - `SimulatedPlotter` to interpret the G-code and record the strokes
 
 The streaming policy of `controller.Controller` is modelled in simulated time instead of
@@ -16,7 +16,8 @@ threads, so runs are fast and repeatable:
   `hands_clear_hold_s`.
 - **Pause latency:** Marlin acknowledges moves when they enter its planner, so when the
   interlock trips, the moves already sent still run: up to the next `M400` plus the one line
-  queued behind it (CTRL report, decision 4). Then the pen lifts.
+  queued behind it (CTRL report, decision 4), or at most what fits in the planner (`M400`
+  waits for the pen to lift, so inside a stroke the planner is the bound). Then the pen lifts.
 - **Stop:** with `emergency_parser`, `M410` halts mid-move at once. Without it, `M410` waits
   behind the queued lines, so motion runs to the next `M400` first. Either way the queue is
   dropped, the pen lifts and the next job homes first.
@@ -39,6 +40,7 @@ from pointdraw.controller.safety import check_line, parse_line, validate_points,
 from pointdraw.controller.simulator import SimulatedPlotter
 
 FORBIDDEN_PREFIXES = ("M104", "M109", "M140", "M190", "M106", "M107", "G92 E")
+PLANNER_LINES = 16 + 2  # Marlin's planner blocks, plus the unacknowledged window
 
 
 @dataclass
@@ -207,7 +209,7 @@ class VirtualPlotter:
             check_line(line, phase="job", config=self.config)
             if line.startswith(FORBIDDEN_PREFIXES):
                 raise AssertionError(f"forbidden line {line!r}")
-        lines = gcode.insert_syncs(lines, self.config.sync_every_mm)
+        lines = gcode.insert_syncs(lines, self.config.sync_every_mm, self.config.pen_threshold_z)
         if self.needs_home and lines[:1] != ["G28"]:
             lines = gcode.home_gcode(self.config) + lines
             self.needs_home = False
@@ -312,11 +314,12 @@ class VirtualPlotter:
             self._complete_line(cut)
 
     def _committed(self) -> int:
-        """Index of the last line already in Marlin's queue: up to the next M400, plus one."""
+        """Index of the last line already in Marlin's queue: up to the next M400, plus one,
+        but no more than the planner holds."""
         assert self.job is not None
         lines = self.job.lines
         j = self.i
-        while j < len(lines) and lines[j] != "M400":
+        while j < len(lines) and lines[j] != "M400" and j - self.i < PLANNER_LINES:
             j += 1
         return min(j + 1, len(lines) - 1)
 

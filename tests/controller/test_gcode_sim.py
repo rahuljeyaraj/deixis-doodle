@@ -84,7 +84,8 @@ def test_joined_polylines_do_not_lift_and_dots_work():
     lines = gcode.polylines_to_gcode(pls, CFG, 1800)
     assert lines.count(gcode.pen_down(CFG)) == 2  # the join shares one pen-down
     sim = run(lines)
-    assert sim.strokes[0] == [(50, 50), (60, 50), (60, 60)]
+    stroke = sim.strokes[0]  # split into max_segment_mm pieces
+    assert stroke[0] == (50, 50) and (60, 50) in stroke and stroke[-1] == (60, 60)
     assert sim.strokes[1] == [(90, 90)]
     assert not sim.pen_is_down
 
@@ -112,6 +113,22 @@ def test_insert_syncs():
     n = lines.count("M400")
     assert 5 <= n <= 7
     assert gcode.insert_syncs(lines, 0) == lines
+
+
+def test_insert_syncs_waits_for_pen_up():
+    # A sync stops the head dead, which blots the paper if the pen is down.
+    pls = [[(20, 60), (200, 60)], [(20, 80), (60, 80)]]
+    lines = gcode.polylines_to_gcode(pls, CFG, 1800)
+    synced = gcode.insert_syncs(lines, 30, CFG.pen_threshold_z)
+    z = None
+    for line in synced:
+        cmd, p = parse_line(line)
+        if "Z" in p:
+            z = p["Z"]
+        if line == "M400":
+            assert z is None or z > CFG.pen_threshold_z
+    assert synced.count("M400") >= 1
+    assert [x for x in synced if x != "M400"] == lines
 
 
 def test_end_position():
@@ -155,6 +172,7 @@ def test_render_png(tmp_path):
     out = sim.render_png(tmp_path / "sub" / "plot.png", px_per_mm=2)
     img = Image.open(out)
     assert img.size == (int(220 * 2) + 80, int(220 * 2) + 80)
-    # The stroke passes through (75, 75) mm: that pixel is dark.
-    px = (40 + 75 * 2, 40 + (220 - 75) * 2)
-    assert sum(img.getpixel(px)[:3]) < 200
+    # The stroke passes through (75, 75) mm: a pixel there is dark.
+    x, y = 40 + 75 * 2, 40 + (220 - 75) * 2
+    near = [img.getpixel((x + dx, y + dy)) for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
+    assert min(sum(p[:3]) for p in near) < 200

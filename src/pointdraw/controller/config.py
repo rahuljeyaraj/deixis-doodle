@@ -87,7 +87,9 @@ class MachineConfig(_Model):
     limits: MotionLimits = MotionLimits()
 
     # Streaming and pause behaviour.
-    max_segment_mm: float = Field(10.0, gt=0)  # split every XY move into pieces this long
+    # Split every XY move into pieces this long. Marlin's planner holds about 16 moves, so
+    # inside a stroke (no M400 there) this bounds the motion still queued when a pause comes.
+    max_segment_mm: float = Field(2.5, gt=0)
     sync_every_mm: float = Field(30.0, ge=0)  # insert M400 after this much motion (0 = never)
 
     # Job limits.

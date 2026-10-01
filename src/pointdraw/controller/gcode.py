@@ -3,7 +3,8 @@
 Lines are bare (no line numbers, checksums or comments); the transport adds those. Every
 G0/G1 carries its own F, so inserting a line (a pause's pen lift, say) can never leave a
 slow or fast feedrate behind for the next move. Every XY move is split into pieces of at most
-`max_segment_mm`, so a pause or stop between lines takes effect quickly.
+`max_segment_mm`, so a pause or stop between lines takes effect quickly (Marlin's planner
+holds a fixed number of moves, so short pieces mean little motion queued).
 """
 
 from __future__ import annotations
@@ -144,15 +145,23 @@ def home_gcode(c: MachineConfig) -> list[str]:
     return ["G28", pen_up(c)]
 
 
-def insert_syncs(lines: Iterable[str], every_mm: float) -> list[str]:
+def insert_syncs(
+    lines: Iterable[str], every_mm: float, pen_up_above: float | None = None
+) -> list[str]:
     """Insert `M400` after every `every_mm` of XY motion (0 = never).
 
     Marlin acknowledges a move once it is in its planner, which holds many moves. Waiting for
     the planner to empty every so often bounds how much motion is queued, so a pause or a stop
     without the emergency parser still takes effect within about `every_mm` of travel.
+
+    `M400` brings the head to a full stop, which leaves a blot if the pen is down. With
+    `pen_up_above` (the Z above which the pen is clear of the paper), a due sync waits until
+    the pen is next up, so a stroke is never interrupted; inside a stroke, the planner's own
+    depth bounds the queued motion instead.
     """
     out: list[str] = []
     pos: Point | None = None
+    z: float | None = None  # unknown counts as up
     acc = 0.0
     for line in lines:
         out.append(line)
@@ -161,19 +170,22 @@ def insert_syncs(lines: Iterable[str], every_mm: float) -> list[str]:
         cmd, params = parse_line(line)
         if cmd == "G28":
             pos = None
+            z = 0.0
+        if cmd in ("G0", "G1") and params.get("Z") is not None:
+            z = params["Z"]
         if cmd not in ("G0", "G1"):
             continue
         x, y = params.get("X"), params.get("Y")
-        if x is None and y is None:
-            continue
-        new = (
-            x if x is not None else (pos or (0.0, 0.0))[0],
-            y if y is not None else (pos or (0.0, 0.0))[1],
-        )
-        if pos is not None:
-            acc += math.dist(pos, new)
-        pos = new
-        if acc >= every_mm:
+        if x is not None or y is not None:
+            new = (
+                x if x is not None else (pos or (0.0, 0.0))[0],
+                y if y is not None else (pos or (0.0, 0.0))[1],
+            )
+            if pos is not None:
+                acc += math.dist(pos, new)
+            pos = new
+        pen_up = pen_up_above is None or z is None or z > pen_up_above
+        if acc >= every_mm and pen_up:
             out.append("M400")
             acc = 0.0
     return out

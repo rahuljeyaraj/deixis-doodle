@@ -20,6 +20,7 @@ recordings/
 *.wav
 *.mp4
 *.mov
+docs/explainer/
 
 # Claude Code worktrees
 .claude/worktrees/

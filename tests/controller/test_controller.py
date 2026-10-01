@@ -225,6 +225,7 @@ def test_serial_end_to_end(fake_marlin):
         expected = gcode.startup_block(CFG) + gcode.insert_syncs(
             gcode.polylines_to_gcode(validate_polylines(square, CFG), CFG, CFG.feed.normal),
             CFG.sync_every_mm,
+            CFG.pen_threshold_z,
         )
         assert fake.commands == expected
         assert fake.max_unacked <= 2

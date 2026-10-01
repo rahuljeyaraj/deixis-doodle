@@ -191,7 +191,7 @@ class Controller:
     def _submit(self, label: str, lines: list[str], state: State) -> None:
         for line in lines:
             check_line(line, phase="job", config=self.config)
-        lines = gcode.insert_syncs(lines, self.config.sync_every_mm)
+        lines = gcode.insert_syncs(lines, self.config.sync_every_mm, self.config.pen_threshold_z)
         with self._cond:
             if self._state == "disconnected":
                 raise RuntimeError("not started; call start() first")

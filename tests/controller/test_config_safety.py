@@ -33,7 +33,7 @@ def test_defaults_are_consistent():
     assert CFG.park_y == CFG.y_max  # bed toward the user on a stock Ender 3
     assert CFG.pen_up_z > CFG.pen_down_z
     assert CFG.feed.slow < CFG.feed.normal < CFG.feed.fast
-    assert CFG.max_segment_mm == 10
+    assert CFG.max_segment_mm == 2.5
 
 
 def test_save_and_load_round_trip(tmp_path):
