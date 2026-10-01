@@ -109,6 +109,16 @@ class SerialLink:
     # ------------------------------------------------------------------ lifecycle
 
     def connect(self) -> None:
+        """Open the port and handshake. Also reopens after a failure (a pulled cable)."""
+        with self._cond:
+            self._error = None
+            self._pending.clear()
+            self._resend_from = None
+            self._last_resend = None
+            self._ignore_resends = 0
+            self._stopped = False
+            self._next_n = 1
+            self._last_rx = now()
         try:
             if self._factory is not None:
                 self._ser = self._factory()
@@ -157,6 +167,12 @@ class SerialLink:
         raise LinkTimeout(
             f"no answer from the firmware on {self.port} within {self.boot_timeout} s"
         )
+
+    @property
+    def failed(self) -> str | None:
+        """Why the link failed (a read or write error, a firmware halt), or None."""
+        e = self._error
+        return None if e is None or isinstance(e, LinkStopped) else str(e)
 
     def close(self) -> None:
         self._closed = True

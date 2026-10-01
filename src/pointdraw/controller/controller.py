@@ -12,6 +12,9 @@ with a `SafetyError`. A worker thread then streams each job one line at a time:
 - `stop()` sends M410 at once from the caller's thread, drops every queued job, then the
   worker renumbers the link and lifts the pen. M410 stops without deceleration and Marlin
   warns that steps may be lost, so (with `rehome_after_stop`) the next command homes first.
+- A link failure (a pulled USB cable, a firmware halt) puts the controller in `error`: jobs
+  are refused and `status()` says why, also when the link died while idle. `reconnect()`
+  opens the link again; the next command then homes first (the board may have restarted).
 """
 
 from __future__ import annotations
@@ -199,8 +202,55 @@ class Controller:
             self._emit("pause_request", request)
 
     def status(self) -> ControllerStatus:
+        failed = None
         with self._cond:
-            return ControllerStatus(self._state, self._progress, self._hands_clear, self._message)
+            why = getattr(self._t, "failed", None)
+            if why and self._state not in ("error", "disconnected") and not self._busy:
+                # The link died while nothing was sent (the reader saw it): say so now, not
+                # at the next command.
+                self._state, self._message = "error", f"link: {why}"
+                self._jobs.clear()
+                failed = why
+            st = ControllerStatus(self._state, self._progress, self._hands_clear, self._message)
+        if failed is not None:
+            self._emit("error", None, message=failed)
+        return st
+
+    def reconnect(self) -> None:
+        """After a link failure: open the link again. Raises LinkError if it still fails.
+
+        Queued jobs are dropped, and the next command homes first: the board may have
+        restarted, or the bed been pushed, while the link was down.
+        """
+        with self._cond:
+            if self._state not in ("error", "disconnected"):
+                raise RuntimeError(f"reconnect only after a link failure (state {self._state})")
+            self._gen += 1
+            self._jobs.clear()
+        if not self.wait(5.0):
+            raise LinkError("the plotter worker is still busy")
+        try:
+            self._t.close()
+        except Exception:  # noqa: BLE001 - the old link may be half gone
+            log.exception("closing the failed link")
+        self._t.connect()
+        for line in gcode.startup_block(self.config):
+            self._t.send(check_line(line, phase="startup", config=self.config))
+        self._t.wait_idle(timeout=self.config.ack_timeout_s)
+        with self._cond:
+            self._state = "idle"
+            self._message = "reconnected"
+            self._progress = 0.0
+            self._needs_home = True
+            self._end = (0.0, 0.0)
+            self._pen_down = True  # unknown: lift on the first pause
+            if self._worker is None or not self._worker.is_alive():
+                self._closing = False
+                self._worker = threading.Thread(
+                    target=self._run, name="plotter-worker", daemon=True
+                )
+                self._worker.start()
+        self._emit("reconnected", None)
 
     # ------------------------------------------------------------------ extras
 

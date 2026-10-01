@@ -37,7 +37,9 @@ class PlotEvent:
     """Something that happened to a job, stamped on the controller's clock."""
 
     t: float
-    kind: str  # job_start, job_end, pause_request, paused, resumed, stop_request, halted, error
+    # job_start, job_end, pause_request, paused, resumed, stop_request, halted, error,
+    # reconnected
+    kind: str
     label: str = ""  # the job kind: preview, draw, park, home
     tag: Any = None  # the caller's handle for the job (e.g. a drawing id)
     detail: dict[str, Any] = field(default_factory=dict)

@@ -24,7 +24,11 @@ milliseconds since start). The timeline also has the plotter's own events (kind 
 job start and end, pause request, paused, resumed, halted), written as they happen.
 `scripts/replay_live.py` runs a logged session again offline.
 
-Keys: Q or Esc quit, Space stop the plotter, S save a snapshot.
+If the USB cable to the plotter is pulled, the window says so, nothing moves, and R
+reconnects (the plotter then homes and parks). If the microphone is unplugged, the window
+says so and it is tried again every 2 s.
+
+Keys: Q or Esc quit, Space stop the plotter, S save a snapshot, R reconnect the plotter.
 """
 
 from __future__ import annotations
@@ -315,6 +319,35 @@ def render_window(img, hf, view: BedView, paper, plotter: LivePlotter, top, line
     return vis
 
 
+def problems(plotter_state: str, plotter_problem: str | None, mic_problem: str | None):
+    """What is wrong, in plain words for the window."""
+    out = []
+    if plotter_state == "error" or plotter_problem:
+        out.append("Plotter problem: it isn't answering. Check its USB cable, then press R.")
+    if mic_problem:
+        out.append("Microphone lost: plug it back in. Trying again every 2 seconds.")
+    return out
+
+
+def reconnect(plotter: LivePlotter, rt: Runtime, log: EventLog) -> bool:
+    """R: open the plotter's link again after a failure, then home and park."""
+    t = clock.now()
+    if plotter.status().state != "error":
+        print("R: the plotter link is fine")
+        return False
+    print("reconnecting the plotter ...", flush=True)
+    try:
+        plotter.reconnect()
+    except (LinkError, RuntimeError) as e:
+        log.add(t, "reconnect_failed", why=str(e))
+        print(f"reconnect failed: {e}")
+        return False
+    rt.plotter_back(clock.now())
+    plotter.park(tag="reconnect")  # homes first, then parks (once no hand is over the paper)
+    print("plotter reconnected: it homes and parks once no hand is over the paper")
+    return True
+
+
 def next_frame(cam, plotter, headless: bool):
     """The next camera frame; None if none came for 0.5 s (motion held); "quit" to end.
 
@@ -425,7 +458,8 @@ def run(args: argparse.Namespace) -> int:
     hands_log.write({"t0": first.t, "config": args.config, "hand_scale": args.hand_scale})
     laps = Laps(args.profile)
     next_pic = 0.0
-    window = "pointdraw live (Q quit, Space stop, S save)"
+    window = "pointdraw live (Q quit, Space stop, S save, R reconnect)"
+    mic_problem: str | None = None
     shown = 0
     frames = 0
     lines: list[str] = []
@@ -455,8 +489,14 @@ def run(args: argparse.Namespace) -> int:
                     rt.on_speech_start(ev[1])
                 elif ev[0] == "utterance":
                     rt.on_utterance(ev[1], ev[2])
+                elif ev[0] == "mic_back":
+                    mic_problem = None
+                    log.add(ev[1], "mic_back")
+                    print("microphone back")
                 else:
-                    print(f"speech input stopped: {ev[1]}")
+                    mic_problem = ev[1]
+                    log.add(ev[2], "mic_lost", why=ev[1])
+                    print(f"microphone lost ({ev[1]}): trying again every 2 s")
             rt.on_frame(hf)
             laps.lap("gestures")
             hands_log.write(hand_record(t - first.t, hf, rt, paper))
@@ -479,10 +519,11 @@ def run(args: argparse.Namespace) -> int:
             laps.lap("tick")
 
             key = -1
+            st = plotter.status()  # also notices a link that died while idle
             if not args.headless:
-                st = plotter.status()
                 held = "" if rt.tracker.hands_clear else "  (hand over the paper)"
                 top = [(f"plotter {st.state}{held}", YELLOW), (f"app {rt.state}", YELLOW)]
+                top += [(text, RED) for text in problems(st.state, rt.plotter_problem, mic_problem)]
                 cv2.imshow(window, render_window(img, hf, view, paper, plotter, top, lines))
                 key = cv2.waitKey(1) & 0xFF
             laps.lap("window")
@@ -490,6 +531,8 @@ def run(args: argparse.Namespace) -> int:
                 break
             if key == ord(" "):
                 rt.do_stop(clock.now(), "space key")
+            if key == ord("r"):
+                reconnect(plotter, rt, log)
             if key == ord("s"):
                 out.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(out / f"{frames:06d}-camera.png"), img)

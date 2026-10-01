@@ -12,6 +12,10 @@ a stop can cut the last piece short.
 
 `events`, `ink`, `track` and `sent` match `VirtualPlotter`'s, so the virtual world's checks
 and replay work on either.
+
+A command the controller refuses because the link has failed (a pulled USB cable) does not
+raise into the runtime: it becomes an `error` event with the job's tag, as a job that fails
+on the worker does, and the runtime drops that drawing. `reconnect()` opens the link again.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from deixis.geometry import Box, Polyline
 from pointdraw.controller.api import ControllerStatus, InkSegment, PlotEvent, Speed
 from pointdraw.controller.controller import Controller
 from pointdraw.controller.safety import parse_line
+from pointdraw.controller.transport import LinkError
 
 
 class LivePlotter:
@@ -65,16 +70,28 @@ class LivePlotter:
         return self.ctl.busy
 
     def preview_box(self, box: Box, tag: Any = None) -> None:
-        self.ctl.preview_box(box, tag=tag)
+        self._submit("preview", tag, self.ctl.preview_box, box, tag=tag)
 
     def draw_polylines(self, polylines: list[Polyline], speed: Speed = "normal", tag: Any = None):
-        self.ctl.draw_polylines(polylines, speed, tag=tag)
+        self._submit("draw", tag, self.ctl.draw_polylines, polylines, speed, tag=tag)
 
     def park(self, tag: Any = None) -> None:
-        self.ctl.park(tag=tag)
+        self._submit("park", tag, self.ctl.park, tag=tag)
 
     def home(self, tag: Any = None) -> None:
-        self.ctl.home(tag=tag)
+        self._submit("home", tag, self.ctl.home, tag=tag)
+
+    def reconnect(self) -> None:
+        """Open the link again after a failure (raises LinkError if it still fails)."""
+        self.ctl.reconnect()
+        with self._lock:
+            self._pos = (None, None, None)  # unknown until the next home
+
+    def _submit(self, label: str, job: Any, fn: Callable[..., None], *a: Any, **k: Any) -> None:
+        try:
+            fn(*a, **k)
+        except LinkError as e:
+            self._on_event(PlotEvent(self.ctl.clock(), "error", label, job, {"message": str(e)}))
 
     def stop(self) -> None:
         self.ctl.stop()

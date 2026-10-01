@@ -214,6 +214,7 @@ class Runtime:
         self.backlog: list[Utterance] = []  # heard while an earlier one was being understood
         self.asked: ToolCall | None = None  # the call of a question just left unanswered
         self.size_wait: tuple[float, float] | None = None  # "this big" said at, wait until
+        self.plotter_problem: str | None = None  # the plotter's link failed (until plotter_back)
         self._tags = 0
 
     # ------------------------------------------------------------------ inputs
@@ -809,6 +810,27 @@ class Runtime:
         self.say(t, "Stopped.")
         self._set_state(LISTEN, t)
 
+    def _plotter_failed(self, t: float, why: str) -> None:
+        """The plotter's link failed (a pulled cable): drop what waited for it, say so once."""
+        dropped = []
+        for prop in ([self.proposal] if self.proposal else []) + self.queue:
+            for obj in prop.items:
+                if obj.pending:
+                    self.scene.remove(obj)
+                    dropped.append(obj.id)
+        self.proposal, self.queue, self.drawing = None, [], None
+        self.log.add(t, "plotter_problem", why=why, dropped=dropped)
+        if self.plotter_problem is None:
+            self.say(t, "The plotter isn't answering. Check its cable.")
+        self.plotter_problem = why or "link failed"
+        self._set_state(self._rest_state(), t)
+
+    def plotter_back(self, t: float) -> None:
+        """The link works again (the live app reconnected it)."""
+        self.plotter_problem = None
+        self.log.add(t, "plotter_back")
+        self.say(t, "The plotter is back. It will home before it draws.")
+
     def new_sheet(self, t: float) -> None:
         if self.plotter.busy:
             self.plotter.stop()
@@ -850,7 +872,11 @@ class Runtime:
             self._ev += 1
             tag = e.tag
             prop = self.proposal
-            if prop is not None and tag in prop.previews and e.kind in ("job_end", "halted"):
+            if (
+                prop is not None
+                and tag in prop.previews
+                and e.kind in ("job_end", "halted", "error")
+            ):
                 prop.previews.discard(tag)
                 if not prop.previews and prop.dirty and e.kind == "job_end":
                     self._trace(prop)
@@ -871,6 +897,8 @@ class Runtime:
                         self._next(e.t)
             if e.kind == "halted":
                 self.drawing = None
+            if e.kind == "error":
+                self._plotter_failed(e.t, str(e.detail.get("message", "")))
 
     def _drawn(self, obj: SceneObject, t: float) -> None:
         ink = self.plotter.ink_polylines(obj.id)
