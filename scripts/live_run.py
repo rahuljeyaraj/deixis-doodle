@@ -15,9 +15,10 @@ The plotter moves only when no hand has been over the paper (plus 10 mm) for hal
 and pauses when one comes back. If the camera stops, so does the plotter.
 
 The window shows the camera turned 180 degrees, as the user sees the bed. The run is logged
-in `out/live/<time>/`: `timeline.jsonl` (the runtime's events), `hands.jsonl` (per frame:
-each hand's pose, fingertip and what the gesture tracker made of it) and `frames/` (a small
-picture twice a second, named by milliseconds since start).
+in `out/live/<time>/`: `timeline.jsonl` (the runtime's events), `hands.jsonl` (a header
+with the start time, then per frame: each hand's landmarks, pose and fingertip, and what the
+gesture tracker made of it) and `frames/` (a small picture twice a second, named by
+milliseconds since start). `scripts/replay_live.py` runs a logged session again offline.
 
 Keys: Q or Esc quit, Space stop the plotter, S save a snapshot.
 """
@@ -196,6 +197,9 @@ def hand_record(t: float, hf, rt: Runtime, paper) -> dict:
                 "thumb_out": thumb_out(h),
                 "score": round(h.score, 2),
                 "tip": [round(float(tip[0]), 1), round(float(tip[1]), 1)],
+                "handedness": h.handedness,
+                "mm": np.round(h.landmarks_mm, 2).tolist(),  # bed mm, for replay_live.py
+                "world": None if h.world is None else np.round(h.world, 4).tolist(),
                 "fingers": {
                     n: [round(f.reach, 2), round(f.bend_deg), f.extended, f.curled]
                     for n, f in h.pose.fingers.items()
@@ -295,6 +299,7 @@ def run(args: argparse.Namespace) -> int:
     out = args.out / stamp
     (out / "frames").mkdir(parents=True, exist_ok=True)
     hands_log = (out / "hands.jsonl").open("w", encoding="utf-8")
+    print(json.dumps({"t0": first.t, "config": args.config}), file=hands_log)  # header
     next_pic = 0.0
     window = "pointdraw live (Q quit, Space stop, S save)"
     shown = 0
