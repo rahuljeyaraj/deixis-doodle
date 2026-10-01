@@ -13,6 +13,8 @@ plotter event can come a frame after a runtime event with a later time.
 from __future__ import annotations
 
 import json
+import queue
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -68,3 +70,36 @@ class TimelineWriter:
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+
+class JsonlWriter:
+    """Writes records as JSON lines from a background thread, off the camera loop.
+
+    `hands.jsonl` gets every frame's landmarks (about 5 KB a frame at 30 fps); turning that
+    into text and writing it took time from the loop that watches for hands.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self._q: queue.Queue[dict[str, Any] | None] = queue.Queue()
+        self._f = self.path.open("w", encoding="utf-8")
+        self._thread = threading.Thread(target=self._run, name="jsonl-writer", daemon=True)
+        self._thread.start()
+
+    def write(self, record: dict[str, Any]) -> None:
+        self._q.put(record)
+
+    def _run(self) -> None:
+        while True:
+            rec = self._q.get()
+            if rec is None:
+                break
+            self._f.write(json.dumps(rec) + "\n")
+            if self._q.empty():
+                self._f.flush()
+        self._f.close()
+
+    def close(self) -> None:
+        if self._thread.is_alive():
+            self._q.put(None)
+            self._thread.join(10)

@@ -175,3 +175,30 @@ def test_observations_without_homography():
     assert not frame.has_mm and obs[0].index_tip_mm is None and obs[0].pinch_mm is None
     assert frame.two_hand_span_px is None
     assert HandsFrame(0.0, [], (640, 480)).primary() is None
+
+
+def test_tracker_scale_runs_small_and_answers_in_full_size_pixels():
+    """`HandTracker(scale=0.5)` gives MediaPipe a half-size frame; landmarks stay full size."""
+
+    from pointdraw.vision.hands import HandTracker
+
+    seen = []
+
+    class _Landmarker:
+        def detect_for_video(self, image, ms):
+            seen.append((image.width, image.height))
+            lm = [SimpleNamespace(x=0.25, y=0.5, z=0.0) for _ in range(21)]
+            cat = SimpleNamespace(category_name="Right", score=0.9)
+            return SimpleNamespace(hand_landmarks=[lm], hand_world_landmarks=[], handedness=[[cat]])
+
+        def close(self):
+            pass
+
+    tr = HandTracker.__new__(HandTracker)
+    tr._landmarker, tr.pose, tr._last_ms = _Landmarker(), PoseParams(), -1
+    for scale, size in ((1.0, (1920, 1080)), (0.5, (960, 540))):
+        tr.scale = scale
+        hf = tr.process(np.zeros((1080, 1920, 3), np.uint8), 1.0 + scale)
+        assert seen[-1] == size
+        assert hf.image_size == (1920, 1080)
+        assert np.allclose(hf.hands[0].landmarks_px[0], (480.0, 540.0))

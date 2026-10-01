@@ -109,3 +109,39 @@ def test_plotter_events_go_in_the_timeline_and_replay_skips_them(tmp_path):
     s = load(tmp_path)
     assert [e["kind"] for e in s.events] == ["state"]
     assert len(s.plotter) == len(plot)
+
+
+def test_hands_log_is_written_off_the_loop(tmp_path):
+    from pointdraw.live.logs import JsonlWriter
+
+    w = JsonlWriter(tmp_path / "hands.jsonl")
+    for i in range(100):
+        w.write({"t": i / 30, "hands": []})
+    w.close()
+    rows = [json.loads(x) for x in (tmp_path / "hands.jsonl").read_text().splitlines()]
+    assert [r["t"] for r in rows] == [i / 30 for i in range(100)]
+
+
+def test_window_picture_is_window_sized_and_turned(tmp_path):
+    import numpy as np
+
+    from deixis.geometry import Box
+    from pointdraw.live.view import BedView
+    from pointdraw.vision.aruco import BedHomography
+    from pointdraw.vision.hands import HandsFrame
+
+    live_run = load_script("live_run")
+
+    class _P:
+        def ink_polylines(self):
+            return [[(50.0, 50.0), (60.0, 60.0)]]
+
+    h = np.array([[0.2, 0.0, 0.0], [0.0, -0.2, 220.0], [0.0, 0.0, 1.0]])
+    view = BedView(BedHomography(h, (), 0.0, 0.0, float("nan")), 220.0, lambda: None)
+    img = np.zeros((1080, 1920, 3), np.uint8)
+    img[:10, :10] = 255  # camera top left: bottom right once turned
+    vis = live_run.render_window(
+        img, HandsFrame(0.0, [], (1920, 1080)), view, Box(30, 40, 150, 120), _P(), [], []
+    )
+    assert vis.shape == (720, 1280, 3)
+    assert vis[-2, -2].min() > 200

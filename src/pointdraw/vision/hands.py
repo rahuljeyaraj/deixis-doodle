@@ -264,7 +264,10 @@ class HandTracker:
         min_presence: float = 0.5,
         min_tracking: float = 0.5,
         pose: PoseParams = DEFAULT_POSE,
+        scale: float = 1.0,
     ) -> None:
+        """`scale` < 1 runs MediaPipe on a smaller copy of each frame (landmarks come back in
+        full-size pixels): it resizes to its own small input anyway."""
         from mediapipe.tasks.python import BaseOptions, vision
 
         path = ensure_model(model_path)
@@ -278,6 +281,7 @@ class HandTracker:
         )
         self._landmarker = vision.HandLandmarker.create_from_options(opts)
         self.pose = pose
+        self.scale = scale
         self._last_ms = -1
 
     def __enter__(self) -> HandTracker:
@@ -295,7 +299,12 @@ class HandTracker:
 
         ms = max(int(round(t * 1000)), self._last_ms + 1)  # VIDEO mode needs increasing ms
         self._last_ms = ms
-        rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+        small = image_bgr
+        if self.scale < 1.0:
+            small = cv2.resize(
+                image_bgr, None, fx=self.scale, fy=self.scale, interpolation=cv2.INTER_AREA
+            )
+        rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
         result = self._landmarker.detect_for_video(
             mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), ms
         )

@@ -35,7 +35,10 @@ import faulthandler
 import json
 import logging
 import os
+import statistics
 import sys
+import time
+from collections import defaultdict
 from pathlib import Path
 
 os.environ.setdefault("OMP_NUM_THREADS", "4")
@@ -57,7 +60,7 @@ from pointdraw.controller.transport import LinkError, Transport  # noqa: E402
 from pointdraw.drawing import Library  # noqa: E402
 from pointdraw.live.agent import BackgroundAgent  # noqa: E402
 from pointdraw.live.frames import SavedFrames, frame_paths  # noqa: E402
-from pointdraw.live.logs import TimelineWriter  # noqa: E402
+from pointdraw.live.logs import JsonlWriter, TimelineWriter  # noqa: E402
 from pointdraw.live.view import BedView, PaperCamera  # noqa: E402
 from pointdraw.m1 import over_bed  # noqa: E402
 from pointdraw.runtime.events import EventLog  # noqa: E402
@@ -97,6 +100,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument(
         "--frames", type=Path, default=None, help="play a run's saved pictures, not the camera"
     )
+    ap.add_argument("--frames-fps", type=float, default=30.0, help="with --frames: pictures/s")
+    ap.add_argument(
+        "--hand-scale",
+        type=float,
+        default=1.0,
+        help="run MediaPipe on the frame scaled by this (0.5 moved the fingertip up to 1 mm)",
+    )
     ap.add_argument("--calib", type=Path, default=DEFAULT_CALIBRATION_PATH)
     ap.add_argument("--lens", type=Path, default=DEFAULT_LENS_PATH)
 
@@ -115,6 +125,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--vad", default="silero", choices=["silero", "energy"])
 
     ap.add_argument("--headless", action="store_true", help="no window")
+    ap.add_argument("--profile", action="store_true", help="time each stage of the loop")
+    ap.add_argument(
+        "--hands-log",
+        choices=["thread", "sync"],
+        default="thread",
+        help="write hands.jsonl from a background thread (or on the loop, as on 1 Oct)",
+    )
     ap.add_argument("--max-frames", type=int, default=0, help="stop after N frames (0: never)")
     ap.add_argument("--out", type=Path, default=Path("out/live"))
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -171,9 +188,13 @@ def load_lens(path: Path, size: tuple[int, int]) -> LensModel | None:
     return lens
 
 
-def put(vis: np.ndarray, text: str, org: tuple[int, int], colour=WHITE, scale: float = 0.9) -> None:
-    cv2.putText(vis, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 5, cv2.LINE_AA)
-    cv2.putText(vis, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, colour, 2, cv2.LINE_AA)
+WINDOW_W = 1280  # the window's width in pixels
+
+
+def put(vis: np.ndarray, text: str, org: tuple[int, int], colour=WHITE, scale: float = 0.6) -> None:
+    thick = max(2, round(4 * scale / 0.6))
+    cv2.putText(vis, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thick + 2, cv2.LINE_AA)
+    cv2.putText(vis, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, colour, thick - 1, cv2.LINE_AA)
 
 
 def describe(e: dict) -> str | None:
@@ -226,22 +247,72 @@ def hand_record(t: float, hf, rt: Runtime, paper) -> dict:
     }
 
 
-def draw_overlay(vis, hf, view: BedView, paper, plotter: LivePlotter) -> None:
+class Laps:
+    """With --profile: the time each stage of the camera loop takes, per frame."""
+
+    def __init__(self, on: bool) -> None:
+        self.on = on
+        self.laps: dict[str, list[float]] = defaultdict(list)
+        self._t = time.perf_counter()
+        self._start = self._t
+        self.frames = 0
+
+    def lap(self, name: str) -> None:
+        if self.on:
+            now = time.perf_counter()
+            self.laps[name].append(now - self._t)
+            self._t = now
+
+    def report(self) -> dict:
+        wall = time.perf_counter() - self._start
+        out = {
+            "frames": self.frames,
+            "wall_s": round(wall, 2),
+            "fps": round(self.frames / wall, 1) if wall > 0 else 0.0,
+            "stages_ms": {},
+        }
+        for k, v in self.laps.items():
+            v = sorted(v)
+            out["stages_ms"][k] = {
+                "median": round(1000 * statistics.median(v), 2),
+                "p95": round(1000 * v[int(0.95 * (len(v) - 1))], 2),
+                "mean": round(1000 * statistics.fmean(v), 2),
+            }
+        return out
+
+
+def draw_overlay(vis, hf, view: BedView, paper, plotter: LivePlotter, scale: float = 1.0) -> None:
+    """The paper, the robot's ink and the hands, on `vis` (the camera image times `scale`)."""
     corners = np.array(
         [(paper.x, paper.y), (paper.x2, paper.y), (paper.x2, paper.y2), (paper.x, paper.y2)]
     )
-    quad = view.to_px(corners).astype(np.int32)
+    quad = (view.to_px(corners) * scale).astype(np.int32)
     cv2.polylines(vis, [quad], True, BLUE, 2, cv2.LINE_AA)
-    ink = plotter.ink_polylines()
-    for a, b in ink[-2000:]:
-        pa, pb = view.to_px(np.array([a, b])).astype(np.int32)
-        cv2.line(vis, tuple(pa), tuple(pb), RED, 1, cv2.LINE_AA)
+    ink = plotter.ink_polylines()[-2000:]
+    if ink:
+        px = (view.to_px(np.array(ink).reshape(-1, 2)) * scale).astype(np.int32).reshape(-1, 2, 2)
+        cv2.polylines(vis, list(px), False, RED, 1, cv2.LINE_AA)
     for h in hf.hands:
         col = GREEN if h.pointing else CYAN
+        lm = (h.landmarks_px * scale).astype(np.int32)
         for a, b in HAND_CONNECTIONS:
-            pa, pb = np.int32(h.landmarks_px[a]), np.int32(h.landmarks_px[b])
-            cv2.line(vis, tuple(pa), tuple(pb), col, 2, cv2.LINE_AA)
-        cv2.circle(vis, tuple(np.int32(h.landmarks_px[INDEX_TIP])), 10, col, 2)
+            cv2.line(vis, tuple(lm[a]), tuple(lm[b]), col, 2, cv2.LINE_AA)
+        cv2.circle(vis, tuple(lm[INDEX_TIP]), 7, col, 2)
+
+
+def render_window(img, hf, view: BedView, paper, plotter: LivePlotter, top, lines) -> np.ndarray:
+    """The window's picture: shrunk first (drawing on the full 1080p frame took ~7 ms), the
+    overlay, turned 180 degrees as the user sees the bed, then `top` [(text, colour)] at the
+    top and the last few `lines` at the bottom."""
+    scale = min(1.0, WINDOW_W / img.shape[1])
+    vis = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    draw_overlay(vis, hf, view, paper, plotter, scale)
+    vis = cv2.rotate(vis, cv2.ROTATE_180)
+    for i, (text, colour) in enumerate(top):
+        put(vis, text, (14, 32 + 32 * i), colour)
+    for i, s in enumerate(lines):
+        put(vis, s, (14, vis.shape[0] - 20 - 30 * (len(lines) - 1 - i)))
+    return vis
 
 
 def next_frame(cam, plotter, headless: bool):
@@ -276,12 +347,14 @@ def run(args: argparse.Namespace) -> int:
     # The hand tracker first, before the camera's grab thread runs: on 1 Oct one start in six
     # crashed in this stretch (see scripts/startup_check.py and the 2 Oct night report).
     print("start: hand tracker", flush=True)
-    hands = HandTracker()
+    hands = HandTracker(scale=args.hand_scale)
     index = args.camera if args.camera is not None else get_settings().camera_index
     print(f"start: camera {index} ({args.backend})", flush=True)
     try:
         if args.frames is not None:
-            cam = SavedFrames(frame_paths(args.frames), size=(args.width, args.height))
+            cam = SavedFrames(
+                frame_paths(args.frames), fps=args.frames_fps, size=(args.width, args.height)
+            )
         else:
             cam = Camera(
                 CameraSettings(
@@ -342,9 +415,15 @@ def run(args: argparse.Namespace) -> int:
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = args.out / stamp
     (out / "frames").mkdir(parents=True, exist_ok=True)
-    hands_log = (out / "hands.jsonl").open("w", encoding="utf-8")
+    hands_log = JsonlWriter(out / "hands.jsonl")
+    if args.hands_log == "sync":  # as on 1 Oct, for --profile comparisons
+        hands_log.close()
+        sync_log = (out / "hands.jsonl").open("w", encoding="utf-8")
+        hands_log.write = lambda r: print(json.dumps(r), file=sync_log)  # type: ignore[method-assign]
+        hands_log.close = sync_log.close  # type: ignore[method-assign]
     timeline = TimelineWriter(out / "timeline.jsonl")
-    print(json.dumps({"t0": first.t, "config": args.config}), file=hands_log)  # header
+    hands_log.write({"t0": first.t, "config": args.config, "hand_scale": args.hand_scale})
+    laps = Laps(args.profile)
     next_pic = 0.0
     window = "pointdraw live (Q quit, Space stop, S save)"
     shown = 0
@@ -361,10 +440,13 @@ def run(args: argparse.Namespace) -> int:
                 break
             if frame is None:
                 continue
+            laps.lap("read")
             t, img = frame.t, frame.image
             frame = None
             frames += 1
+            laps.frames = frames
             hf = hands.process(img, t, view.to_mm)
+            laps.lap("hands")
             near = any(over_bed(h.landmarks_mm, paper, 10.0) for h in hf.hands)
             camera.offer(img, t, near)
             while not words.events.empty():
@@ -376,11 +458,14 @@ def run(args: argparse.Namespace) -> int:
                 else:
                     print(f"speech input stopped: {ev[1]}")
             rt.on_frame(hf)
-            print(json.dumps(hand_record(t - first.t, hf, rt, paper)), file=hands_log)
+            laps.lap("gestures")
+            hands_log.write(hand_record(t - first.t, hf, rt, paper))
+            laps.lap("hands_log")
             if t >= next_pic:
                 next_pic = t + 0.5
                 pic = cv2.rotate(cv2.resize(img, (640, 360)), cv2.ROTATE_180)
                 cv2.imwrite(str(out / "frames" / f"{round((t - first.t) * 1000):07d}.jpg"), pic)
+            laps.lap("picture")
             rt.tick(t)
             for e in log.events[shown:]:
                 text = describe(e)
@@ -391,22 +476,16 @@ def run(args: argparse.Namespace) -> int:
             shown = len(log.events)
             timeline.write_new(log.events)
             timeline.write_plotter(plotter.events)
+            laps.lap("tick")
 
             key = -1
             if not args.headless:
-                vis = img.copy()
-                draw_overlay(vis, hf, view, paper, plotter)
-                vis = cv2.rotate(vis, cv2.ROTATE_180)  # as the user sees the bed
                 st = plotter.status()
                 held = "" if rt.tracker.hands_clear else "  (hand over the paper)"
-                put(vis, f"plotter {st.state}{held}", (20, 45), YELLOW)
-                put(vis, f"app {rt.state}", (20, 90), YELLOW)
-                for i, s in enumerate(lines):
-                    put(vis, s, (20, vis.shape[0] - 30 - 45 * (len(lines) - 1 - i)))
-                scale = min(1.0, 1280 / vis.shape[1])
-                small = cv2.resize(vis, None, fx=scale, fy=scale) if scale < 1 else vis
-                cv2.imshow(window, small)
+                top = [(f"plotter {st.state}{held}", YELLOW), (f"app {rt.state}", YELLOW)]
+                cv2.imshow(window, render_window(img, hf, view, paper, plotter, top, lines))
                 key = cv2.waitKey(1) & 0xFF
+            laps.lap("window")
             if key in (ord("q"), 27):
                 break
             if key == ord(" "):
@@ -434,6 +513,12 @@ def run(args: argparse.Namespace) -> int:
             cv2.destroyAllWindows()
         out.mkdir(parents=True, exist_ok=True)
         hands_log.close()
+        if args.profile:
+            rep = laps.report()
+            (out / "timing.json").write_text(json.dumps(rep, indent=1), encoding="utf-8")
+            print(f"loop: {rep['fps']} fps over {rep['frames']} frames")
+            for k, v in rep["stages_ms"].items():
+                print(f"  {k:10} median {v['median']:6.2f} ms  p95 {v['p95']:6.2f} ms")
         timeline.write_new(log.events)
         timeline.write_plotter(plotter.events)
         timeline.close()
