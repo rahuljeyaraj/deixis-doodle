@@ -4,8 +4,9 @@
     uv run python scripts/startup_check.py --runs 30 --steps camera hands
     uv run python scripts/startup_check.py --step camera              # one step, once, here
     uv run python scripts/startup_check.py --runs 30 --steps camera reopen full
-    uv run python scripts/startup_check.py --runs 30 --steps camera reopen full \
-        --env OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS=0      # try a camera setting
+
+To try a camera setting in the child processes, add for example
+`--env OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS=0` (MSMF without hardware transforms).
 
 On 1 Oct 2026 `live_run.py` crashed once in six starts with a segmentation fault, before it
 printed anything: while opening the camera or creating the hand tracker. Each run here is a
