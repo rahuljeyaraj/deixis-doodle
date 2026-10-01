@@ -74,6 +74,13 @@ STOP_WORDS = {"stop", "halt", "freeze"}
 WRITE_VERBS = {"write", "label", "print"}
 FILLERS = {"please", "um", "uh", "er", "erm", "okay", "ok", "oh", "now", "wait", "robot"}
 CANCEL_ANSWERS = {"cancel", "nevermind", "never", "forget", "nothing"}
+# Said on their own, these mean "yes" to a preview or a question, and nothing otherwise. On
+# the Ender (1 Oct 2026) a lone "hello", "hmm" or "okay" came back as another place_drawing
+# of the last object, drawn in the middle of the page.
+ACKS = {"yes", "yeah", "yep", "yup", "sure", "right", "alright", "fine", "hmm", "hm", "mm"}
+ACKS |= {"mhm", "hello", "hi", "hey", "so", "well", "and", "i", "mean", "just"}
+# Words that let place_drawing repeat an object the person didn't name ("another one").
+REPEAT_WORDS = {"another", "again", "same", "more", "copy", "one", "ones"}
 
 
 class AgentPort(Protocol):
@@ -261,6 +268,9 @@ class Runtime:
         )
         if not words:
             return
+        if self._is_noise(utt):
+            self.log.add(t, "ignored", utt=utt.id, why="only fillers, and nothing to answer")
+            return
         if self._is_stop(utt):
             self.log.add(
                 t,
@@ -385,6 +395,13 @@ class Runtime:
         calls = split_shared_labels(res.calls)
         if calls != res.calls:
             self.log.add(t, "guard", said=utt.text, why="one label text shared by several labels")
+        named = [c for c in calls if not self._invented(c, utt)]
+        if len(named) < len(calls):
+            self.log.add(t, "guard", said=utt.text, why="place_drawing of an object not said")
+            calls = named
+            if not calls:
+                self.say(t, "Sorry, I didn't catch that. Could you say it again?")
+                return
         refs = self._refs(utt)
         refs.prepare(calls)
         new: list[SceneObject] = []
@@ -942,6 +959,32 @@ class Runtime:
 
     def say(self, t: float, text: str) -> None:
         self.log.add(t, "say", text=text)
+
+    def _is_noise(self, utt: Utterance) -> bool:
+        """Only fillers and acknowledgements, with no preview or question to answer."""
+        if self.proposal is not None or self.question is not None:
+            return False
+        toks = [norm_word(w.text) for w in utt.words]
+        return all(w in FILLERS or w in ACKS or not w for w in toks)
+
+    def _invented(self, call: ToolCall, utt: Utterance) -> bool:
+        """place_drawing of an object the person never named (the model repeating the last)."""
+        if call.name != "place_drawing":
+            return False
+        obj = getattr(call.args, "object", "")
+        target = self.planner.resolve(obj) or norm_word(obj)
+        previewed = [o.label for p in [self.proposal, *self.queue] if p for o in p.items]
+        if target in previewed:  # "no, there": move the preview
+            return False
+        toks = [norm_word(w.text) for w in utt.words]
+        if any(w in REPEAT_WORDS for w in toks):
+            return False
+        grams = toks + [f"{a} {b}" for a, b in zip(toks, toks[1:], strict=False)]
+        for g in grams:
+            for form in (g, g[:-1] if g.endswith("s") else g, g[:-2] if g.endswith("es") else g):
+                if form and (self.planner.resolve(form) or form) == target:
+                    return False
+        return True
 
     def _is_stop(self, utt: Utterance) -> bool:
         toks = [norm_word(w.text) for w in utt.words]

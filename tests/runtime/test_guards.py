@@ -1,0 +1,60 @@
+"""Heard on the Ender (1 Oct 2026): fillers and chatter must not draw anything.
+
+A lone "hello", "hmm" or "okay" came back from the model as place_drawing of the last
+object, which was then drawn in the middle of the page.
+"""
+
+import pytest
+
+from deixis.types import Word
+from pointdraw.agent.nemotron import AgentResult
+from pointdraw.agent.schema import parse_call
+from pointdraw.controller.config import MachineConfig
+from pointdraw.runtime.planner import Planner
+from pointdraw.runtime.runtime import Runtime
+from pointdraw.virtual.plotter import VirtualPlotter
+
+CROSS = parse_call("place_drawing", {"object": "cross", "place": {"empty_space": True}})
+
+
+class Repeats:
+    """Answers every utterance with place_drawing(cross), as the model did."""
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    def understand(self, words, context):
+        self.asked.append(" ".join(words))
+        return AgentResult(calls=[CROSS], source="cache")
+
+
+def run(text: str) -> tuple[Runtime, Repeats]:
+    agent = Repeats()
+    rt = Runtime(agent, VirtualPlotter(), MachineConfig(), Planner())
+    rt.start(0.0)
+    words = [Word(w, 1.0 + 0.3 * i, 1.2 + 0.3 * i) for i, w in enumerate(text.split())]
+    rt.on_utterance(words, 3.0)
+    rt.tick(5.0)
+    return rt, agent
+
+
+@pytest.mark.parametrize("text", ["Hello", "Hmm", "Okay", "Yeah so", "Sure", "I mean", "Um"])
+def test_fillers_alone_are_ignored(text):
+    rt, agent = run(text)
+    assert agent.asked == [] and rt.log.of("ignored") and rt.proposal is None
+
+
+@pytest.mark.parametrize("text", ["Maybe I m not sure", "You know what", "Best bit"])
+def test_an_object_not_said_is_not_drawn(text):
+    rt, agent = run(text)
+    assert agent.asked == [text]
+    assert rt.proposal is None and not rt.scene.objects
+    assert any(
+        g["why"].startswith("place_drawing of an object not said") for g in rt.log.of("guard")
+    )
+
+
+@pytest.mark.parametrize("text", ["A cross", "Draw a cross", "draw two crosses", "another one"])
+def test_an_object_said_is_drawn(text):
+    rt, _ = run(text)
+    assert rt.proposal is not None and rt.proposal.items[0].label == "cross"

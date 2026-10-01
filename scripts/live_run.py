@@ -14,8 +14,10 @@ At start it homes Y (the bed slips if pushed) and parks, once no hand is over th
 The plotter moves only when no hand has been over the paper (plus 10 mm) for half a second,
 and pauses when one comes back. If the camera stops, so does the plotter.
 
-The window shows the camera turned 180 degrees, as the user sees the bed. The log of the
-run goes to `out/live/<time>/timeline.jsonl`.
+The window shows the camera turned 180 degrees, as the user sees the bed. The run is logged
+in `out/live/<time>/`: `timeline.jsonl` (the runtime's events), `hands.jsonl` (per frame:
+each hand's pose, fingertip and what the gesture tracker made of it) and `frames/` (a small
+picture twice a second, named by milliseconds since start).
 
 Keys: Q or Esc quit, Space stop the plotter, S save a snapshot.
 """
@@ -51,6 +53,7 @@ from pointdraw.live.agent import BackgroundAgent  # noqa: E402
 from pointdraw.live.view import BedView, PaperCamera  # noqa: E402
 from pointdraw.m1 import over_bed  # noqa: E402
 from pointdraw.runtime.events import EventLog  # noqa: E402
+from pointdraw.runtime.gestures import thumb_out  # noqa: E402
 from pointdraw.runtime.live_plotter import LivePlotter  # noqa: E402
 from pointdraw.runtime.planner import Planner  # noqa: E402
 from pointdraw.runtime.runtime import Runtime  # noqa: E402
@@ -173,10 +176,40 @@ def describe(e: dict) -> str | None:
         return f"SAYS: {e['text']}"
     if k == "state":
         return f"state {e['state']}"
+    if k in ("ignored", "guard"):
+        return f"{k}: {e['why']}"
     if k in ("preview", "confirm", "drawn", "stop"):
         rest = {a: b for a, b in e.items() if a not in ("t", "kind")}
         return f"{k} {rest}"
     return None
+
+
+def hand_record(t: float, hf, rt: Runtime, paper) -> dict:
+    """One line of hands.jsonl: what the camera saw and what the gesture tracker made of it."""
+    s = rt.tracker.last
+    hands = []
+    for h in hf.hands:
+        tip = h.landmarks_mm[INDEX_TIP] - np.array([paper.x, paper.y])
+        hands.append(
+            {
+                "pointing": h.pointing,
+                "thumb_out": thumb_out(h),
+                "score": round(h.score, 2),
+                "tip": [round(float(tip[0]), 1), round(float(tip[1]), 1)],
+                "fingers": {
+                    n: [round(f.reach, 2), round(f.bend_deg), f.extended, f.curled]
+                    for n, f in h.pose.fingers.items()
+                },
+            }
+        )
+    return {
+        "t": round(t, 3),
+        "hands": hands,
+        "tip": [round(v, 1) for v in s.tip] if s and s.tip else None,
+        "span": round(s.span, 1) if s and s.span else None,
+        "clear": rt.tracker.hands_clear,
+        "state": rt.state,
+    }
 
 
 def draw_overlay(vis, hf, view: BedView, paper, plotter: LivePlotter) -> None:
@@ -260,6 +293,9 @@ def run(args: argparse.Namespace) -> int:
 
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = args.out / stamp
+    (out / "frames").mkdir(parents=True, exist_ok=True)
+    hands_log = (out / "hands.jsonl").open("w", encoding="utf-8")
+    next_pic = 0.0
     window = "pointdraw live (Q quit, Space stop, S save)"
     shown = 0
     frames = 0
@@ -290,6 +326,11 @@ def run(args: argparse.Namespace) -> int:
                 else:
                     print(f"speech input stopped: {ev[1]}")
             rt.on_frame(hf)
+            print(json.dumps(hand_record(t - first.t, hf, rt, paper)), file=hands_log)
+            if t >= next_pic:
+                next_pic = t + 0.5
+                pic = cv2.rotate(cv2.resize(img, (640, 360)), cv2.ROTATE_180)
+                cv2.imwrite(str(out / "frames" / f"{round((t - first.t) * 1000):07d}.jpg"), pic)
             rt.tick(t)
             for e in log.events[shown:]:
                 text = describe(e)
@@ -340,6 +381,7 @@ def run(args: argparse.Namespace) -> int:
         if not args.headless:
             cv2.destroyAllWindows()
         out.mkdir(parents=True, exist_ok=True)
+        hands_log.close()
         with (out / "timeline.jsonl").open("w", encoding="utf-8") as f:
             for e in log.events:
                 f.write(json.dumps(e, default=str) + "\n")
