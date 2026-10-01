@@ -73,12 +73,28 @@ def _strokes(raw: list[list[list[float]]]) -> list[Polyline]:
     return [[(float(x), float(y)) for x, y in s] for s in raw]
 
 
+#: Spoken words for a drawing style, and the style tag the SANA variants carry
+#: (docs/virtual-test-plan.md section 6; rahul, 1 Oct 2026: "a simple picture" draws the icon
+#: style, "a detailed picture" the colouring-book style).
+STYLE_WORDS: dict[str, str] = {
+    "simple": "icon", "plain": "icon", "basic": "icon", "icon": "icon",
+    "detailed": "colouring", "fancy": "colouring", "full": "colouring",
+    "colouring": "colouring", "coloring": "colouring",
+}  # fmt: skip
+
+
+def style_tag(word: str | None) -> str | None:
+    """'simple' -> 'icon', 'detailed' -> 'colouring'; None or an unknown word -> None."""
+    return STYLE_WORDS.get(normalise(word)) if word else None
+
+
 @dataclass(frozen=True)
 class Drawing:
     category: str
     key_id: str
     variant: int
     strokes: list[Polyline]  # library units, y up
+    style: str | None = None  # SANA variants: "icon" or "colouring"; Quick, Draw!: None
 
     @property
     def size(self) -> tuple[float, float]:
@@ -107,7 +123,9 @@ class Library:
             normalise(k): v for k, v in index.get("synonyms", {}).items() if v in self._cats
         }
         self._cache: dict[str, list[Drawing]] = {}
-        self._next: dict[str, int] = {}
+        self._next: dict[tuple[str, str | None], int] = {}
+        #: the style used when a request names none (index.json "default_style")
+        self.default_style: str | None = index.get("default_style")
 
     @classmethod
     def load(cls, root: str | Path | None = None) -> Library:
@@ -133,7 +151,14 @@ class Library:
     def __contains__(self, name: str) -> bool:
         return self.resolve(name) is not None
 
-    def variants(self, name: str) -> list[Drawing]:
+    def styles(self, name: str) -> list[str]:
+        """The styles a category has ([] for a Quick, Draw! category)."""
+        return sorted({d.style for d in self.variants(name, style="any") if d.style})
+
+    def variants(self, name: str, style: str | None = None) -> list[Drawing]:
+        """A category's drawings. `style` ("simple"/"icon", "detailed"/"colouring") keeps
+        that style; None means the library's default style; "any" keeps them all. A category
+        without the asked style gives all its drawings rather than none."""
         cat = self.resolve(name)
         if cat is None:
             pool = self.categories + sorted(self._syn)
@@ -142,24 +167,34 @@ class Library:
             with open(self.root / self._cats[cat]["file"], encoding="utf-8") as fh:
                 data = json.load(fh)
             self._cache[cat] = [
-                Drawing(cat, str(v["key_id"]), i, _strokes(v["strokes"]))
+                Drawing(cat, str(v["key_id"]), i, _strokes(v["strokes"]), v.get("style"))
                 for i, v in enumerate(data["variants"])
             ]
-        return self._cache[cat]
+        vs = self._cache[cat]
+        if style == "any":
+            return vs
+        tag = style_tag(style) if style else self.default_style
+        mine = [d for d in vs if d.style == tag] if tag else []
+        return mine or vs
 
     def get(
-        self, name: str, variant: int | str | None = None, rng: random.Random | None = None
+        self,
+        name: str,
+        variant: int | str | None = None,
+        rng: random.Random | None = None,
+        style: str | None = None,
     ) -> Drawing:
-        """A drawing of `name`.
+        """A drawing of `name`, in `style` if it has one (see `variants`).
 
         variant: an index (wraps around); "random"; or None, which cycles through the
         variants so asking for "another tree" gives a different one.
         """
-        vs = self.variants(name)
+        vs = self.variants(name, style)
         cat = vs[0].category
         if variant is None:
-            i = self._next.get(cat, 0)
-            self._next[cat] = i + 1
+            key = (cat, vs[0].style)
+            i = self._next.get(key, 0)
+            self._next[key] = i + 1
         elif variant == "random":
             i = (rng or random).randrange(len(vs))
         elif isinstance(variant, int):

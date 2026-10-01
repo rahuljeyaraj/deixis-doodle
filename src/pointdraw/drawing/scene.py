@@ -54,10 +54,12 @@ def place_object(
     variant: int | str | None = None,
     smooth_iterations: int = 2,
     id: str | None = None,
+    style: str | None = None,
 ) -> Placed:
-    """A library drawing whose larger bbox side is `size` mm, centred on `center`."""
+    """A library drawing whose larger bbox side is `size` mm, centred on `center`.
+    `style`: "simple" or "detailed" where the category has both (SANA drawings)."""
     lib = library or Library.load()
-    d = lib.get(name, variant)
+    d = lib.get(name, variant, style=style)
     pls = fit(d.strokes, center, size, smooth_iterations)
     return Placed(id or d.category, "object", pls, bbox(pls), d.category, d.key_id)
 

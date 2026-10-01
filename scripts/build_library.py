@@ -30,6 +30,9 @@ PICKS = LIB / "picks.json"
 SANA_CANDIDATES = LIB / "sana" / "candidates"
 SANA_PICKS = LIB / "sana_picks.json"
 SANA_MODEL = "Efficient-Large-Model/Sana_1600M_1024px_diffusers"
+# the style a request gets when it says neither "simple" nor "detailed" (rahul liked the
+# colouring-book look best, 1 Oct 2026; icons draw 2 to 3 times faster)
+DEFAULT_STYLE = "colouring"
 SANA_LICENCE = (
     "Apache-2.0 (model card, checked 2026-10-01); text encoder Gemma-2-2B-IT: Gemma Terms of Use"
 )
@@ -122,6 +125,7 @@ def main() -> int:
         "version": 1,
         "source": "Quick, Draw! by Google Creative Lab (CC BY 4.0); see ATTRIBUTION.md"
         + (". Categories with source 'sana': SANA 1600M line art (Apache-2.0)" if sana else ""),
+        **({"default_style": DEFAULT_STYLE} if sana else {}),
         "categories": dict(sorted(cats.items())),
         "synonyms": synonyms,
     }
@@ -156,7 +160,7 @@ def add_sana(cats: dict[str, dict]) -> list[str]:
             if c is None:
                 print(f"{cat:14s} SANA pick {k!r} not among the candidates", file=sys.stderr)
                 continue
-            keep = ("key_id", "strokes", "seed", "prompt")
+            keep = ("key_id", "style", "strokes", "seed", "prompt")
             variants.append({k2: c[k2] for k2 in keep if k2 in c})
         if not variants:
             continue
@@ -171,6 +175,9 @@ def add_sana(cats: dict[str, dict]) -> list[str]:
         text = json.dumps(doc, separators=(",", ":")) + "\n"
         (LIB / fname).write_text(text, encoding="utf-8")
         entry = {"file": fname, "variants": len(variants), "source": "sana"}
+        styles = sorted({v["style"] for v in variants if v.get("style")})
+        if styles:
+            entry["styles"] = {st: sum(v.get("style") == st for v in variants) for st in styles}
         if cat in cats:
             entry["fallback"] = cats[cat]["file"]
         cats[cat] = entry
