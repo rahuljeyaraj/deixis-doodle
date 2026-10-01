@@ -17,6 +17,8 @@ import json
 import sys
 from pathlib import Path
 
+STYLE_NAMES = {"icon": "simple (icon)", "colouring": "detailed (colouring book)"}
+
 HELP = (
     "Picked SANA drawings per category, first = first choice: key_ids from "
     "library/sana/candidates/<name>.json, or 1-based ranks. Then run scripts/build_library.py."
@@ -51,23 +53,25 @@ def load(traced: Path, scores: dict[str, dict]) -> dict[str, list[dict]]:
 def page(cats: dict[str, list[dict]], picks: dict[str, list[str]]) -> str:
     sections = []
     for cat, vs in cats.items():
-        cells = []
+        groups: dict[str, list[str]] = {}
         for v in vs:
             k = v["key_id"]
             tag = f"{len(v['strokes'])} strokes"
             if v["_score"] is not None:
                 tag += f" · {v['_score']:g}"
             note = html.escape(v["_note"])
-            style = html.escape(v.get("style") or "")
-            cells.append(
+            groups.setdefault(v.get("style") or "", []).append(
                 f'<figure data-cat="{html.escape(cat)}" data-key="{html.escape(k)}"'
                 f'{" class=picked" if k in picks.get(cat, []) else ""} title="{note}">'
-                f"{svg(v['strokes'])}<figcaption>{html.escape(k)}<br>{tag}"
-                f"{'<br><i>' + style + '</i>' if style else ''}</figcaption></figure>"
+                f"{svg(v['strokes'])}<figcaption>{html.escape(k)}<br>{tag}</figcaption></figure>"
             )
+        rows = "".join(
+            (f"<h3>{STYLE_NAMES.get(st, st)}</h3>" if st else "")
+            + f'<div class="grid">{"".join(cells)}</div>'
+            for st, cells in sorted(groups.items())
+        )
         sections.append(
-            f'<section><h2 id="{html.escape(cat)}">{html.escape(cat)}</h2>'
-            f'<div class="grid">{"".join(cells)}</div></section>'
+            f'<section><h2 id="{html.escape(cat)}">{html.escape(cat)}</h2>{rows}</section>'
         )
     order = json.dumps({c: [v["key_id"] for v in vs] for c, vs in cats.items()})
     initial = json.dumps({c: picks.get(c, []) for c in cats})
@@ -78,13 +82,14 @@ def page(cats: dict[str, list[dict]], picks: dict[str, list[str]]) -> str:
 body{{font:14px system-ui,sans-serif;margin:16px;background:#f4f4f2;color:#222}}
 .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}}
 figure{{margin:0;background:#fff;border:3px solid #ddd;border-radius:6px;cursor:pointer}}
-figure.picked{{border-color:#d33}} figcaption{{text-align:center;color:#555;font-size:12px}}
+figure.picked{{border-color:#d33}} h3{{margin:8px 0 4px;font-size:14px;color:#555}}
+figcaption{{text-align:center;color:#555;font-size:12px}}
 svg{{width:100%;display:block}} polyline{{fill:none;stroke:#222;stroke-width:2.5;
 stroke-linejoin:round;stroke-linecap:round}}
 #bar{{position:sticky;top:0;background:#f4f4f2;padding:8px 0;z-index:1}}
 textarea{{width:100%;height:8em;font:12px monospace}}</style></head><body>
-<div id="bar"><b>Click the drawings you like: 3 to 5 per object</b> (first click = first
-choice). These are the pen lines the robot will draw.
+<div id="bar"><b>Click the drawings you like: 3 to 5 per style of each object</b> (first click
+= first choice). These are the pen lines the robot will draw; fewer strokes draw faster.
 <button onclick="out()">Show picks</button> <button onclick="copy()">Copy</button>
 <div>{toc}</div><textarea id="json" hidden></textarea></div>
 {"".join(sections)}
