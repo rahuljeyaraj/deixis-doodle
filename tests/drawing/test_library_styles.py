@@ -60,3 +60,15 @@ def test_a_category_without_styles_ignores_the_word(lib):
 def test_place_object_passes_the_style(lib):
     p = place_object("cat", center=(50, 50), size=40, library=lib, style="simple")
     assert p.key_id.startswith("cat_icon")
+
+
+def test_a_key_id_gets_that_drawing_and_does_not_advance_the_cycle(lib):
+    """Re-placing a preview (moved, resized, or re-placed at the exact gap) must keep the same
+    drawing: before 1 Oct each placement took the next variant, so the eye placed 'under the
+    ear' was measured on one variant and drawn as another, with a different height."""
+    first = lib.get("cat", style="simple")
+    assert lib.get("cat", variant=first.key_id).key_id == first.key_id
+    assert lib.get("cat", variant="cat_colouring_s1000").style == "colouring"
+    assert lib.get("cat", style="simple").key_id != first.key_id  # the cycle moved on once
+    with pytest.raises(ValueError):
+        lib.get("cat", variant="no_such_key")

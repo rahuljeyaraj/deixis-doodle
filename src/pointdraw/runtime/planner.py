@@ -73,11 +73,21 @@ class Planner:
                 out.append(s)
         return out
 
-    def object(self, category: str, center: Point, size: float, id: str | None = None) -> Placed:
+    def object(
+        self,
+        category: str,
+        center: Point,
+        size: float,
+        id: str | None = None,
+        variant: int | str | None = None,
+        style: str | None = None,
+    ) -> Placed:
+        """`variant`: a key_id re-places that same drawing (a preview moved or resized, or a
+        second placement at the exact gap); None takes the next one."""
         if category in PRIMITIVES:
             pls = PRIMITIVES[category](center, size)
             return Placed(id or category, "object", pls, bbox(pls), category)
-        return place_object(category, center, size, self.library, id=id)
+        return place_object(category, center, size, self.library, variant, id=id, style=style)
 
     def label(self, text: str, center: Point, cap_mm: float, id: str | None = None) -> Placed:
         return place_label(text, center, cap_mm, id=id)

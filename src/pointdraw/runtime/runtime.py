@@ -455,7 +455,8 @@ class Runtime:
                 s = pl.size or s
             else:
                 center, where, s = prev.center, None, size or max(prev.box.w, prev.box.h)
-            self._replace(prev, self.planner.object(cat, center, s, id=prev.id), t, where)
+            again = self.planner.object(cat, center, s, id=prev.id, variant=prev.key_id)
+            self._replace(prev, again, t, where)
             return
         if prev is not None or (self.proposal is not None and not new):
             self._commit_preview_for(t)
@@ -469,7 +470,7 @@ class Runtime:
             # Re-place with the drawing's real width and height, so the gap is exact.
             ext = (placed.box.w, placed.box.h)
             c = self.scene.relation(rel, pl.target, size, extent=ext)
-            placed = self.planner.object(cat, c, size, id=placed.id)
+            placed = self.planner.object(cat, c, size, id=placed.id, variant=placed.key_id)
         self._add_item(
             placed, "object", cat, None, pl.where.model_dump(mode="json"), new, t, target=pl.target
         )
@@ -580,6 +581,7 @@ class Runtime:
             t,
             pending=True,
             anchor=anchor or (target.id if target else None),
+            key_id=placed.key_id,
         )
         self.scene.add(obj)
         new.append(obj)
@@ -601,7 +603,7 @@ class Runtime:
 
     def _replace(self, old: SceneObject, placed: Placed, t: float, where: dict | None) -> None:
         placed, moved = self.planner.keep_inside(placed)
-        old.polylines, old.box = placed.polylines, placed.box
+        old.polylines, old.box, old.key_id = placed.polylines, placed.box, placed.key_id
         self.log.add(
             t,
             "item",

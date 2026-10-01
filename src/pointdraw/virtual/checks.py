@@ -370,9 +370,13 @@ def _interlock_checks(res: Any, checks: list, metrics: dict, require_pause: bool
     # Ink laid while the (true) hand was over the paper, beyond the pause allowance.
     reqs = [e for e in evs if e.kind == "pause_request"]
     paused = [e for e in evs if e.kind == "paused"]
+    # A request is answered by a pause, or by its job ending first (motion stops either way).
+    # Pairing it only with the next "paused" measured, after a request near a job's end, all
+    # the drawing up to some later pause (found 1 Oct with the longer SANA drawings).
+    done = [e for e in evs if e.kind in ("paused", "job_end", "halted")]
     lat = []
     for r in reqs:
-        p = next((e for e in paused if e.t >= r.t), None)
+        p = next((e for e in done if e.t >= r.t), None)
         if p is None:
             continue
         lat.append((p.t - r.t, _travel(res, r.t, p.t), _pen_down_time(res, r.t, p.t)))

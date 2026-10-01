@@ -43,6 +43,15 @@ SYNONYMS: dict[str, str] = {
     "desk": "table", "seat": "chair", "sofa": "couch", "settee": "couch", "tv": "television",
     "telly": "television", "screen": "television", "gate": "fence", "flowers": "flower",
     "trees": "tree", "stars": "star", "clouds": "cloud", "rose": "flower", "daisy": "flower",
+    # kids' favourites (SANA library, 1 Oct 2026)
+    "plane": "airplane", "aeroplane": "airplane", "jet": "airplane", "spaceship": "rocket",
+    "bunny": "rabbit", "hare": "rabbit", "ladybird": "ladybug", "bumblebee": "bee",
+    "tortoise": "turtle", "present": "gift", "parcel": "gift", "birthday cake": "cake",
+    "toadstool": "mushroom", "palace": "castle", "icecream": "ice cream", "cone": "ice cream",
+    "child": "person", "kid": "person", "boy": "person", "girl": "person", "man": "person",
+    "woman": "person", "stick figure": "person", "watch": "clock", "duckling": "duck",
+    "toad": "frog", "love heart": "heart", "snow man": "snowman", "coach": "bus",
+    "engine": "train", "locomotive": "train",
 }  # fmt: skip
 
 _ARTICLES = re.compile(r"^(a|an|the|some|another|one|my|this|that)\s+")
@@ -186,9 +195,15 @@ class Library:
     ) -> Drawing:
         """A drawing of `name`, in `style` if it has one (see `variants`).
 
-        variant: an index (wraps around); "random"; or None, which cycles through the
-        variants so asking for "another tree" gives a different one.
+        variant: an index (wraps around); "random"; a key_id (that exact drawing, whatever
+        its style: used to re-place a drawing already chosen); or None, which cycles through
+        the variants so asking for "another tree" gives a different one.
         """
+        if isinstance(variant, str) and variant != "random":
+            for d in self.variants(name, "any"):
+                if d.key_id == variant:
+                    return d
+            raise ValueError(f"no variant {variant!r} of {name!r}")
         vs = self.variants(name, style)
         cat = vs[0].category
         if variant is None:

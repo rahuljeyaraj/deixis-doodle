@@ -41,6 +41,7 @@ class SceneObject:
     mark_id: int | None = None
     pending: bool = False  # proposed (being previewed), not yet confirmed
     anchor: str | None = None  # for labels and arrows: the object(s) they belong to
+    key_id: str | None = None  # robot objects: which library drawing (to re-place the same one)
 
     @property
     def center(self) -> Point:
