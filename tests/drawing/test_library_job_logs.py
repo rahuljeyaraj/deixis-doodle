@@ -82,3 +82,25 @@ def test_with_a_working_bucket_the_full_images_land_there_too(tmp_path):
     man = json.loads((out / "manifest.json").read_text())
     assert man["bucket_ok"] is True and len(man["images"]) == 4
     assert all((out / e["file"]).exists() for e in man["images"])
+
+
+def test_fetch_reads_a_big_log_in_slices_under_the_api_limit(tmp_path):
+    """The logs API returns at most 1000 lines per request (the newest ones, like --tail)."""
+    from datetime import UTC, datetime
+
+    mod = _logs_to_files()
+    t0 = 1_790_000_000
+    # 3000 lines over 100 s, bursts of 300 in some seconds (a file's chunks land at once)
+    log = [(t0 + (k // 300) * 10 + (k % 7) * 0.01, f"line {k}") for k in range(3000)]
+    asked = []
+
+    def query(a, b):
+        asked.append((a, b))
+        got = [(t, s) for t, s in log if a <= t <= b]
+        stamp = lambda t: datetime.fromtimestamp(t, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+        return [f"[{stamp(t)}] {s}" for t, s in got][-mod.LIMIT :]
+
+    lines = mod.fetch_lines(query, t0, t0 + 100, step=30)
+    got = {ln.split("] ", 1)[1] for ln in lines}
+    assert got == {s for _, s in log}  # nothing lost; duplicates from the overlap are fine
+    assert len(asked) > 4  # it had to split

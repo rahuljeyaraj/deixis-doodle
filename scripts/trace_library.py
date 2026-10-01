@@ -402,7 +402,9 @@ def trace_images(
         }
         sc = scores.get(p.name)
         if sc is not None:
-            v["cosmos"] = {k: sc.get(k) for k in ("label", "alternatives", "match", "score")}
+            v["score"] = {
+                k: sc.get(k) for k in ("scorer", "label", "alternatives", "match", "score", "note")
+            }
         variants.append(v)
         flag = "  <- check" if (dbl >= TARGETS["double"] or res.notes or len(lib) > 40) else ""
         print(
@@ -436,7 +438,9 @@ def trace_images(
             if gray is not None:
                 inp = cv2.resize(gray, (cell, cell), interpolation=cv2.INTER_AREA)
             sc = scores.get(f"{name}.png") or scores.get(name)
-            heard = f", cosmos: {sc['label'] or '-'} ({sc['match']})" if sc else ""
+            heard = ""
+            if sc:
+                heard = f", {sc.get('scorer', 'cosmos')}: {sc['label'] or '-'} ({sc['match']})"
             rows.append(
                 np.hstack(
                     [
@@ -469,11 +473,12 @@ def run_job(args: argparse.Namespace) -> int:
     score_path = args.scores or job / "cosmos_scores.json"
     if score_path.exists():
         rep = json.loads(score_path.read_text(encoding="utf-8"))
-        scores = {Path(r["file"]).name: r for r in rep["images"]}
+        who = rep.get("scorer", "cosmos")
+        scores = {Path(r["file"]).name: {"scorer": who, **r} for r in rep["images"]}
         for obj, files in by_obj.items():
             ranked = [Path(f).name for f in rep["objects"].get(obj, {}).get("ranked", [])]
             files.sort(key=lambda f: ranked.index(f.name) if f.name in ranked else len(ranked))
-        print(f"ranked by Cosmos scores in {score_path}")
+        print(f"ranked by {who} scores in {score_path}")
     rc = 0
     for obj, files in sorted(by_obj.items()):
         rc |= trace_images(files, obj, args.out_dir / f"{obj}.json", manifest, args, scores)
@@ -495,7 +500,10 @@ def main() -> int:
     ap.add_argument("--job", type=Path, help="a Job output folder with manifest.json")
     ap.add_argument("--out-dir", type=Path, default=OUT / "traced", help="for --job")
     ap.add_argument(
-        "--scores", type=Path, help="Cosmos scores (default <job>/cosmos_scores.json, if any)"
+        "--scores",
+        type=Path,
+        help="scores to rank by: score_drawings.py's format, with an optional 'scorer' "
+        "(default <job>/cosmos_scores.json, if any)",
     )
     ap.add_argument("--source", help="source text for the variant file")
     ap.add_argument(

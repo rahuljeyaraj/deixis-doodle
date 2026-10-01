@@ -325,11 +325,9 @@ case "${1:-}" in
     id="$(job_id)"
     [ -z "$id" ] && { echo "no job named $NAME"; exit 1; }
     DIR="${2:-$REPO_DIR/out/sana_$SET}"
-    LOG="$(mktemp)"
-    "$NB" ai job logs "$id" --since "${SINCE:-6h}" --tail 200000 2>&1 | redact > "$LOG"
-    echo "log: $(wc -l < "$LOG") lines"
-    python3 "$SCRIPT_DIR/logs_to_files.py" "$LOG" "$DIR"
-    rm -f "$LOG"
+    created="$("$NB" ai job get "$id" --format jsonpath='{.metadata.created_at}')"
+    # the logs API gives at most 1000 lines per request: logs_to_files.py reads in time slices
+    python3 "$SCRIPT_DIR/logs_to_files.py" --fetch "$NB" "$id" "$created" "$DIR"
     echo "Next, on Windows:"
     echo "  uv run python scripts/trace_library.py --job out/sana_$SET --out-dir out/traced_$SET"
     ;;
