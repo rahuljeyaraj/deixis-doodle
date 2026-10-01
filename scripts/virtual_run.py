@@ -7,12 +7,14 @@
     uv run python scripts/virtual_run.py --all --ai live --record    # real Nemotron (Token Factory)
     uv run python scripts/virtual_run.py --scene S16 --cosmos live  # real Cosmos (endpoint up)
     uv run python scripts/virtual_run.py --scene S26 --voice tts     # Windows voice + Parakeet
+    uv run python scripts/virtual_run.py --all --plotter controller  # the real controller code
 
 Output per run goes to `out/virtual/<scene>/<variant>/`: `index.html` (open this),
 `replay.gif`, `final.png`, `report.json` and `timeline.jsonl`. With `--all`, also
 `out/virtual/index.html` and `summary.json`.
 
-The plotter is always simulated. This script never opens a serial port.
+The plotter is always simulated: `VirtualPlotter`, or with `--plotter controller` the real
+controller code in simulated time (`virtual.lockstep`). This script never opens a serial port.
 """
 
 from __future__ import annotations
@@ -113,6 +115,12 @@ def main(argv: list[str] | None = None) -> int:
         default="scene",
         help="Marlin EMERGENCY_PARSER in the simulated firmware",
     )
+    ap.add_argument(
+        "--plotter",
+        choices=["virtual", "controller"],
+        default="virtual",
+        help="the simulated plotter, or the real controller code in simulated time",
+    )
     ap.add_argument("--variations", action="store_true", help="also the scene's variations")
     ap.add_argument("--out", type=Path, default=Path("out/virtual"))
     ap.add_argument("--no-gif", action="store_true", help="skip the replay GIF (faster)")
@@ -138,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         record=a.record,
         emergency_parser=ep,
         use_cache=not a.no_cache,
+        plotter=a.plotter,
     )
     reports = []
     t0 = time.perf_counter()
