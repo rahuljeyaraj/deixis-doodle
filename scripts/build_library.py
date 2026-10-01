@@ -6,7 +6,12 @@ Reads library/candidates/<name>.json (from contact_sheets.py) and library/picks.
 (key_ids, or 1-based ranks). Writes:
 - library/quickdraw/<name>.json   the picked variants, normalised (y up, min corner 0,0)
 - library/index.json              categories, variant counts and synonyms
-- library/ATTRIBUTION.md          the Quick, Draw! and Hershey credits
+- library/ATTRIBUTION.md          the Quick, Draw!, SANA and Hershey credits
+
+Generated line art (docs/virtual-test-plan.md section 6): library/sana/candidates/<name>.json
+(traced by scripts/trace_library.py --job) and library/sana_picks.json (key_ids, or 1-based
+ranks). A category with SANA picks uses library/sana/<name>.json; its Quick, Draw! file stays
+as the index entry's "fallback". Every other category stays Quick, Draw!.
 """
 
 from __future__ import annotations
@@ -22,6 +27,28 @@ ROOT = Path(__file__).resolve().parents[1]
 LIB = ROOT / "library"
 CANDIDATES = LIB / "candidates"
 PICKS = LIB / "picks.json"
+SANA_CANDIDATES = LIB / "sana" / "candidates"
+SANA_PICKS = LIB / "sana_picks.json"
+SANA_MODEL = "Efficient-Large-Model/Sana_1600M_1024px_diffusers"
+SANA_LICENCE = (
+    "Apache-2.0 (model card, checked 2026-10-01); text encoder Gemma-2-2B-IT: Gemma Terms of Use"
+)
+
+SANA_ATTRIBUTION = """## Drawings: generated with SANA
+
+The line drawings in `sana/` were generated ahead of time (never during a demo) with NVIDIA's
+[SANA 1600M](https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px_diffusers)
+(`Efficient-Large-Model/Sana_1600M_1024px_diffusers`), released under the
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) (model card checked on
+1 Oct 2026). Its text encoder, Gemma-2-2B-IT, is used under Google's
+[Gemma Terms of Use](https://ai.google.dev/gemma/terms) and
+[Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy). The images were
+made on a Nebius AI Cloud Serverless Job, then traced to single pen lines (centre-line
+tracing, `scripts/trace_library.py`); Cosmos3-Nano labels ranked them and a person picked
+the variants. Each variant keeps its image name (`<object>_s<seed>`) as its `key_id`, with
+its prompt and seed.
+
+"""
 
 ATTRIBUTION = """# Attribution
 
@@ -86,19 +113,70 @@ def main() -> int:
         cats[cat] = {"file": fname, "variants": len(variants)}
         print(f"{cat:14s} {len(variants)} variants")
 
+    sana = add_sana(cats)
+
     synonyms = {k: v for k, v in sorted(SYNONYMS.items()) if v in cats and k not in cats}
     for cat in cats:
         cats[cat]["synonyms"] = sorted(k for k, v in synonyms.items() if v == cat)
     index = {
         "version": 1,
-        "source": "Quick, Draw! by Google Creative Lab (CC BY 4.0); see ATTRIBUTION.md",
+        "source": "Quick, Draw! by Google Creative Lab (CC BY 4.0); see ATTRIBUTION.md"
+        + (". Categories with source 'sana': SANA 1600M line art (Apache-2.0)" if sana else ""),
         "categories": dict(sorted(cats.items())),
         "synonyms": synonyms,
     }
     (LIB / "index.json").write_text(json.dumps(index, indent=1) + "\n", encoding="utf-8")
-    (LIB / "ATTRIBUTION.md").write_text(ATTRIBUTION, encoding="utf-8")
+    attribution = ATTRIBUTION
+    if sana:
+        attribution = attribution.replace("## Lettering", SANA_ATTRIBUTION + "## Lettering", 1)
+    (LIB / "ATTRIBUTION.md").write_text(attribution, encoding="utf-8")
     print(f"{len(cats)} categories in {LIB / 'index.json'}")
     return 0
+
+
+def add_sana(cats: dict[str, dict]) -> list[str]:
+    """Switch categories with SANA picks to library/sana/<name>.json (Quick, Draw! fallback).
+    Returns the categories switched."""
+    done: list[str] = []
+    if not SANA_PICKS.exists():
+        return done
+    picks = json.loads(SANA_PICKS.read_text(encoding="utf-8"))
+    picks.pop("_help", None)
+    (LIB / "sana").mkdir(parents=True, exist_ok=True)
+    for cat, chosen in picks.items():
+        cpath = SANA_CANDIDATES / f"{cat}.json"
+        if not cpath.exists():
+            print(f"{cat:14s} no SANA candidates, stays Quick, Draw!", file=sys.stderr)
+            continue
+        cands = json.loads(cpath.read_text(encoding="utf-8"))["variants"]
+        by_key = {c["key_id"]: c for c in cands}
+        variants = []
+        for k in chosen:
+            c = cands[k - 1] if isinstance(k, int) and 0 < k <= len(cands) else by_key.get(str(k))
+            if c is None:
+                print(f"{cat:14s} SANA pick {k!r} not among the candidates", file=sys.stderr)
+                continue
+            keep = ("key_id", "strokes", "seed", "prompt")
+            variants.append({k2: c[k2] for k2 in keep if k2 in c})
+        if not variants:
+            continue
+        fname = f"sana/{cat}.json"
+        doc = {
+            "category": cat,
+            "source": f"generated with {SANA_MODEL}; centre-line traced; picked by hand",
+            "license": SANA_LICENCE,
+            "units": "larger side about 255, y up, bbox min corner at (0, 0)",
+            "variants": variants,
+        }
+        text = json.dumps(doc, separators=(",", ":")) + "\n"
+        (LIB / fname).write_text(text, encoding="utf-8")
+        entry = {"file": fname, "variants": len(variants), "source": "sana"}
+        if cat in cats:
+            entry["fallback"] = cats[cat]["file"]
+        cats[cat] = entry
+        done.append(cat)
+        print(f"{cat:14s} {len(variants)} SANA variants (Quick, Draw! kept as fallback)")
+    return done
 
 
 if __name__ == "__main__":
