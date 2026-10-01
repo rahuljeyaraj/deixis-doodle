@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import faulthandler
 import json
 import logging
 import os
@@ -264,7 +265,12 @@ def run(args: argparse.Namespace) -> int:
     if calib is None:
         print(f"No bed calibration at {args.calib}: run scripts/calibrate.py first.")
         return 1
+    # The hand tracker first, before the camera's grab thread runs: on 1 Oct one start in six
+    # crashed in this stretch (see scripts/startup_check.py and the 2 Oct night report).
+    print("start: hand tracker", flush=True)
+    hands = HandTracker()
     index = args.camera if args.camera is not None else get_settings().camera_index
+    print(f"start: camera {index} ({args.backend})", flush=True)
     try:
         cam = Camera(
             CameraSettings(
@@ -277,18 +283,21 @@ def run(args: argparse.Namespace) -> int:
         ).start()
     except CameraUnavailable as e:
         print(f"No camera: {e}. Try --camera 1 or --backend dshow.")
+        hands.close()
         return 1
     first = cam.read(timeout=5.0)
     if first is None:
         print("the camera gave no picture")
         cam.close()
+        hands.close()
         return 1
     bed = fixed_bed_homography(calib, lens=load_lens(args.lens, first.size))
     if bed is None:
         print("the calibration has no cross fit: run scripts/calibrate.py again")
         cam.close()
+        hands.close()
         return 1
-    hands = HandTracker()
+    print("start: plotter", flush=True)
 
     transport = make_transport(args, cfg)
     plotter = LivePlotter(Controller(transport, cfg, hands_clear=False))
@@ -421,6 +430,8 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A crash in native code (camera driver, MediaPipe, ONNX) prints its Python stack.
+    faulthandler.enable()
     a = parse_args(argv)
     logging.basicConfig(
         level=logging.INFO if a.verbose else logging.WARNING,

@@ -63,3 +63,9 @@ def test_timeline_is_written_as_it_happens(tmp_path):
     w.write_new(events)  # nothing new: nothing written twice
     w.close()
     assert [json.loads(x)["kind"] for x in path.read_text().splitlines()] == ["state", "say"]
+
+
+def test_startup_check_counts_native_crashes_only():
+    check = load_script("startup_check")
+    assert check.crashed(-11) and check.crashed(0xC0000005)
+    assert not check.crashed(0) and not check.crashed(1)  # a Python error is a failure
