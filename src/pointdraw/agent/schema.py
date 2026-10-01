@@ -331,6 +331,10 @@ class PlaceDrawing(_Strict):
         description="Omit if no place was spoken: the resolver then uses the last pointing.",
     )
     size: SizeRef | None = Field(default=None, description="Omit if no size was spoken.")
+    style: Literal["simple", "detailed"] | None = Field(
+        default=None,
+        description="Only if the person asked for a simple or a detailed drawing; else omit.",
+    )
 
 
 class DrawConnector(_Strict):

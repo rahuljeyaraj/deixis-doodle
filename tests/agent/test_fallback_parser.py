@@ -436,3 +436,18 @@ def test_answer_to_a_pending_question_is_read_as_a_plain_request():
 )
 def test_short_commands_on_the_library_list(text, ctx, name):
     assert [c["name"] for c in lib_calls(text, ctx)] == [name]
+
+
+def test_simple_and_detailed_choose_the_drawing_style():
+    """rahul, 1 Oct 2026: "a simple X" draws the icon style, "a detailed X" the colouring page."""
+    (c,) = lib_calls("draw a detailed tree here")
+    assert (c["name"], c["args"]["object"], c["args"]["style"]) == (
+        "place_drawing",
+        "tree",
+        "detailed",
+    )
+    (c,) = lib_calls("a simple house in the top left")
+    assert c["args"]["style"] == "simple"
+    assert lib_calls("a tree here")[0]["args"].get("style") is None
+    (c,) = lib_calls("draw a fancy dragon")  # the style word is not the object
+    assert c["name"] == "ask_user" and "a dragon" in c["args"]["question"]

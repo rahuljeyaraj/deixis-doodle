@@ -464,7 +464,8 @@ class Runtime:
         size = refs.size(a.size, default)  # type: ignore[attr-defined]
         pl = refs.place(a.place, size)  # type: ignore[attr-defined]
         size = pl.size or size
-        placed = self.planner.object(cat, pl.center, size, id=self.scene.new_id(cat))
+        style = getattr(a, "style", None)  # "simple" / "detailed", or the library default
+        placed = self.planner.object(cat, pl.center, size, id=self.scene.new_id(cat), style=style)
         rel = getattr(a.place, "relation", None)  # type: ignore[attr-defined]
         if rel in ("next_to", "left_of", "right_of", "above", "below", "on") and pl.target:
             # Re-place with the drawing's real width and height, so the gap is exact.

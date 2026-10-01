@@ -182,7 +182,11 @@ NOUN_SKIP = set(PRESETS) | {
     "me", "us", "a", "an", "the", "some", "another", "nice", "cute", "pretty", "cool", "funny",
     "very", "really", "different", "other", "new", "second", "red", "blue", "green", "yellow",
     "black", "orange", "purple", "pink", "brown", "white", "grey", "gray",
+    "simple", "plain", "basic", "detailed", "fancy",
 }  # fmt: skip
+#: "a simple tree" / "a detailed tree": the library's two SANA styles (rahul, 1 Oct 2026)
+STYLE_WORDS = {"simple": "simple", "plain": "simple", "basic": "simple",
+               "detailed": "detailed", "fancy": "detailed"}  # fmt: skip
 NOT_NOUNS = (
     PLACE_WORDS | POINT_WORDS | PRONOUNS | FILLERS | NEGATIONS | RELATION_HEADS
     | QUESTION_STARTS | DIRECTIONS | DEGREES | COMPARATIVES | SPOT_NOUNS | {
@@ -739,4 +743,10 @@ def parse(
     if isinstance(words, str):
         words = words.split()
     cats = categories if categories is not None else load_categories()
-    return _Parser(list(words), context, cats).parse()
+    calls = _Parser(list(words), context, cats).parse()
+    style = next((STYLE_WORDS[w] for w in map(norm_word, words) if w in STYLE_WORDS), None)
+    if style:
+        for c in calls:
+            if c.name == "place_drawing" and c.args.style is None:  # type: ignore[attr-defined]
+                c.args.style = style  # type: ignore[attr-defined]
+    return calls
