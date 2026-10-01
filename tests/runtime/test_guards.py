@@ -44,10 +44,17 @@ def test_fillers_alone_are_ignored(text):
     assert agent.asked == [] and rt.log.of("ignored") and rt.proposal is None
 
 
-@pytest.mark.parametrize("text", ["Maybe I m not sure", "You know what", "Best bit"])
-def test_an_object_not_said_is_not_drawn(text):
+@pytest.mark.parametrize(
+    ("text", "heard"),
+    [
+        ("Maybe I m not sure", "Maybe I m not sure"),
+        ("You know what", "You know what"),
+        ("Best bit", "this big"),  # repaired since 2 Oct (rahul's "this big", live 1 Oct)
+    ],
+)
+def test_an_object_not_said_is_not_drawn(text, heard):
     rt, agent = run(text)
-    assert agent.asked == [text]
+    assert agent.asked == [heard]
     assert rt.proposal is None and not rt.scene.objects
     assert any(
         g["why"].startswith("place_drawing of an object not said") for g in rt.log.of("guard")
