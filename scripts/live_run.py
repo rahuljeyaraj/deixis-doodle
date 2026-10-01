@@ -51,6 +51,7 @@ from pointdraw.controller.simulator import SimulatedPlotter  # noqa: E402
 from pointdraw.controller.transport import LinkError, Transport  # noqa: E402
 from pointdraw.drawing import Library  # noqa: E402
 from pointdraw.live.agent import BackgroundAgent  # noqa: E402
+from pointdraw.live.logs import TimelineWriter  # noqa: E402
 from pointdraw.live.view import BedView, PaperCamera  # noqa: E402
 from pointdraw.m1 import over_bed  # noqa: E402
 from pointdraw.runtime.events import EventLog  # noqa: E402
@@ -234,6 +235,29 @@ def draw_overlay(vis, hf, view: BedView, paper, plotter: LivePlotter) -> None:
         cv2.circle(vis, tuple(np.int32(h.landmarks_px[INDEX_TIP])), 10, col, 2)
 
 
+def next_frame(cam, plotter, headless: bool):
+    """The next camera frame; None if none came for 0.5 s (motion held); "quit" to end.
+
+    With no frame nothing watches for hands, so the plotter is held. The window keeps
+    answering keys meanwhile, so Q still quits. A camera that has stopped for good ends
+    the run (review 2 Oct 2026: the loop used to spin without the window, and a camera
+    error was not caught).
+    """
+    try:
+        frame = cam.read(timeout=0.5)
+    except CameraUnavailable as e:
+        plotter.set_hands_clear(False)
+        print(f"the camera stopped ({e}): plotter held, ending the run")
+        return "quit"
+    if frame is not None:
+        return frame
+    plotter.set_hands_clear(False)  # no picture: nothing watches for hands
+    print("camera gave no frame for 0.5 s: plotter held")
+    if not headless and (cv2.waitKey(1) & 0xFF) in (ord("q"), 27):
+        return "quit"
+    return None
+
+
 def run(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
     calib = BedCalibration.load_or_none(args.calib)
@@ -299,6 +323,7 @@ def run(args: argparse.Namespace) -> int:
     out = args.out / stamp
     (out / "frames").mkdir(parents=True, exist_ok=True)
     hands_log = (out / "hands.jsonl").open("w", encoding="utf-8")
+    timeline = TimelineWriter(out / "timeline.jsonl")
     print(json.dumps({"t0": first.t, "config": args.config}), file=hands_log)  # header
     next_pic = 0.0
     window = "pointdraw live (Q quit, Space stop, S save)"
@@ -311,10 +336,10 @@ def run(args: argparse.Namespace) -> int:
         frame = first
         while True:
             if frame is None:
-                frame = cam.read(timeout=0.5)
+                frame = next_frame(cam, plotter, args.headless)
+            if isinstance(frame, str):  # "quit"
+                break
             if frame is None:
-                plotter.set_hands_clear(False)  # no picture: nothing watches for hands
-                print("camera gave no frame for 0.5 s: plotter held")
                 continue
             t, img = frame.t, frame.image
             frame = None
@@ -344,6 +369,7 @@ def run(args: argparse.Namespace) -> int:
                     if e["kind"] in ("utterance", "say", "state"):
                         lines = (lines + [text])[-4:]
             shown = len(log.events)
+            timeline.write_new(log.events)
 
             key = -1
             if not args.headless:

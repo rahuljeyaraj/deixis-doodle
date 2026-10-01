@@ -42,9 +42,10 @@ class BedView:
         mm[:, 1] += self.offset_y()
         return mm
 
-    def to_px(self, pts_mm: np.ndarray) -> np.ndarray:
+    def to_px(self, pts_mm: np.ndarray, offset_y: float | None = None) -> np.ndarray:
+        """Where bed points are in the picture; `offset_y` for a picture taken earlier."""
         mm = np.array(pts_mm, dtype=np.float64).reshape(-1, 2)
-        mm[:, 1] -= self.offset_y()
+        mm[:, 1] -= self.offset_y() if offset_y is None else offset_y
         return self.bed.to_px(mm)
 
 
@@ -54,35 +55,60 @@ class PaperCamera:
     The main loop hands it frames with `offer(image, hands_over_paper)`. Frames with a hand
     over the paper are skipped (a hand would look like ink), so the image is the latest
     clear view, normally from a moment before the user spoke.
+
+    The bed may have moved since that frame (review, 2 Oct 2026: it was warped with the bed's
+    position at the time of asking, so the robot's own ink no longer lined up and showed as
+    user marks). So each frame keeps the bed position it was taken at, and frames are taken
+    only once the bed has been still for `settle_s`: the position known here is where the
+    head was sent, which runs up to Marlin's planner depth (about 16 pieces) ahead of it.
     """
 
-    def __init__(self, view: BedView, paper: Box, mm_per_px: float = 0.5) -> None:
+    def __init__(
+        self, view: BedView, paper: Box, mm_per_px: float = 0.5, settle_s: float = 1.0
+    ) -> None:
         self.view = view
         self.paper = paper
         self.mm_per_px = mm_per_px
+        self.settle_s = settle_s
         self.image: np.ndarray | None = None
         self.t: float | None = None  # when `image` was taken
+        self.offset_y = 0.0  # the bed's Y offset when `image` was taken
+        self._last_y: float | None = None
+        self._still_since = -np.inf
 
     def offer(self, image: np.ndarray, t: float, hands_over_paper: bool) -> None:
-        if not hands_over_paper:
-            self.image, self.t = image, t
+        off = self.view.offset_y()
+        if self._last_y is not None and off != self._last_y:
+            self._still_since = t
+        self._last_y = off
+        if not hands_over_paper and t - self._still_since >= self.settle_s:
+            self.image, self.t, self.offset_y = image, t, off
 
     def paper_image(self, t: float) -> tuple[np.ndarray, float]:
         s = self.mm_per_px
         w, h = round(self.paper.w / s), round(self.paper.h / s)
         if self.image is None:
             return np.full((h, w, 3), 255, np.uint8), s
-        return warp_to_paper(self.image, self.view, self.paper, s), s
+        return warp_to_paper(self.image, self.view, self.paper, s, self.offset_y), s
 
 
-def warp_to_paper(image: np.ndarray, view: BedView, paper: Box, mm_per_px: float) -> np.ndarray:
-    """Resample the camera image onto the paper frame (`scene.ink`'s convention)."""
+def warp_to_paper(
+    image: np.ndarray,
+    view: BedView,
+    paper: Box,
+    mm_per_px: float,
+    offset_y: float | None = None,
+) -> np.ndarray:
+    """Resample the camera image onto the paper frame (`scene.ink`'s convention).
+
+    `offset_y`: the bed's offset when the image was taken (default: where it is now)."""
     s = mm_per_px
     w, h = round(paper.w / s), round(paper.h / s)
     cols, rows = np.meshgrid(np.arange(w), np.arange(h))
     x_mm = paper.x + (cols + 0.5) * s
     y_mm = paper.y + (h - rows - 0.5) * s  # row 0 is the far edge
-    px = view.to_px(np.stack([x_mm, y_mm], axis=-1)).reshape(h, w, 2).astype(np.float32)
+    px = view.to_px(np.stack([x_mm, y_mm], axis=-1), offset_y).reshape(h, w, 2)
+    px = px.astype(np.float32)
     return cv2.remap(
         image,
         px[..., 0],

@@ -98,3 +98,26 @@ def test_typed_words_end_at_enter():
     assert [w.text for w in ws] == ["draw", "a", "tree", "here"]
     assert ws[0].t0 == pytest.approx(8.0) and ws[-1].t1 == pytest.approx(10.0)
     assert typed_words("   ", 1.0) == []
+
+
+def test_paper_camera_keeps_the_bed_position_of_its_frame():
+    """A frame taken with the bed at one place is warped for that place, even after the bed
+    moved (review 2 Oct: it was warped for where the bed was when asked)."""
+    y = [PARK_Y]
+    v = BedView(BedHomography(H, (), 0.0, 0.0, float("nan")), PARK_Y, lambda: y[0])
+    cam = PaperCamera(v, PAPER, settle_s=0.5)
+    img = np.full((480, 480, 3), 255, np.uint8)
+    cx, cy = v.to_px(np.array([[PAPER.x + 20.0, PAPER.y + 30.0]]))[0].round().astype(int)
+    img[cy - 2 : cy + 3, cx - 2 : cx + 3] = 0
+    cam.offer(img, 0.0, hands_over_paper=False)
+    assert cam.t == 0.0
+    y[0] = PARK_Y - 40.0  # the bed moves away
+    cam.offer(np.full_like(img, 128), 0.1, hands_over_paper=False)  # moving: not taken
+    cam.offer(np.full_like(img, 128), 0.4, hands_over_paper=False)  # not still long enough
+    assert cam.t == 0.0
+    out, s = cam.paper_image(1.0)
+    rows, cols = np.nonzero(out[..., 0] < 64)
+    assert abs((cols.mean() + 0.5) * s - 20.0) < 1.0
+    assert abs((out.shape[0] - rows.mean() - 0.5) * s - 30.0) < 1.0
+    cam.offer(np.full_like(img, 128), 0.7, hands_over_paper=False)  # still for 0.6 s
+    assert cam.t == 0.7 and cam.offset_y == -40.0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
 
@@ -14,7 +15,7 @@ from pointdraw.controller.controller import Controller
 from pointdraw.controller.safety import OutsideDrawableArea, validate_polylines
 from pointdraw.controller.serial_link import SerialLink
 from pointdraw.controller.simulator import SimulatedPlotter
-from pointdraw.controller.transport import LinkError
+from pointdraw.controller.transport import LinkError, LinkStopped
 
 CFG = with_changes(MachineConfig(), {"hands_clear_hold_s": 0.05})
 D = CFG.drawable
@@ -269,5 +270,64 @@ def test_firmware_halt_puts_controller_in_error(fake_marlin):
         assert st.state == "error" and "halted" in st.message
         with pytest.raises(LinkError):
             ctl.draw_polylines(LONG)
+    finally:
+        ctl.close()
+
+
+class _GatedSim(SimulatedPlotter):
+    """A simulator whose stop lands while the worker moves from one job to the next.
+
+    Once `armed`, `wait_idle` holds the worker at the end of a job until the stop arrives,
+    and `quickstop` returns only after the worker has met the stop in the following job.
+    """
+
+    def __init__(self, cfg: MachineConfig) -> None:
+        super().__init__(cfg)
+        self.armed = False
+        self.at_end = threading.Event()
+        self.release = threading.Event()
+        self.cut = threading.Event()
+
+    def wait_idle(self, timeout: float | None = None) -> None:
+        if self.armed and not self.release.is_set():
+            self.at_end.set()
+            self.release.wait(3)
+        super().wait_idle(timeout)
+
+    def send(self, line: str, timeout: float | None = None) -> None:
+        try:
+            super().send(line, timeout)
+        except LinkStopped:
+            self.cut.set()
+            raise
+
+    def quickstop(self) -> None:
+        super().quickstop()
+        self.release.set()
+        self.cut.wait(3)
+
+
+def test_halted_names_the_job_the_stop_cut():
+    """A stop that lands as one job ends and the next begins reports the next one as halted.
+
+    Review 2 Oct: `stop()` read the running job before sending M410, so the halt named a job
+    that had already finished, and the job really cut was never reported.
+    """
+    sim = _GatedSim(CFG)
+    events: list = []
+    ctl = Controller(sim, CFG, hands_clear=True, on_event=events.append)
+    ctl.start()
+    try:
+        sim.armed = True
+        ctl.draw_polylines([[(X0, Y), (X0 + 20, Y)]], tag="first")
+        ctl.park(tag="second")
+        assert sim.at_end.wait(3)
+        ctl.stop()
+        assert ctl.wait(3)
+        got = [(e.kind, e.tag) for e in events]
+        assert ("job_end", "first") in got
+        assert ("halted", "second") in got
+        assert ("halted", "first") not in got
+        assert ("job_end", "second") not in got
     finally:
         ctl.close()

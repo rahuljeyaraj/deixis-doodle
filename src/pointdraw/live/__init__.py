@@ -4,6 +4,7 @@
   paper image the runtime looks at.
 - `agent`: asks the agent in a background thread, so frames keep flowing while it thinks.
 - `speech`: microphone to words, in a background thread.
+- `logs`: the timeline, written as it happens.
 
 The plotter side is `pointdraw.runtime.live_plotter.LivePlotter`.
 """

@@ -84,6 +84,7 @@ class Controller:
         self._pen_down = False
         self._needs_home = False
         self._job: _Job | None = None  # the job the worker is running
+        self._cut: _Job | None = None  # the job a stop interrupted (it met LinkStopped)
         # Where the head will be when the queued jobs are done (None = unknown). Each job's
         # G-code starts from here, so its first move is split into short pieces too, and a
         # pause during it still takes effect within ~sync_every_mm (session VIRTUAL).
@@ -157,15 +158,20 @@ class Controller:
         self._submit(label, list(lines), "moving", tag)
 
     def stop(self) -> None:
-        if self._state == "disconnected":
-            return
-        job = self._job
+        with self._cond:
+            if self._state == "disconnected":
+                return
+            job = self._job
+            self._cut = None
         self._emit("stop_request", job)
         try:
             self._t.quickstop()
         except Exception:  # noqa: BLE001 - keep going: the queue must still be dropped
             log.exception("quickstop failed")
         with self._cond:
+            # The job the stop really cut: the worker may have finished the one above while
+            # the quickstop went out, and met the stop in the next one.
+            job = self._job or self._cut
             dropped = len([j for j in self._jobs if not j.recover])
             self._gen += 1
             self._jobs.clear()
@@ -289,6 +295,8 @@ class Controller:
             # firmware prints `busy: processing`. The link still fails after that much silence.
             self._t.wait_idle()
         except LinkStopped:
+            with self._cond:
+                self._cut = job
             return
         with self._cond:
             if job.gen != self._gen:
