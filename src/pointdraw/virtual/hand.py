@@ -68,6 +68,11 @@ def hand_model(pose: str) -> np.ndarray:
             p = p + seg * np.array([0.0, math.cos(angle), -math.sin(angle)])
             base += 1
             lm[base] = p
+    if pose in ("point", "fist"):
+        # The thumb tucked onto the curled middle finger, as recorded on the Ender (its tip
+        # 0.02..0.07 of the palm length from the middle fingertip while pointing).
+        lm[4] = lm[12] + (0.004, 0.0, 0.0)
+        lm[3] = (lm[2] + lm[4]) / 2
     return lm
 
 

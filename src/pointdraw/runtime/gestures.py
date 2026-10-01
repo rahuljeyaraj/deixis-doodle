@@ -32,7 +32,7 @@ from deixis.spans import SpanHoldDetector, SpanParams
 from deixis.types import Hold
 from pointdraw.vision.hands import INDEX_TIP, THUMB_TIP, HandObservation, HandsFrame
 
-WRIST, INDEX_MCP, MIDDLE_MCP = 0, 5, 9
+WRIST, INDEX_MCP, MIDDLE_MCP, MIDDLE_TIP = 0, 5, 9, 12
 
 
 @dataclass(frozen=True)
@@ -40,21 +40,27 @@ class GestureParams:
     margin_mm: float = 10.0  # interlock: paper plus this margin counts as "over the paper"
     enter_frames: int = 2  # frames over the paper before the interlock trips
     exit_frames: int = 3  # frames clear before it releases
-    thumb_out_ratio: float = 0.6  # |thumb tip - index MCP| / |wrist - middle MCP|
+    thumb_out_ratio: float = 0.3  # |thumb tip - middle fingertip| / |wrist - middle MCP|
     # Kept 2 min, not 30 s: a "How big?" answered 40 s later still needs the request's point
     # (live run, 1 Oct 2026). Old holds never match new words: assignment goes by word time.
     holds: HoldParams = field(default_factory=lambda: HoldParams(history_s=120.0))
     spans: SpanParams = field(default_factory=SpanParams)
 
 
-def thumb_out(obs: HandObservation, ratio: float = 0.6) -> bool:
-    """True if the thumb is held away from the hand, as when showing a size."""
+def thumb_out(obs: HandObservation, ratio: float = 0.3) -> bool:
+    """True if the thumb is held away from the hand, as when showing a size.
+
+    Measured from the middle fingertip: pointing, the thumb rests on the curled middle
+    finger. Recorded on the Ender (1 Oct 2026): 0.02..0.07 of the palm length pointing,
+    0.52..0.56 showing a size. The old measure (thumb tip to index MCP) read 0.62 pointing
+    and 0.49 showing a size: the wrong way round for that hand.
+    """
     lm = obs.world if obs.world is not None else obs.landmarks_mm
     if lm is None:
         return False
     lm = np.asarray(lm, dtype=np.float64)
     scale = float(np.linalg.norm(lm[WRIST] - lm[MIDDLE_MCP])) + 1e-9
-    return float(np.linalg.norm(lm[THUMB_TIP] - lm[INDEX_MCP])) / scale > ratio
+    return float(np.linalg.norm(lm[THUMB_TIP] - lm[MIDDLE_TIP])) / scale > ratio
 
 
 @dataclass
@@ -97,7 +103,7 @@ class GestureTracker:
         on = [h for h in hands if self._over_paper(h)]
         over = bool(on)
         self._interlock(over)
-        if len(hands) > 1:  # of several, only hands over the paper point or pinch
+        if len(hands) > 1:  # of several, only hands over the paper point
             hands = on
 
         tip: Point | None = None
@@ -111,7 +117,8 @@ class GestureTracker:
             self._filter.reset()
         self.ended_hold = self.holds.update(t, tip, pointing)
 
-        span, kind, center = self._span(hands)
+        # A size is shown over the paper: hands resting in the lap made steady "pinches".
+        span, kind, center = self._span(on)
         self.ended_span = self.spans.update(t, span, kind, center)  # type: ignore[arg-type]
         self.last = GestureSample(t, tip, pointing, len(hands), over, span, kind)
         return self.last
