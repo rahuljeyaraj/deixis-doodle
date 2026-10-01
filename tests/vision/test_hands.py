@@ -82,12 +82,23 @@ def test_pointing_with_thumb_out_and_lazy_pinky():
 
 def test_pointing_down_at_the_paper():
     # Fingertip pressed on the sheet: the index bends a little and is neither straight nor
-    # curled. It counts by default, not with half_index_ok off.
+    # curled. It counts by default, not with half_index_ok (and the hook rule) off.
     hand = make_hand(dict(POINT, index=(0, 40, 30)))
     fs = classify_pointing(hand).fingers["index"]
     assert not fs.extended and not fs.curled
     assert classify_pointing(hand).pointing
-    assert not classify_pointing(hand, PoseParams(half_index_ok=False)).pointing
+    assert not classify_pointing(
+        hand, PoseParams(half_index_ok=False, hooked_index_margin=0)
+    ).pointing
+
+
+def test_pointing_hooked_on_the_paper():
+    # Pressed harder, the index hooks and reads as curled (live run, 1 Oct 2026: about half
+    # the frames of a held point). It still reaches well past the curled middle finger.
+    hand = make_hand(dict(POINT, index=(20, 70, 40)))
+    assert classify_pointing(hand).fingers["index"].curled
+    assert classify_pointing(hand).pointing
+    assert not classify_pointing(hand, PoseParams(hooked_index_margin=0)).pointing
 
 
 @pytest.mark.parametrize(
@@ -95,8 +106,8 @@ def test_pointing_down_at_the_paper():
     [
         {f: STRAIGHT for f in _ORDER},  # open hand
         {f: CURLED for f in _ORDER},  # fist
+        dict(POINT, index=(60, 90, 50)),  # fist, index a little looser
         dict(POINT, middle=STRAIGHT),  # peace sign
-        dict(POINT, index=(20, 70, 40)),  # hooked index
         dict(POINT, ring=STRAIGHT, pinky=STRAIGHT),  # middle curled only
     ],
 )

@@ -6,7 +6,8 @@ output). Everything here works in the **paper frame** (bed mm minus the paper's 
 
 - **Holds** (plan 4.3): the index fingertip of the one pointing hand, smoothed with a
   One-Euro filter, into `deixis.holds.HoldDetector`. With two hands up, no place holds are
-  made (two hands show a size, not a place).
+  made (two hands show a size, not a place). A second hand away from the paper (resting on
+  the table) doesn't count: on the Ender (1 Oct 2026) one did, and "here" found no point.
 - **Size gestures:** one hand with the thumb out gives a pinch span (thumb tip to index
   tip); two hands give the distance between the index tips. Both go into
   `deixis.spans.SpanHoldDetector`.
@@ -91,8 +92,11 @@ class GestureTracker:
     def update(self, frame: HandsFrame) -> GestureSample:
         t = frame.t
         hands = [h for h in frame.hands if h.landmarks_mm is not None]
-        over = any(self._over_paper(h) for h in hands)
+        on = [h for h in hands if self._over_paper(h)]
+        over = bool(on)
         self._interlock(over)
+        if len(hands) > 1:  # of several, only hands over the paper point or pinch
+            hands = on
 
         tip: Point | None = None
         pointing = False

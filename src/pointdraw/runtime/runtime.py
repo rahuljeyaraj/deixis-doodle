@@ -204,6 +204,7 @@ class Runtime:
         self._ev = 0  # plotter events read so far
         self._clear: bool | None = None
         self.backlog: list[Utterance] = []  # heard while an earlier one was being understood
+        self.asked: ToolCall | None = None  # the call of a question just left unanswered
         self._tags = 0
 
     # ------------------------------------------------------------------ inputs
@@ -396,6 +397,7 @@ class Runtime:
         if calls != res.calls:
             self.log.add(t, "guard", said=utt.text, why="one label text shared by several labels")
         named = [c for c in calls if not self._invented(c, utt)]
+        self.asked = None
         if len(named) < len(calls):
             self.log.add(t, "guard", said=utt.text, why="place_drawing of an object not said")
             calls = named
@@ -937,6 +939,7 @@ class Runtime:
         if chosen is not None and oq.call is None:
             return False  # an agent question: let the agent read the answer in context
         self.question = None  # not an answer: treat it as a new request
+        self.asked = oq.call  # but the agent may read it as one ("How big?" ... "this big")
         return False
 
     def _rerun(self, utt: Utterance | None, call: ToolCall, t: float, overrides: dict) -> None:
@@ -976,6 +979,11 @@ class Runtime:
         previewed = [o.label for p in [self.proposal, *self.queue] if p for o in p.items]
         if target in previewed:  # "no, there": move the preview
             return False
+        q = self.question
+        call0 = q.call if q is not None else self.asked
+        asked = getattr(call0.args, "object", None) if call0 is not None else None
+        if asked and (self.planner.resolve(asked) or norm_word(asked)) == target:
+            return False  # "How big?" ... "this big"
         toks = [norm_word(w.text) for w in utt.words]
         if any(w in REPEAT_WORDS for w in toks):
             return False

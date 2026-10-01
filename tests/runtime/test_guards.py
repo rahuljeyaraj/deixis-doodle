@@ -58,3 +58,16 @@ def test_an_object_not_said_is_not_drawn(text):
 def test_an_object_said_is_drawn(text):
     rt, _ = run(text)
     assert rt.proposal is not None and rt.proposal.items[0].label == "cross"
+
+
+def test_an_answer_to_how_big_keeps_the_asked_object():
+    from pointdraw.runtime.references import Question
+
+    agent = Repeats()
+    rt = Runtime(agent, VirtualPlotter(), MachineConfig(), Planner())
+    rt.start(0.0)
+    rt._ask(Question("How big? Show me with your fingers or hands.", "no_size"), None, CROSS, 0.5)
+    rt.on_utterance([Word("This", 1.0, 1.2), Word("big", 1.3, 1.5)], 2.0)
+    rt.tick(4.0)
+    assert not rt.log.of("guard")
+    assert rt.proposal is not None and rt.proposal.items[0].label == "cross"

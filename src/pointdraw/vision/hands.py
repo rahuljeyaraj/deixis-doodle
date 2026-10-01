@@ -72,6 +72,11 @@ class PoseParams:
     # it is foreshortened: neither straight nor curled. On the Ender (1 Oct 2026) that was most
     # frames of a held point. Count it, as long as the index still reaches past the middle.
     half_index_ok: bool = True
+    # Pressed harder, the index hooks (PIP + DIP bend ~115 degrees) and reads as curled, but it
+    # still reaches well past the curled middle finger: on the Ender (1 Oct 2026, live run) a
+    # hooked point was 0.15..0.40 further in reach, a closed or resting hand about 0.05. Count
+    # a hook as pointing when the index reaches this much further (0 turns it off).
+    hooked_index_margin: float = 0.15
 
 
 DEFAULT_POSE = PoseParams()
@@ -111,7 +116,8 @@ def finger_state(lm: np.ndarray, finger: str, p: PoseParams = DEFAULT_POSE) -> F
 
 def classify_pointing(lm: np.ndarray, p: PoseParams = DEFAULT_POSE) -> PoseResult:
     """Pointing = index extended (or, with `half_index_ok`, not curled and reaching further
-    than the middle finger), middle curled, and ring or pinky curled.
+    than the middle finger; or, with `hooked_index_margin`, hooked but reaching that much
+    further), middle curled, and ring or pinky curled.
 
     `lm` is (21, 3) world landmarks (preferred) or (21, 2) image landmarks.
     The thumb is ignored: people point with the thumb in or out.
@@ -121,7 +127,10 @@ def classify_pointing(lm: np.ndarray, p: PoseParams = DEFAULT_POSE) -> PoseResul
     others = sum(fingers[f].curled for f in ("ring", "pinky"))
     index, middle = fingers["index"], fingers["middle"]
     half = p.half_index_ok and not index.curled and index.reach > middle.reach
-    pointing = (index.extended or half) and middle.curled and others >= p.min_curled_of_ring_pinky
+    hook = 0 < p.hooked_index_margin <= index.reach - middle.reach
+    pointing = (
+        (index.extended or half or hook) and middle.curled and others >= p.min_curled_of_ring_pinky
+    )
     return PoseResult(pointing=pointing, fingers=fingers)
 
 
