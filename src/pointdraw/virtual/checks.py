@@ -168,7 +168,13 @@ def score(res: Any) -> dict[str, Any]:
     metrics["sim_s"] = round(res.t_end, 2)
     metrics["wall_s"] = round(res.wall_s, 3)
     metrics["agent_sources"] = sources
-    return {
+    vision = getattr(res.runtime, "vision", None)
+    if getattr(vision, "latencies", None):
+        lat = sorted(vision.latencies)
+        metrics["cosmos_calls"] = vision.calls
+        metrics["cosmos_s"] = round(statistics.median(lat), 3)
+        metrics["cosmos_max_s"] = round(lat[-1], 3)
+    report = {
         "scene": spec.id,
         "title": spec.title,
         "variant": res.cfg.variant,
@@ -192,6 +198,16 @@ def score(res: Any) -> dict[str, Any]:
         ],
         "says": says,
     }
+    if getattr(vision, "replies", None):
+        report["cosmos"] = {
+            "labels": [
+                {"id": o["id"], "label": o["label"]}
+                for e in log.of("scene")
+                for o in e.get("new", [])
+            ],
+            "replies": vision.replies,
+        }
+    return report
 
 
 def _score_drawn(
@@ -246,6 +262,11 @@ def _score_drawn(
         for e in log.of("drawn", "preloaded"):
             if (e.get("label") or e.get("text") or "") == label:
                 return _box(e.get("ink_box") or e.get("box"))
+        # the user's own marks by their scene-file label, not the vision model's word for them
+        # (live Cosmos may call the box a "square")
+        for e in log.of("user_mark"):
+            if e.get("label") == label:
+                return _box(e.get("box"))
         for o in objects.values():
             if o.label == label:
                 return o.box

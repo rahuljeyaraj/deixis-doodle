@@ -310,9 +310,11 @@ case "${1:-}" in
     ;;
   fetch)
     DIR="${2:-$REPO_DIR/out/sana_$SET}"
-    command -v aws >/dev/null || { echo "aws CLI not found (see 'Output bucket' above)" >&2; exit 1; }
+    AWS="$(command -v aws || echo "$HOME/.local/bin/aws")"
+    [ -x "$AWS" ] || { echo "aws CLI not found (see 'Output bucket' above)" >&2; exit 1; }
     mkdir -p "$DIR"
-    aws s3 sync "s3://$BUCKET/$SET/" "$DIR" --endpoint-url "$S3_ENDPOINT"
+    AWS_PROFILE="${AWS_PROFILE:-nebius}" "$AWS" s3 sync "s3://$BUCKET/$SET/" "$DIR" \
+      --endpoint-url "$S3_ENDPOINT"
     echo "fetched to $DIR. Next, on Windows:"
     echo "  uv run python scripts/trace_library.py --job out/sana_$SET --out-dir out/traced_$SET"
     ;;

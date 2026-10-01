@@ -369,8 +369,16 @@ def round_strokes(strokes: list, nd: int = 1) -> list:
 
 
 def trace_images(
-    images: list[Path], category: str, out: Path, manifest: dict[str, dict], args
+    images: list[Path],
+    category: str,
+    out: Path,
+    manifest: dict[str, dict],
+    args,
+    scores: dict[str, dict] | None = None,
 ) -> int:
+    """Trace each image into one variant file and a contact sheet. With Cosmos `scores` (by
+    file name, from score_drawings.py) the images arrive best first and the sheet says so."""
+    scores = scores or {}
     variants, items = [], []
     for p in images:
         res = trace(p)
@@ -392,6 +400,9 @@ def trace_images(
             "double_line": round(dbl, 4),
             "notes": res.notes,
         }
+        sc = scores.get(p.name)
+        if sc is not None:
+            v["cosmos"] = {k: sc.get(k) for k in ("label", "alternatives", "match", "score")}
         variants.append(v)
         flag = "  <- check" if (dbl >= TARGETS["double"] or res.notes or len(lib) > 40) else ""
         print(
@@ -420,17 +431,19 @@ def trace_images(
         sheet = (args.sheet_dir or out.parent) / f"{out.stem}_sheet.png"
         cell = 240
         rows = []
-        for name, gray, res in items:
+        for n, (name, gray, res) in enumerate(items, 1):
             inp = np.full((cell, cell), 255, np.uint8)
             if gray is not None:
                 inp = cv2.resize(gray, (cell, cell), interpolation=cv2.INTER_AREA)
+            sc = scores.get(f"{name}.png") or scores.get(name)
+            heard = f", cosmos: {sc['label'] or '-'} ({sc['match']})" if sc else ""
             rows.append(
                 np.hstack(
                     [
-                        label(cv2.cvtColor(inp, cv2.COLOR_GRAY2BGR), name),
+                        label(cv2.cvtColor(inp, cv2.COLOR_GRAY2BGR), f"{n}. {name}"),
                         label(
-                            draw_cell(res.strokes, cell, res.image_size),
-                            f"{len(res.strokes)} strokes",
+                            draw_cell(res.strokes, cell, res.image_size, colour=False),
+                            f"{len(res.strokes)} strokes{heard}",
                         ),
                     ]
                 )
@@ -452,9 +465,18 @@ def run_job(args: argparse.Namespace) -> int:
     by_obj: dict[str, list[Path]] = {}
     for e in data["images"]:
         by_obj.setdefault(e["object"], []).append(job / e["file"])
+    scores: dict[str, dict] = {}
+    score_path = args.scores or job / "cosmos_scores.json"
+    if score_path.exists():
+        rep = json.loads(score_path.read_text(encoding="utf-8"))
+        scores = {Path(r["file"]).name: r for r in rep["images"]}
+        for obj, files in by_obj.items():
+            ranked = [Path(f).name for f in rep["objects"].get(obj, {}).get("ranked", [])]
+            files.sort(key=lambda f: ranked.index(f.name) if f.name in ranked else len(ranked))
+        print(f"ranked by Cosmos scores in {score_path}")
     rc = 0
     for obj, files in sorted(by_obj.items()):
-        rc |= trace_images(files, obj, args.out_dir / f"{obj}.json", manifest, args)
+        rc |= trace_images(files, obj, args.out_dir / f"{obj}.json", manifest, args, scores)
     return rc
 
 
@@ -472,6 +494,9 @@ def main() -> int:
     ap.add_argument("--manifest", type=Path, help="manifest.json from the Job (optional)")
     ap.add_argument("--job", type=Path, help="a Job output folder with manifest.json")
     ap.add_argument("--out-dir", type=Path, default=OUT / "traced", help="for --job")
+    ap.add_argument(
+        "--scores", type=Path, help="Cosmos scores (default <job>/cosmos_scores.json, if any)"
+    )
     ap.add_argument("--source", help="source text for the variant file")
     ap.add_argument(
         "--license",

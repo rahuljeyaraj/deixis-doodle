@@ -126,25 +126,34 @@ class MockVision:
 class LiveVision:
     """The real Cosmos endpoint. Crops are sent, never the whole camera frame (plan 4.5)."""
 
-    def __init__(self) -> None:
-        from pointdraw.cosmos.client import CosmosClient
+    def __init__(self, client: Any = None) -> None:
+        if client is None:
+            from pointdraw.cosmos.client import CosmosClient
 
-        self.client = CosmosClient(think=False)
+            client = CosmosClient(think=False)
+        self.client = client
         self.calls = 0
         self.latencies: list[float] = []
+        self.replies: list[dict[str, Any]] = []  # raw replies, for the live-run report
 
     def label(self, image: Any, mark: UserMark, mm_per_px: float) -> str | None:
         crop = crop_for_mark(image, mark, mm_per_px)
         res = self.client.label_crop(crop.image)
         self.calls += 1
         self.latencies.append(res.reply.latency_s)
+        self.replies.append({"task": "label", "label": res.label, "raw": res.reply.raw})
         return res.label or None
 
     def look(self, query: str, image: Any, mm_per_px: float, scene: SceneModel) -> str:
-        reply, _, _ = self.client.ask(image, f"{query} Answer in one short sentence.")
+        from pointdraw.cosmos.parse import strip_reasoning
+        from pointdraw.cosmos.prompts import look_prompt
+
+        robot = [o.label for o in scene.robot if o.label and o.kind == "object"]
+        reply, _, _ = self.client.ask(image, look_prompt(query, robot))
         self.calls += 1
         self.latencies.append(reply.latency_s)
-        return reply.raw.strip()
+        self.replies.append({"task": "look", "query": query, "raw": reply.raw})
+        return strip_reasoning(reply.raw) or "Sorry, I couldn't make that out."
 
 
 def _and(items: list[str]) -> str:

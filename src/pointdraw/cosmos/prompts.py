@@ -47,6 +47,25 @@ FIND_ALL = (
 
 NO_THINK_SUFFIX = " Answer directly, without explaining your reasoning."
 
+LOOK = (
+    "This is a sheet of paper seen from directly above. {robot}"
+    'The person at the table asks: "{query}" Answer them in one short spoken sentence.'
+)
+
+
+def look_prompt(query: str, robot_drew: list[str] | None = None) -> str:
+    """The app's `look` tool: a free question about the paper, answered in one sentence.
+    `robot_drew` names the robot's own drawings, so "what did I draw?" can leave them out."""
+    robot = ""
+    if robot_drew:
+        names = [f"the {x}" for x in robot_drew]
+        listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+        robot = f"The robot drew {listed}; the person drew everything else. "
+    q = query.strip()
+    if q and q[-1] not in ".?!":
+        q += "?"
+    return LOOK.format(robot=robot, query=q)
+
 
 def label_crop_prompt() -> str:
     return LABEL_CROP
