@@ -1,0 +1,28 @@
+id: S29
+title: "'How big?' ... 'this big' said while still pointing, the fingers opened 3 s later"
+tests: "after 'this big' the runtime waits a few seconds for the size gesture"
+lines:
+  - at: 1.4
+    text: "Draw a cross here, this big."
+  - at: 6.6
+    text: "This big."
+hand:
+  - {at: 0.2, enter: [150, -40]}
+  - {pose: hooked}
+  - {move: [70, 80], dur: 0.6}
+  - {hold: 2.6}
+  - {leave: true}
+  - {wait: 1.4}
+  - {enter: [110, 50]}
+  - {pose: hooked}
+  - {hold: 4.0}
+  - {pinch: 35}
+  - {hold: 1.5}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: cross, center: [70, 80], size: 35}
+  asks: 1
+variations:
+  shifts: []

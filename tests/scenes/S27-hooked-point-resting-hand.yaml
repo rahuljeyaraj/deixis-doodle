@@ -1,0 +1,21 @@
+id: S27
+title: "A cross here, the finger hooked, the other hand resting (as on the Ender)"
+tests: "a hooked index pressed on the paper points; a resting second hand off the paper doesn't stop the place"
+# Live run on the Ender, 1 Oct 2026: rahul points with the index pressed on the paper, bent
+# at the joints, and rests his other hand in front of the sheet. Either one made "here"
+# find no point ("Where do you mean?").
+lines:
+  - at: 1.6
+    text: "Draw a cross here."
+hand:
+  - {rest: [40, -60]}
+  - {at: 0.2, enter: [150, -40]}
+  - {pose: hooked}
+  - {move: [120, 60], dur: 0.6}
+  - {hold: 2.0}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: cross, center: [120, 60]}
+  asks: 0

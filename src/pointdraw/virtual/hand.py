@@ -40,13 +40,16 @@ _ORDER = ("index", "middle", "ring", "pinky")
 STRAIGHT = (0.0, 0.0, 0.0)
 CURLED = (80.0, 100.0, 60.0)
 
-POSES = ("point", "pinch", "open", "fist")
+POSES = ("point", "hooked", "pinch", "open", "fist")
+HOOKED = (20.0, 70.0, 40.0)  # the index pressed on the paper, as rahul points (1 Oct 2026)
 
 
 def hand_model(pose: str) -> np.ndarray:
-    """21 world landmarks (metres) for a pose: point, pinch (thumb out), open or fist."""
+    """21 world landmarks (metres) for a pose: point, hooked (a point pressed on the paper,
+    the index bent), pinch (thumb out), open or fist."""
     flex = {
         "point": {"index": STRAIGHT},
+        "hooked": {"index": HOOKED},
         "pinch": {"index": STRAIGHT},
         "open": {f: STRAIGHT for f in _ORDER},
         "fist": {},
@@ -68,7 +71,7 @@ def hand_model(pose: str) -> np.ndarray:
             p = p + seg * np.array([0.0, math.cos(angle), -math.sin(angle)])
             base += 1
             lm[base] = p
-    if pose in ("point", "fist"):
+    if pose in ("point", "hooked", "fist"):
         # The thumb tucked onto the curled middle finger, as recorded on the Ender (its tip
         # 0.02..0.07 of the palm length from the middle fingertip while pointing).
         lm[4] = lm[12] + (0.004, 0.0, 0.0)
@@ -88,6 +91,7 @@ class HandState:
     pinch_mm: float | None = None  # thumb-to-index span when pose == "pinch"
     two_mm: float | None = None  # second hand's index tip is this far to the left
     height_mm: float = 0.0  # fingertip height above the paper
+    rest: Point | None = None  # a second hand resting here (a fist), paper mm; stays on leave
 
 
 @dataclass(frozen=True)
@@ -132,6 +136,9 @@ def expand(keys: list[dict[str, Any]], default_height: float = 0.0) -> list[Segm
             st = replace(st, two_mm=float(k["two_hands"]))
         if k.get("one_hand"):
             st = replace(st, two_mm=None)
+        if "rest" in k:
+            r = k["rest"]
+            st = replace(st, rest=None if r is False else (float(r[0]), float(r[1])))
         if "move" in k:
             x, y = map(float, k["move"])
             dist = math.dist(st.tip, (x, y))
@@ -145,7 +152,7 @@ def expand(keys: list[dict[str, Any]], default_height: float = 0.0) -> list[Segm
             nxt = replace(st, tip=(st.tip[0], -80.0), two_mm=None)
             segs.append(Segment(tc, tc + dur, st, nxt))
             tc += dur
-            st = HandState(height_mm=default_height)
+            st = HandState(height_mm=default_height, rest=st.rest)
         for key in ("hold", "wait"):
             if key in k:
                 still(tc + float(k[key]))
@@ -220,6 +227,9 @@ class VirtualHand:
     def frame(self, t: float) -> HandsFrame:
         st = self.state(t)
         hands: list[HandObservation] = []
+        if st.rest is not None:  # listed first: the tracker must not depend on the order
+            rest = HandState(present=True, tip=st.rest, pose="fist")
+            hands.append(self._observe(rest, mirror=True))
         if st.present and self.rng.random() >= self.noise.dropout:
             hands.append(self._observe(st, mirror=False))
             if st.two_mm is not None:

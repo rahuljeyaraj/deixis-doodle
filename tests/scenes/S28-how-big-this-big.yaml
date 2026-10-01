@@ -1,0 +1,30 @@
+id: S28
+title: "A cross here this big, no size shown; asked 'How big?', the size shown, then 'this big'"
+tests: "the runtime answers its own size question from the gesture; the answer never goes to the agent alone"
+# Live run on the Ender, 1 Oct 2026: "this big" sent to the agent on its own came back as a
+# new object (a moon, a cat). The fingers were opened first, then the words said.
+lines:
+  - at: 1.4
+    text: "Draw a cross here, this big."
+  - at: 6.6
+    text: "This big."
+hand:
+  - {rest: [40, -60]}
+  - {at: 0.2, enter: [150, -40]}
+  - {pose: hooked}
+  - {move: [70, 80], dur: 0.6}
+  - {hold: 2.6}
+  - {leave: true}
+  - {wait: 1.4}
+  - {enter: [110, 50]}
+  - {pinch: 40}
+  - {hold: 2.6}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: cross, center: [70, 80], size: 40}
+  asks: 1
+  ask_contains: ["How big"]
+variations:
+  shifts: []
