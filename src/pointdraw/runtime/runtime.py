@@ -1165,6 +1165,8 @@ def _needs_view(calls: list[ToolCall]) -> bool:
 #: straight after an article (so "the son" also becomes "the sun": fine for a drawing robot).
 _HOMOPHONES = {"son": "sun", "sunn": "sun", "i": "eye", "aye": "eye", "year": "ear"}
 _ARTICLES = {"a", "an", "the"}
+# "this big" heard as "this week" (rahul's voice, live 1 Oct, twice) or "best bit" (once).
+_BIG_SLIPS = {"week", "weak", "wig"}
 
 
 def repair_words(words: list[Word], categories: list[str]) -> list[Word]:
@@ -1173,9 +1175,15 @@ def repair_words(words: list[Word], categories: list[str]) -> list[Word]:
     - "a cross here" heard as "across here": a word that is "a" + a drawable category is
       split, but only before a demonstrative or at the end ("across the page" is English);
     - "an ear" heard as "a near": re-split;
-    - "a sun" heard as "a son" (and eye/I, ear/year): homophones right after an article.
+    - "a sun" heard as "a son" (and eye/I, ear/year): homophones right after an article;
+    - "this big" heard as "this week" (rahul's voice, 1 Oct): only at the end of what was said,
+      or before a filler ("draw it this week, then a tree" keeps its week), and "best bit"
+      only as the whole utterance.
     """
     cats = {c for c in categories if " " not in c}
+    if [norm_word(w.text) for w in words] == ["best", "bit"]:
+        a, b = words
+        return [Word("this", a.t0, a.t1, a.confidence), Word("big", b.t0, b.t1, b.confidence)]
     out: list[Word] = []
     i = 0
     while i < len(words):
@@ -1192,6 +1200,12 @@ def repair_words(words: list[Word], categories: list[str]) -> list[Word]:
             i += 1
         elif prev in _ARTICLES and low in _HOMOPHONES and _HOMOPHONES[low] in cats:
             out.append(Word(_HOMOPHONES[low], w.t0, w.t1, w.confidence))
+        elif (
+            prev in ("this", "that", "about")
+            and low in _BIG_SLIPS
+            and all(norm_word(x.text) in FILLERS for x in words[i + 1 :])
+        ):
+            out.append(Word("big", w.t0, w.t1, w.confidence))
         else:
             out.append(w)
         i += 1

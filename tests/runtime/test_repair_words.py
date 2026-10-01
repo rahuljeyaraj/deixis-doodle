@@ -25,6 +25,14 @@ def fix(s: str) -> str:
         ("draw a line across the page", "draw a line across the page"),
         ("a nail", "a nail"),
         ("near the house", "near the house"),
+        # rahul's voice, live 1 Oct: "this big" heard as "this week" and "best bit"
+        ("this week", "this big"),
+        ("draw a cross here this week", "draw a cross here this big"),
+        ("about that weak please", "about that big please"),
+        ("best bit", "this big"),
+        ("draw it this week then a tree", "draw it this week then a tree"),
+        ("the best bit of the drawing", "the best bit of the drawing"),
+        ("next week", "next week"),
     ],
 )
 def test_repair(heard, fixed):
