@@ -245,7 +245,9 @@ class Controller:
                 self._send(line)
                 with self._cond:
                     self._progress = (i + 1) / n
-            self._t.wait_idle(timeout=self.config.ack_timeout_s)
+            # No overall deadline: a G28 or a long M400 can run past ack_timeout_s while the
+            # firmware prints `busy: processing`. The link still fails after that much silence.
+            self._t.wait_idle()
         except LinkStopped:
             return
         with self._cond:
@@ -283,7 +285,7 @@ class Controller:
         return True
 
     def _send(self, line: str) -> None:
-        self._t.send(line, timeout=self.config.ack_timeout_s)
+        self._t.send(line)  # the link times out on silence, not on a long busy command
         cmd, p = parse_line(line)
         if cmd == "G28":
             self._pen_down = True  # Z homes to 0, which is at or below pen-down
