@@ -10,10 +10,10 @@ or list them in the session report.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, Protocol
+from dataclasses import dataclass, field
+from typing import Any, Literal, Protocol
 
-from deixis.geometry import Box, Polyline
+from deixis.geometry import Box, Point, Polyline
 
 Speed = Literal["slow", "normal", "fast"]
 State = Literal[
@@ -30,6 +30,25 @@ class ControllerStatus:
     progress: float  # 0..1 for the current job
     hands_clear: bool  # last value received from the interlock
     message: str = ""
+
+
+@dataclass
+class PlotEvent:
+    """Something that happened to a job, stamped on the controller's clock."""
+
+    t: float
+    kind: str  # job_start, job_end, pause_request, paused, resumed, stop_request, halted, error
+    label: str = ""  # the job kind: preview, draw, park, home
+    tag: Any = None  # the caller's handle for the job (e.g. a drawing id)
+    detail: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class InkSegment:
+    t: float  # when the pen finished laying this piece
+    a: Point  # bed mm
+    b: Point
+    tag: Any = None
 
 
 class PlotterController(Protocol):

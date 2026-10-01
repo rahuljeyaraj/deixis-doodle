@@ -3,7 +3,8 @@
 Run just these with `uv run pytest -m virtual`. They also run in the normal test run.
 No hardware, no network, no keys. Each scene runs as scored by `pointdraw.virtual.checks`,
 plus its variations (other seeds for the jitter, a hovering finger, speech shifted
-earlier and later against the gesture), so a pass isn't luck.
+earlier and later against the gesture), so a pass isn't luck. Each scene also runs once on
+the real controller behind the live adapter (`plotter="controller"`, in simulated time).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ def _cases():
         if v.hover_mm:
             cfgs.append(RunConfig(hover_mm=v.hover_mm))
         cfgs += [RunConfig(shift_s=s) for s in v.shifts]
+        cfgs.append(RunConfig(plotter="controller"))
         for cfg in cfgs:
             marks = [pytest.mark.xfail(reason=spec.known_issue)] if spec.known_issue else []
             yield pytest.param(spec, cfg, id=f"{spec.id}-{cfg.variant}", marks=marks)

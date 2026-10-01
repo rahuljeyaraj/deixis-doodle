@@ -29,12 +29,12 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from deixis.geometry import Box, Point, Polyline
 from pointdraw.controller import gcode
-from pointdraw.controller.api import ControllerStatus, Speed, State
+from pointdraw.controller.api import ControllerStatus, InkSegment, PlotEvent, Speed, State
 from pointdraw.controller.config import MachineConfig
 from pointdraw.controller.safety import check_line, parse_line, validate_points, validate_polylines
 from pointdraw.controller.simulator import SimulatedPlotter
@@ -49,23 +49,6 @@ class _Job:
     lines: list[str]
     state: State
     tag: Any = None  # the caller's handle for this job (e.g. a drawing id)
-
-
-@dataclass
-class PlotEvent:
-    t: float
-    kind: str  # job_start, job_end, pause_request, paused, resumed, stop_request, halted
-    label: str = ""
-    tag: Any = None
-    detail: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class InkSegment:
-    t: float  # when the pen finished laying this piece
-    a: Point  # bed mm
-    b: Point
-    tag: Any = None
 
 
 class VirtualPlotter:

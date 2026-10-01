@@ -3,7 +3,8 @@
 Per camera frame (23 fps): the plotter advances, due sheet events happen (the user draws a
 mark), speech starts and finished utterances reach the runtime, the virtual hand's frame
 goes to the runtime, and the runtime ticks. Nothing touches hardware: the plotter is
-`VirtualPlotter`, and no serial port is ever opened.
+`VirtualPlotter`, or with `RunConfig(plotter="controller")` the real controller behind the
+live adapter in simulated time (`lockstep.LockstepPlotter`). No serial port is ever opened.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ class RunConfig:
     record: bool = False  # live: write replies into the cache
     emergency_parser: bool | None = None  # None: the scene's setting
     use_cache: bool = True  # mock: use recorded replies
+    plotter: str = "virtual"  # virtual | controller (the real controller, in lockstep)
 
     @property
     def variant(self) -> str:
@@ -51,6 +53,8 @@ class RunConfig:
             parts.append("ep" if self.emergency_parser else "noep")
         if not self.use_cache:
             parts.append("parser")
+        if self.plotter != "virtual":
+            parts.append(self.plotter)
         return "-".join(parts)
 
 
@@ -60,7 +64,7 @@ class RunResult:
     cfg: RunConfig
     log: EventLog
     runtime: Runtime
-    plotter: VirtualPlotter
+    plotter: Any  # VirtualPlotter or LockstepPlotter
     sheet: VirtualSheet
     hand: VirtualHand
     camera: VirtualCamera
@@ -104,13 +108,36 @@ def run(
     spoken: list[Spoken] | None = None,
 ) -> RunResult:
     """Run a scene to the end and return everything that happened (not yet scored)."""
-    from pointdraw.virtual.checks import score
-
     cfg = cfg or RunConfig()
     machine = machine or MachineConfig()
     wall0 = time.perf_counter()
     ep = spec.plotter.emergency_parser if cfg.emergency_parser is None else cfg.emergency_parser
-    plotter = VirtualPlotter(machine, emergency_parser=ep)
+    if cfg.plotter == "controller":
+        from pointdraw.virtual.lockstep import LockstepPlotter
+
+        plotter: Any = LockstepPlotter(machine, emergency_parser=ep)
+        plotter.start()
+    else:
+        plotter = VirtualPlotter(machine, emergency_parser=ep)
+    try:
+        return _run(spec, cfg, machine, params, spoken, plotter, wall0)
+    finally:
+        close = getattr(plotter, "close", None)
+        if close is not None:
+            close()
+
+
+def _run(
+    spec: SceneSpec,
+    cfg: RunConfig,
+    machine: MachineConfig,
+    params: RuntimeParams | None,
+    spoken: list[Spoken] | None,
+    plotter: Any,
+    wall0: float,
+) -> RunResult:
+    from pointdraw.virtual.checks import score
+
     paper = machine.paper_box
     origin = (paper.x, paper.y)
     lib = _library()
@@ -221,7 +248,7 @@ def run(
     return res
 
 
-def _preload(spec: SceneSpec, rt: Runtime, plotter: VirtualPlotter, sheet: VirtualSheet) -> None:
+def _preload(spec: SceneSpec, rt: Runtime, plotter: Any, sheet: VirtualSheet) -> None:
     """What was on the sheet before the scene: earlier robot drawings and the user's marks."""
     ox, oy = rt.origin
     for item in spec.sheet.robot:
