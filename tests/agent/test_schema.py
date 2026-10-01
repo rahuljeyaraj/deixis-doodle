@@ -178,3 +178,15 @@ def test_article_as_label_is_sent_back():
     assert any("not a name" in p for p in check_against_transcript(bad, words))
     good = parse_call("draw_connector", {"from": {"label": "brain"}, "to": {"label": "hand"}})
     assert check_against_transcript(good, words) == []
+
+
+def test_a_bare_relation_is_not_a_named_place():
+    """Live Nemotron sent {"named": "inside"} for "put a hand inside that" (1 Oct)."""
+    for word in ("inside", "next to", "in", "between", "left_of", "inside that", "next to it"):
+        with pytest.raises(ToolCallError, match="relation, not a place name"):
+            parse_call("place_drawing", {"object": "hand", "place": {"named": word}})
+    for ok in ("top left corner", "middle", "on the roof", "inside the house"):
+        call = parse_call("place_drawing", {"object": "hand", "place": {"named": ok}})
+        assert isinstance(call.args.place, NamedPlace)
+    with pytest.raises(ToolCallError, match='"deixis": "that"'):
+        parse_call("place_drawing", {"object": "hand", "place": {"named": "inside that one"}})

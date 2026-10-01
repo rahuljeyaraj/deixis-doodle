@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import copy
 import re
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 
 from pydantic import (
     BaseModel,
@@ -178,6 +178,31 @@ class NamedPlace(_Strict):
     a scene object that needs vision ("on the roof")."""
 
     named: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _not_a_bare_relation(self) -> NamedPlace:
+        # Live Nemotron sent {"named": "inside"}, then {"named": "inside that"}, for "put a
+        # hand inside that" (1 Oct, live Cosmos runs of S15). A relation word, alone or with
+        # a pointing word, names no place: send it back for the retry.
+        words = self.named.strip().lower().replace("_", " ").split()
+        pointing = ""
+        if len(words) > 1 and words[-1] in (*DEMONSTRATIVES, "it", "one"):
+            pointing = words.pop()
+            if words[-1:] == ["that"] or words[-1:] == ["this"]:  # "inside that one"
+                pointing = words.pop()
+        word = " ".join(words)
+        rel = _RELATION_SYNONYMS.get(word, word.replace(" ", "_"))
+        if rel in get_args(Relation):
+            target = (
+                f'{{"deixis": "{pointing}", "word_index": <its index>}}'
+                if pointing in DEMONSTRATIVES
+                else "<the object it refers to>"
+            )
+            raise ValueError(
+                f"'{self.named}' is a relation, not a place name: use "
+                f'{{"relation": "{rel}", "target": {target}}}'
+            )
+        return self
 
 
 class EmptySpace(_Strict):

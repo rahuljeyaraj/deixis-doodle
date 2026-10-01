@@ -31,6 +31,9 @@ of the plumbing from here to the tracer.
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
+import io
 import json
 import math
 import os
@@ -183,10 +186,66 @@ def load_model(name: str, fallback: bool):
         return "flux", gen
 
 
-def write_manifest(path: Path, manifest: dict) -> None:
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
+# ---------------------------------------------------------------------------------------------
+# Getting files out. The job's disk is deleted when it ends. On 1 Oct 2026 every write to the
+# bucket mount failed (OSError EIO on close; nothing reached the bucket), so each finished file
+# is also printed into the job's log, base64 in short lines with its size and sha256, and
+# rebuilt on the laptop by logs_to_files.py (`library_job.sh fetch-logs`). The bucket stays as
+# the first choice: after its first failed write it is not tried again.
+# ---------------------------------------------------------------------------------------------
+
+LOG_CHUNK = 1000  # base64 characters per log line
+
+
+def emit_file(rel: str, data: bytes, fileno: int) -> None:
+    """Print one file into the log: a header, numbered chunks, an end marker."""
+    b64 = base64.b64encode(data).decode("ascii")
+    n = (len(b64) + LOG_CHUNK - 1) // LOG_CHUNK
+    sha = hashlib.sha256(data).hexdigest()
+    lines = [f"@@FILE {fileno} {n} {len(data)} {sha} {rel}"]
+    lines += [f"@@C {fileno} {i} {b64[i * LOG_CHUNK : (i + 1) * LOG_CHUNK]}" for i in range(n)]
+    lines.append(f"@@END {fileno}")
+    for line in lines:
+        print(line, flush=True)
+
+
+def compact_png(img) -> bytes:
+    """A small copy for the log: grey, 16 levels, white kept white. Line art survives it; the
+    noise a diffusion model leaves in the background (which makes PNGs big) does not."""
+    g = img.convert("L").point(lambda v: min(255, (v // 16) * 17))
+    buf = io.BytesIO()
+    g.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
+
+
+class Sink:
+    """Where finished files go: local disk, then the bucket (best effort), then the log."""
+
+    def __init__(self, out: Path, work: Path, to_log: bool = True) -> None:
+        self.out, self.work, self.to_log = out, work, to_log
+        self.bucket_ok = True
+        self.files = 0
+
+    def put(self, rel: str, data: bytes, log_data: bytes | None = None) -> None:
+        local = self.work / rel
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(data)
+        if self.bucket_ok:
+            try:
+                dest = self.out / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with open(dest, "wb") as fh:  # plain sequential write; no rename, no seek
+                    fh.write(data)
+            except OSError as e:
+                self.bucket_ok = False
+                log(f"bucket write failed ({e!r}): files go to the log only from now on")
+        if self.to_log:
+            self.files += 1
+            emit_file(rel, log_data if log_data is not None else data, self.files)
+
+
+def manifest_bytes(manifest: dict) -> bytes:
+    return json.dumps(manifest, indent=1).encode("utf-8")
 
 
 def main() -> int:
@@ -200,6 +259,8 @@ def main() -> int:
     ap.add_argument("--max-minutes", type=float, help="override the set's time limit")
     ap.add_argument("--model", choices=sorted(MODELS), default="sana")
     ap.add_argument("--no-fallback", action="store_true", help="don't fall back to FLUX")
+    ap.add_argument("--work", type=Path, default=Path("/tmp/library_work"), help="local copy")
+    ap.add_argument("--no-log-files", action="store_true", help="don't print files into the log")
     args = ap.parse_args()
 
     start = time.time()
@@ -222,7 +283,10 @@ def main() -> int:
         pass
 
     model, generate = load_model(args.model, not args.no_fallback)
-    args.out.mkdir(parents=True, exist_ok=True)
+    try:
+        args.out.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        log(f"cannot make {args.out} ({e!r}): files go to the log only")
     versions = {}
     for mod in ("torch", "diffusers", "transformers"):
         try:
@@ -244,12 +308,11 @@ def main() -> int:
         "stopped_early": False,
         "images": [],
     }
-    man_path = args.out / "manifest.json"
+    sink = Sink(args.out, args.work, to_log=not args.no_log_files)
     done = 0
     for obj in objects:
         prompt = prompt_for(cfg, obj)
-        folder = args.out / obj.replace(" ", "_")
-        folder.mkdir(parents=True, exist_ok=True)
+        folder = obj.replace(" ", "_")
         for i in range(per):
             if time.time() - start > limit_s:
                 log(f"time limit reached after {done} images: stopping")
@@ -258,27 +321,30 @@ def main() -> int:
             seed = int(params["seed_base"]) + i
             t0 = time.time()
             img = generate(prompt, negative, seed, params)
-            name = f"{obj.replace(' ', '_')}_s{seed}.png"
-            img.save(folder / name)
             took = time.time() - t0
+            rel = f"{folder}/{folder}_s{seed}.png"
+            buf = io.BytesIO()
+            img.save(buf, "PNG")
+            sink.put(rel, buf.getvalue(), compact_png(img))
             manifest["images"].append(
                 {
-                    "file": f"{folder.name}/{name}",
+                    "file": rel,
                     "object": obj,
                     "seed": seed,
                     "prompt": prompt,
                     "seconds": round(took, 2),
                 }
             )
-            write_manifest(man_path, manifest)
             done += 1
             log(f"{done:4d} {obj} seed {seed}: {took:.1f} s")
         if manifest["stopped_early"]:
             break
     manifest["finished"] = datetime.now(UTC).isoformat(timespec="seconds")
     manifest["elapsed_s"] = round(time.time() - start, 1)
-    write_manifest(man_path, manifest)
-    log(f"done: {done} images in {manifest['elapsed_s']:.0f} s -> {args.out}")
+    manifest["bucket_ok"] = sink.bucket_ok
+    sink.put("manifest.json", manifest_bytes(manifest))
+    where = args.out if sink.bucket_ok else "the job log (fetch-logs)"
+    log(f"done: {done} images in {manifest['elapsed_s']:.0f} s -> {where}")
     return 0 if done else 1
 
 

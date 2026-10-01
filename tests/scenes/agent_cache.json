@@ -264,7 +264,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 0.953,
+  "latency_s": 0.958,
   "recorded": "2026-10-01"
  },
  "5ebdcbe4ca1726a0": {
@@ -479,7 +479,7 @@
   ],
   "speech": null,
   "model": "nvidia/Nemotron-3_5-Lightning",
-  "latency_s": 1.016,
+  "latency_s": 1.046,
   "recorded": "2026-10-01"
  },
  "ae501e4272ccfdab": {

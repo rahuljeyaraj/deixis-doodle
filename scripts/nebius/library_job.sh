@@ -15,7 +15,9 @@
 #   status             job id and state
 #   logs [N]           last N log lines (default 100)
 #   follow             stream the logs (Ctrl-C stops watching, not the job)
-#   fetch [DIR]        download images + manifest.json (default DIR: out/sana_<set>)
+#   fetch [DIR]        download images + manifest.json from the bucket (default DIR: out/sana_<set>)
+#   fetch-logs [DIR]   rebuild them from the job's log instead (checked by sha256); the way that
+#                      worked on 1 Oct 2026, when every write to the bucket mount failed (EIO)
 #   cancel             stop the job now (the VM stops and its disk is deleted)
 #   delete             delete the finished job's record (needed before re-creating the same set)
 #   list               list jobs AND endpoints: check that nothing is left running
@@ -316,6 +318,19 @@ case "${1:-}" in
     AWS_PROFILE="${AWS_PROFILE:-nebius}" "$AWS" s3 sync "s3://$BUCKET/$SET/" "$DIR" \
       --endpoint-url "$S3_ENDPOINT"
     echo "fetched to $DIR. Next, on Windows:"
+    echo "  uv run python scripts/trace_library.py --job out/sana_$SET --out-dir out/traced_$SET"
+    ;;
+  fetch-logs)
+    need_cli
+    id="$(job_id)"
+    [ -z "$id" ] && { echo "no job named $NAME"; exit 1; }
+    DIR="${2:-$REPO_DIR/out/sana_$SET}"
+    LOG="$(mktemp)"
+    "$NB" ai job logs "$id" --since "${SINCE:-6h}" --tail 200000 2>&1 | redact > "$LOG"
+    echo "log: $(wc -l < "$LOG") lines"
+    python3 "$SCRIPT_DIR/logs_to_files.py" "$LOG" "$DIR"
+    rm -f "$LOG"
+    echo "Next, on Windows:"
     echo "  uv run python scripts/trace_library.py --job out/sana_$SET --out-dir out/traced_$SET"
     ;;
   cancel)
