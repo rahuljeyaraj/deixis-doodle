@@ -48,6 +48,43 @@ subjects:
   house: a little house with a pointed roof, a door and two windows
   cat: a sitting cat, front view
   flower: a flower with five round petals and a stem with two leaves
+  dog: a sitting dog, front view
+  car: a small car, side view
+  bicycle: a bicycle, side view
+  fish: a fish, side view
+  bird: a small bird, side view
+  # kids' favourites, added 1 Oct 2026 (rahul: "objects usually present in kids' drawings,
+  # but drawn neatly")
+  heart: a heart shape
+  butterfly: a butterfly with open wings
+  rainbow: a rainbow with a small cloud at each end
+  balloon: a balloon on a string
+  umbrella: an open umbrella
+  rocket: a space rocket
+  airplane: a small aeroplane
+  train: a toy train engine
+  bus: a school bus, side view
+  kite: a diamond-shaped kite with a tail
+  snowman: a snowman with a hat and a scarf
+  ice cream: an ice cream cone
+  mushroom: a mushroom
+  castle: a small castle with two towers
+  duck: a duck, side view
+  rabbit: a sitting rabbit
+  turtle: a turtle, side view
+  snail: a snail with a spiral shell
+  ladybug: a ladybug, seen from above
+  bee: a bee with wings
+  owl: an owl, front view
+  elephant: an elephant, side view
+  frog: a sitting frog, front view
+  whale: a whale with a water spout
+  banana: a banana
+  strawberry: a strawberry
+  cake: a birthday cake with candles
+  gift: a gift box with a bow
+  clock: a round wall clock
+  person: a smiling child standing with arms out
   mouth: a pair of smiling lips
   microphone: a handheld microphone
   camera: a photo camera
@@ -78,10 +115,12 @@ sets:
     per_object: 4
     max_minutes: 15  # library_job.py stops by itself after this (the Job's own timeout is 1 h)
     objects: [ear, eye, brain, hand, tree]
-  # every current library category (library/index.json), about 10 images each
+  # every current library category (library/index.json) plus 30 kids' favourites, in the
+  # two styles rahul chose on 1 Oct 2026: icon = a simple picture, colouring = a detailed one
   full:
-    per_object: 10
+    per_object: 6  # per style: 71 objects x 2 styles x 6 = 852 images
     max_minutes: 40
+    styles: [icon, colouring]
     objects:
       - apple
       - bed
@@ -124,3 +163,33 @@ sets:
       - table
       - television
       - tree
+      - heart
+      - butterfly
+      - rainbow
+      - balloon
+      - umbrella
+      - rocket
+      - airplane
+      - train
+      - bus
+      - kite
+      - snowman
+      - ice cream
+      - mushroom
+      - castle
+      - duck
+      - rabbit
+      - turtle
+      - snail
+      - ladybug
+      - bee
+      - owl
+      - elephant
+      - frog
+      - whale
+      - banana
+      - strawberry
+      - cake
+      - gift
+      - clock
+      - person
