@@ -139,3 +139,38 @@ def test_a_relation_to_the_pointed_object_is_kept():
     }
     _, call = grounded("Put a hand that here", args)
     assert call.args.place.relation == "inside"
+
+
+def test_an_arrow_whose_ends_are_the_same_place_asks():
+    """Stress test, 2 Oct: S12 seed 7 lost the second point, both words took the first, and
+    the arrow code raised ValueError (it would have stopped the live app)."""
+    call = parse_call(
+        "draw_connector",
+        {
+            "kind": "arrow",
+            "from": {"deixis": "this", "word_index": 3},
+            "to": {"deixis": "that", "word_index": 5},
+        },
+    )
+    rt = Runtime(Says(call), VirtualPlotter(), MachineConfig())
+    rt.start(0.0)
+    words = "An arrow from this to that".split()
+    rt.on_utterance([Word(w, 1.0 + 0.2 * i, 1.15 + 0.2 * i) for i, w in enumerate(words)], 3.0)
+    rt.tick(5.0)
+    assert not rt.log.of("error")
+    asks = [e["question"] for e in rt.log.of("ask")]
+    assert asks  # no crash; it asks (no point at all, or the same point twice)
+
+
+def test_a_call_that_fails_to_plan_is_reported_not_raised(monkeypatch):
+    rt = Runtime(Says(CROSS), VirtualPlotter(), MachineConfig(), Planner())
+    rt.start(0.0)
+
+    def boom(*a, **k):
+        raise ValueError("planner broke")
+
+    monkeypatch.setattr(rt, "_place_drawing", boom)
+    rt.on_utterance([Word("cross", 1.0, 1.3)], 3.0)
+    rt.tick(5.0)
+    assert rt.log.of("error")[-1]["why"] == "ValueError: planner broke"
+    assert rt.log.of("say")[-1]["text"] == "Sorry, I couldn't draw that."

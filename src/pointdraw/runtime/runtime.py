@@ -434,6 +434,10 @@ class Runtime:
             except NeedAsk as e:
                 self._ask(e.q, utt, call, t)
                 break
+            except Exception as e:  # noqa: BLE001 - one bad call must not stop the app
+                self.log.add(t, "error", tool=call.name, why=f"{type(e).__name__}: {e}")
+                self.say(t, "Sorry, I couldn't draw that.")
+                break
             finally:
                 for entry in refs.log:
                     self.log.add(t, "resolve", utt=utt.id, tool=call.name, **entry)
@@ -618,6 +622,12 @@ class Runtime:
                 o = refs.obj(ref)
                 ends.append((o.center, o.box, o.id))
         (pa, ba, ia), (pb, bb, ib) = ends
+        if (ia is not None and ia == ib) or math.dist(pa, pb) < 2.0:
+            # Both words found the same thing (night 2 Oct stress test, S12 seed 7: the
+            # second point was lost, both took the first; the arrow code then raised).
+            raise NeedAsk(
+                Question("From where to where? Point at one, then the other.", "same_ends")
+            )
         kind = a.kind  # type: ignore[attr-defined]
         placed = self.planner.arrow(pa, pb, ba, bb, kind, id=self.scene.new_id(kind))
         where = {
