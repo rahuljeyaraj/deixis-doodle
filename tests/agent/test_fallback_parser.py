@@ -170,7 +170,8 @@ EMPTY = {"empty_space": True}
 
 
 def test_library_list_is_what_the_runtime_sends():
-    assert len(LIB) == 45 and {"flower", "brain", "ear", "house", "tree"} <= set(LIB)
+    # 41 Quick, Draw! categories + 30 kids' favourites (SANA, 1 Oct 2026) + 4 primitives
+    assert len(LIB) == 75 and {"flower", "brain", "ear", "house", "tree", "rocket"} <= set(LIB)
 
 
 @pytest.mark.parametrize(
@@ -336,8 +337,8 @@ def test_no_trailing_correction_without_a_change(text):
         ("draw a dragon", "a dragon", "dragon"),
         ("a unicorn here", "a unicorn", "unicorn"),
         ("draw me a big red dragon there", "a dragon", "dragon"),
-        ("a big owl there", "an owl", "owl"),
-        ("draw a rocket", "a rocket", "rocket"),
+        ("a big penguin there", "a penguin", "penguin"),  # owl and rocket joined the library
+        ("draw a volcano", "a volcano", "volcano"),  # on 1 Oct (SANA kids' favourites)
         ("draw dragons", "dragons", "dragons"),
     ],
 )
@@ -355,10 +356,10 @@ def test_unknown_objects_ask_with_close_categories(text, thing, probe):
 def test_unknown_object_examples():
     assert lib_calls("draw a dragon")[0]["args"] == {
         "question": "I can't draw a dragon yet. Which one instead?",
-        "options": ["crown", "brain"],
+        "options": ["train", "crown", "brain"],  # "train" since the 1 Oct library
     }
-    assert lib_calls("draw a rocket")[0]["args"] == {
-        "question": "I can't draw a rocket yet. What should I draw instead?",
+    assert lib_calls("draw a volcano")[0]["args"] == {
+        "question": "I can't draw a volcano yet. What should I draw instead?",
         "options": [],
     }
     # the same thing while something is previewed: still a question, not a re-point

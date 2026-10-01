@@ -30,9 +30,11 @@ PICKS = LIB / "picks.json"
 SANA_CANDIDATES = LIB / "sana" / "candidates"
 SANA_PICKS = LIB / "sana_picks.json"
 SANA_MODEL = "Efficient-Large-Model/Sana_1600M_1024px_diffusers"
-# the style a request gets when it says neither "simple" nor "detailed" (rahul liked the
-# colouring-book look best, 1 Oct 2026; icons draw 2 to 3 times faster)
-DEFAULT_STYLE = "colouring"
+# the style a request gets when it says neither "simple" nor "detailed". rahul liked the
+# colouring-book look best (1 Oct 2026), but it draws 2 to 3 times slower than the icons: with
+# it as the default, a big house ran past S4's 90 s and the hero script's spoken lines arrived
+# mid-drawing. So "simple" (icon) is the default and "a detailed X" gets the colouring page.
+DEFAULT_STYLE = "icon"
 SANA_LICENCE = (
     "Apache-2.0 (model card, checked 2026-10-01); text encoder Gemma-2-2B-IT: Gemma Terms of Use"
 )
@@ -182,7 +184,8 @@ def add_sana(cats: dict[str, dict]) -> list[str]:
             entry["fallback"] = cats[cat]["file"]
         cats[cat] = entry
         done.append(cat)
-        print(f"{cat:14s} {len(variants)} SANA variants (Quick, Draw! kept as fallback)")
+        kept = " (Quick, Draw! kept as fallback)" if "fallback" in entry else ""
+        print(f"{cat:14s} {len(variants)} SANA variants{kept}")
     return done
 
 

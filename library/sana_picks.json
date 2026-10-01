@@ -1,0 +1,566 @@
+{
+ "_help": "Picked SANA drawings per category, first = first choice: key_ids from library/sana/candidates/<name>.json, or 1-based ranks. Then run scripts/build_library.py.",
+ "airplane": [
+  "airplane_colouring_s1004",
+  "airplane_colouring_s1001",
+  "airplane_colouring_s1005",
+  "airplane_icon_s1002",
+  "airplane_icon_s1001",
+  "airplane_icon_s1003"
+ ],
+ "apple": [
+  "apple_colouring_s1003",
+  "apple_colouring_s1004",
+  "apple_colouring_s1000",
+  "apple_icon_s1000",
+  "apple_icon_s1001",
+  "apple_icon_s1003"
+ ],
+ "balloon": [
+  "balloon_colouring_s1004",
+  "balloon_colouring_s1003",
+  "balloon_colouring_s1001",
+  "balloon_icon_s1003",
+  "balloon_icon_s1004",
+  "balloon_icon_s1002"
+ ],
+ "banana": [
+  "banana_colouring_s1001",
+  "banana_colouring_s1004",
+  "banana_colouring_s1005",
+  "banana_icon_s1003",
+  "banana_icon_s1002",
+  "banana_icon_s1004"
+ ],
+ "bed": [
+  "bed_colouring_s1004",
+  "bed_colouring_s1003",
+  "bed_colouring_s1005",
+  "bed_icon_s1001",
+  "bed_icon_s1000",
+  "bed_icon_s1002"
+ ],
+ "bee": [
+  "bee_colouring_s1001",
+  "bee_colouring_s1000",
+  "bee_colouring_s1005",
+  "bee_icon_s1005",
+  "bee_icon_s1000",
+  "bee_icon_s1004"
+ ],
+ "bench": [
+  "bench_colouring_s1001",
+  "bench_colouring_s1004",
+  "bench_colouring_s1005",
+  "bench_icon_s1003",
+  "bench_icon_s1001",
+  "bench_icon_s1002"
+ ],
+ "bicycle": [
+  "bicycle_colouring_s1003",
+  "bicycle_colouring_s1002",
+  "bicycle_colouring_s1001",
+  "bicycle_icon_s1005",
+  "bicycle_icon_s1000",
+  "bicycle_icon_s1001"
+ ],
+ "bird": [
+  "bird_colouring_s1001",
+  "bird_colouring_s1000",
+  "bird_colouring_s1004",
+  "bird_icon_s1000",
+  "bird_icon_s1003",
+  "bird_icon_s1002"
+ ],
+ "brain": [
+  "brain_colouring_s1004",
+  "brain_colouring_s1003",
+  "brain_colouring_s1001",
+  "brain_icon_s1001",
+  "brain_icon_s1002",
+  "brain_icon_s1005"
+ ],
+ "bus": [
+  "bus_colouring_s1000",
+  "bus_colouring_s1005",
+  "bus_colouring_s1002",
+  "bus_icon_s1001",
+  "bus_icon_s1005",
+  "bus_icon_s1000"
+ ],
+ "bush": [
+  "bush_colouring_s1004",
+  "bush_colouring_s1005",
+  "bush_colouring_s1001",
+  "bush_icon_s1004",
+  "bush_icon_s1003",
+  "bush_icon_s1005"
+ ],
+ "butterfly": [
+  "butterfly_colouring_s1004",
+  "butterfly_colouring_s1000",
+  "butterfly_colouring_s1005",
+  "butterfly_icon_s1005",
+  "butterfly_icon_s1001",
+  "butterfly_icon_s1004"
+ ],
+ "cake": [
+  "cake_colouring_s1005",
+  "cake_colouring_s1004",
+  "cake_colouring_s1001",
+  "cake_icon_s1002",
+  "cake_icon_s1004",
+  "cake_icon_s1001"
+ ],
+ "camera": [
+  "camera_colouring_s1001",
+  "camera_colouring_s1002",
+  "camera_colouring_s1004",
+  "camera_icon_s1003",
+  "camera_icon_s1001",
+  "camera_icon_s1005"
+ ],
+ "car": [
+  "car_colouring_s1005",
+  "car_colouring_s1001",
+  "car_colouring_s1000",
+  "car_icon_s1001",
+  "car_icon_s1005",
+  "car_icon_s1003"
+ ],
+ "castle": [
+  "castle_colouring_s1001",
+  "castle_colouring_s1002",
+  "castle_colouring_s1005",
+  "castle_icon_s1001",
+  "castle_icon_s1000",
+  "castle_icon_s1004"
+ ],
+ "cat": [
+  "cat_colouring_s1005",
+  "cat_colouring_s1004",
+  "cat_colouring_s1001",
+  "cat_icon_s1003",
+  "cat_icon_s1002",
+  "cat_icon_s1001"
+ ],
+ "chair": [
+  "chair_colouring_s1001",
+  "chair_colouring_s1002",
+  "chair_colouring_s1005",
+  "chair_icon_s1001",
+  "chair_icon_s1005",
+  "chair_icon_s1000"
+ ],
+ "clock": [
+  "clock_colouring_s1001",
+  "clock_colouring_s1004",
+  "clock_colouring_s1002",
+  "clock_icon_s1000",
+  "clock_icon_s1005",
+  "clock_icon_s1002"
+ ],
+ "cloud": [
+  "cloud_colouring_s1005",
+  "cloud_colouring_s1002",
+  "cloud_colouring_s1001",
+  "cloud_icon_s1000",
+  "cloud_icon_s1001",
+  "cloud_icon_s1002"
+ ],
+ "couch": [
+  "couch_colouring_s1001",
+  "couch_colouring_s1002",
+  "couch_colouring_s1003",
+  "couch_icon_s1004",
+  "couch_icon_s1002",
+  "couch_icon_s1005"
+ ],
+ "crown": [
+  "crown_colouring_s1001",
+  "crown_colouring_s1004",
+  "crown_colouring_s1002",
+  "crown_icon_s1000",
+  "crown_icon_s1001",
+  "crown_icon_s1004"
+ ],
+ "cup": [
+  "cup_colouring_s1004",
+  "cup_colouring_s1000",
+  "cup_colouring_s1005",
+  "cup_icon_s1000",
+  "cup_icon_s1004",
+  "cup_icon_s1001"
+ ],
+ "dog": [
+  "dog_colouring_s1005",
+  "dog_colouring_s1002",
+  "dog_colouring_s1003",
+  "dog_icon_s1001",
+  "dog_icon_s1003",
+  "dog_icon_s1005"
+ ],
+ "door": [
+  "door_colouring_s1001",
+  "door_colouring_s1005",
+  "door_colouring_s1002",
+  "door_icon_s1001",
+  "door_icon_s1000",
+  "door_icon_s1005"
+ ],
+ "duck": [
+  "duck_colouring_s1005",
+  "duck_colouring_s1001",
+  "duck_colouring_s1004",
+  "duck_icon_s1002",
+  "duck_icon_s1003",
+  "duck_icon_s1004"
+ ],
+ "ear": [
+  "ear_colouring_s1003",
+  "ear_colouring_s1000",
+  "ear_colouring_s1005",
+  "ear_icon_s1000",
+  "ear_icon_s1001",
+  "ear_icon_s1003"
+ ],
+ "elephant": [
+  "elephant_colouring_s1001",
+  "elephant_colouring_s1004",
+  "elephant_colouring_s1002",
+  "elephant_icon_s1005",
+  "elephant_icon_s1000",
+  "elephant_icon_s1003"
+ ],
+ "eye": [
+  "eye_colouring_s1000",
+  "eye_colouring_s1003",
+  "eye_colouring_s1001",
+  "eye_icon_s1004",
+  "eye_icon_s1001",
+  "eye_icon_s1003"
+ ],
+ "fence": [
+  "fence_colouring_s1005",
+  "fence_colouring_s1001",
+  "fence_colouring_s1004",
+  "fence_icon_s1000",
+  "fence_icon_s1003",
+  "fence_icon_s1004"
+ ],
+ "fish": [
+  "fish_colouring_s1004",
+  "fish_colouring_s1005",
+  "fish_icon_s1002",
+  "fish_icon_s1000",
+  "fish_icon_s1004"
+ ],
+ "floor lamp": [
+  "floor_lamp_colouring_s1003",
+  "floor_lamp_colouring_s1001",
+  "floor_lamp_colouring_s1004",
+  "floor_lamp_icon_s1000",
+  "floor_lamp_icon_s1001",
+  "floor_lamp_icon_s1005"
+ ],
+ "flower": [
+  "flower_colouring_s1005",
+  "flower_colouring_s1000",
+  "flower_colouring_s1001",
+  "flower_icon_s1000",
+  "flower_icon_s1005",
+  "flower_icon_s1004"
+ ],
+ "frog": [
+  "frog_colouring_s1003",
+  "frog_colouring_s1001",
+  "frog_colouring_s1005",
+  "frog_icon_s1001",
+  "frog_icon_s1003",
+  "frog_icon_s1000"
+ ],
+ "gift": [
+  "gift_colouring_s1001",
+  "gift_colouring_s1005",
+  "gift_colouring_s1000",
+  "gift_icon_s1001",
+  "gift_icon_s1005",
+  "gift_icon_s1003"
+ ],
+ "hand": [
+  "hand_colouring_s1000",
+  "hand_colouring_s1005",
+  "hand_colouring_s1004",
+  "hand_icon_s1003",
+  "hand_icon_s1002",
+  "hand_icon_s1004"
+ ],
+ "hat": [
+  "hat_colouring_s1000",
+  "hat_colouring_s1005",
+  "hat_colouring_s1001",
+  "hat_icon_s1001",
+  "hat_icon_s1002",
+  "hat_icon_s1003"
+ ],
+ "heart": [
+  "heart_colouring_s1000",
+  "heart_colouring_s1001",
+  "heart_colouring_s1003",
+  "heart_icon_s1000",
+  "heart_icon_s1001",
+  "heart_icon_s1003"
+ ],
+ "house": [
+  "house_colouring_s1005",
+  "house_colouring_s1001",
+  "house_colouring_s1004",
+  "house_icon_s1001",
+  "house_icon_s1000",
+  "house_icon_s1002"
+ ],
+ "ice cream": [
+  "ice_cream_colouring_s1005",
+  "ice_cream_colouring_s1003",
+  "ice_cream_colouring_s1004",
+  "ice_cream_icon_s1003",
+  "ice_cream_icon_s1000",
+  "ice_cream_icon_s1002"
+ ],
+ "key": [
+  "key_colouring_s1002",
+  "key_colouring_s1003",
+  "key_colouring_s1004",
+  "key_icon_s1003",
+  "key_icon_s1004",
+  "key_icon_s1001"
+ ],
+ "kite": [
+  "kite_colouring_s1000",
+  "kite_colouring_s1001",
+  "kite_colouring_s1003",
+  "kite_icon_s1003",
+  "kite_icon_s1001",
+  "kite_icon_s1000"
+ ],
+ "ladybug": [
+  "ladybug_colouring_s1001",
+  "ladybug_colouring_s1004",
+  "ladybug_colouring_s1000",
+  "ladybug_icon_s1005",
+  "ladybug_icon_s1001",
+  "ladybug_icon_s1003"
+ ],
+ "laptop": [
+  "laptop_colouring_s1003",
+  "laptop_colouring_s1001",
+  "laptop_colouring_s1002",
+  "laptop_icon_s1001",
+  "laptop_icon_s1000",
+  "laptop_icon_s1004"
+ ],
+ "light bulb": [
+  "light_bulb_colouring_s1003",
+  "light_bulb_colouring_s1004",
+  "light_bulb_colouring_s1002",
+  "light_bulb_icon_s1000",
+  "light_bulb_icon_s1001",
+  "light_bulb_icon_s1003"
+ ],
+ "microphone": [
+  "microphone_colouring_s1004",
+  "microphone_colouring_s1003",
+  "microphone_colouring_s1005",
+  "microphone_icon_s1003",
+  "microphone_icon_s1000",
+  "microphone_icon_s1002"
+ ],
+ "moon": [
+  "moon_colouring_s1001",
+  "moon_colouring_s1003",
+  "moon_colouring_s1004",
+  "moon_icon_s1002",
+  "moon_icon_s1005",
+  "moon_icon_s1004"
+ ],
+ "mountain": [
+  "mountain_colouring_s1005",
+  "mountain_colouring_s1001",
+  "mountain_colouring_s1002",
+  "mountain_icon_s1001",
+  "mountain_icon_s1002",
+  "mountain_icon_s1004"
+ ],
+ "mouth": [
+  "mouth_colouring_s1000",
+  "mouth_colouring_s1002",
+  "mouth_colouring_s1005",
+  "mouth_icon_s1001",
+  "mouth_icon_s1000",
+  "mouth_icon_s1002"
+ ],
+ "mushroom": [
+  "mushroom_colouring_s1004",
+  "mushroom_colouring_s1002",
+  "mushroom_colouring_s1001",
+  "mushroom_icon_s1002",
+  "mushroom_icon_s1004",
+  "mushroom_icon_s1001"
+ ],
+ "owl": [
+  "owl_colouring_s1003",
+  "owl_colouring_s1004",
+  "owl_colouring_s1000",
+  "owl_icon_s1005",
+  "owl_icon_s1001",
+  "owl_icon_s1003"
+ ],
+ "person": [
+  "person_colouring_s1002",
+  "person_colouring_s1004",
+  "person_colouring_s1005",
+  "person_icon_s1003",
+  "person_icon_s1002",
+  "person_icon_s1000"
+ ],
+ "pond": [
+  "pond_icon_s1000",
+  "pond_icon_s1001",
+  "pond_icon_s1002"
+ ],
+ "rabbit": [
+  "rabbit_colouring_s1002",
+  "rabbit_colouring_s1005",
+  "rabbit_colouring_s1004",
+  "rabbit_icon_s1005",
+  "rabbit_icon_s1003",
+  "rabbit_icon_s1001"
+ ],
+ "rainbow": [
+  "rainbow_colouring_s1000",
+  "rainbow_colouring_s1004",
+  "rainbow_colouring_s1001",
+  "rainbow_icon_s1000",
+  "rainbow_icon_s1004",
+  "rainbow_icon_s1001"
+ ],
+ "rocket": [
+  "rocket_colouring_s1005",
+  "rocket_colouring_s1003",
+  "rocket_colouring_s1004",
+  "rocket_icon_s1004",
+  "rocket_icon_s1003",
+  "rocket_icon_s1000"
+ ],
+ "sailboat": [
+  "sailboat_colouring_s1002",
+  "sailboat_colouring_s1003",
+  "sailboat_colouring_s1005",
+  "sailboat_icon_s1003",
+  "sailboat_icon_s1004",
+  "sailboat_icon_s1005"
+ ],
+ "smiley face": [
+  "smiley_face_colouring_s1005",
+  "smiley_face_colouring_s1001",
+  "smiley_face_colouring_s1003",
+  "smiley_face_icon_s1000",
+  "smiley_face_icon_s1001",
+  "smiley_face_icon_s1002"
+ ],
+ "snail": [
+  "snail_colouring_s1005",
+  "snail_colouring_s1002",
+  "snail_colouring_s1001",
+  "snail_icon_s1001",
+  "snail_icon_s1000",
+  "snail_icon_s1002"
+ ],
+ "snowman": [
+  "snowman_colouring_s1003",
+  "snowman_colouring_s1005",
+  "snowman_colouring_s1002",
+  "snowman_icon_s1003",
+  "snowman_icon_s1001",
+  "snowman_icon_s1005"
+ ],
+ "star": [
+  "star_colouring_s1001",
+  "star_colouring_s1003",
+  "star_colouring_s1004",
+  "star_icon_s1005",
+  "star_icon_s1000",
+  "star_icon_s1001"
+ ],
+ "strawberry": [
+  "strawberry_colouring_s1002",
+  "strawberry_colouring_s1001",
+  "strawberry_colouring_s1000",
+  "strawberry_icon_s1004",
+  "strawberry_icon_s1000",
+  "strawberry_icon_s1001"
+ ],
+ "sun": [
+  "sun_colouring_s1001",
+  "sun_colouring_s1005",
+  "sun_colouring_s1003",
+  "sun_icon_s1002",
+  "sun_icon_s1003",
+  "sun_icon_s1005"
+ ],
+ "table": [
+  "table_colouring_s1002",
+  "table_colouring_s1004",
+  "table_colouring_s1000",
+  "table_icon_s1004",
+  "table_icon_s1000",
+  "table_icon_s1005"
+ ],
+ "television": [
+  "television_colouring_s1002",
+  "television_colouring_s1004",
+  "television_colouring_s1001",
+  "television_icon_s1001",
+  "television_icon_s1004",
+  "television_icon_s1005"
+ ],
+ "train": [
+  "train_colouring_s1002",
+  "train_colouring_s1005",
+  "train_colouring_s1001",
+  "train_icon_s1001",
+  "train_icon_s1000",
+  "train_icon_s1003"
+ ],
+ "tree": [
+  "tree_colouring_s1004",
+  "tree_colouring_s1003",
+  "tree_colouring_s1000",
+  "tree_icon_s1004",
+  "tree_icon_s1003",
+  "tree_icon_s1000"
+ ],
+ "turtle": [
+  "turtle_colouring_s1001",
+  "turtle_colouring_s1002",
+  "turtle_icon_s1005",
+  "turtle_icon_s1001",
+  "turtle_icon_s1002"
+ ],
+ "umbrella": [
+  "umbrella_colouring_s1000",
+  "umbrella_colouring_s1002",
+  "umbrella_colouring_s1003",
+  "umbrella_icon_s1003",
+  "umbrella_icon_s1000",
+  "umbrella_icon_s1001"
+ ],
+ "whale": [
+  "whale_colouring_s1001",
+  "whale_colouring_s1004",
+  "whale_colouring_s1002",
+  "whale_icon_s1003",
+  "whale_icon_s1005",
+  "whale_icon_s1000"
+ ]
+}

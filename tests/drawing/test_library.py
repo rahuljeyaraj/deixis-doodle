@@ -66,11 +66,13 @@ def test_unknown_name_suggests(lib):
 
 def test_variants_cycle_and_index(lib):
     fresh = Library.load(ROOT / "library")
-    n = len(fresh.variants("house"))
+    vs = fresh.variants("house")  # the default style's drawings (SANA: two styles per object)
+    n = len(vs)
+    ids = [d.variant for d in vs]
     seen = [fresh.get("house").variant for _ in range(n + 1)]
-    assert seen == list(range(n)) + [0]
-    assert fresh.get("house", variant=n + 1).variant == 1
-    assert fresh.get("house", variant="random", rng=random.Random(0)).variant in range(n)
+    assert seen == ids + ids[:1]
+    assert fresh.get("house", variant=n + 1).variant == ids[1]
+    assert fresh.get("house", variant="random", rng=random.Random(0)).variant in ids
     with pytest.raises(ValueError):
         fresh.get("house", variant="best")
 
@@ -84,12 +86,22 @@ def test_index_is_consistent(lib):
         data = json.loads((ROOT / "library" / meta["file"]).read_text(encoding="utf-8"))
         assert data["category"] == cat
         assert len(data["variants"]) == meta["variants"] >= 1
-        assert data["license"] == "CC BY 4.0"
+        if meta.get("source") == "sana":  # generated line art (1 Oct 2026)
+            assert data["license"].startswith("Apache-2.0")
+            styles = [v.get("style") for v in data["variants"]]
+            assert meta["styles"] == {st: styles.count(st) for st in set(styles)}
+            if "fallback" in meta:
+                assert (ROOT / "library" / meta["fallback"]).exists()
+        else:
+            assert data["license"] == "CC BY 4.0"
+    if any(m.get("source") == "sana" for m in idx["categories"].values()):
+        assert idx["default_style"] in ("icon", "colouring")
 
 
 def test_attribution_present():
     text = (ROOT / "library" / "ATTRIBUTION.md").read_text(encoding="utf-8")
     assert "CC BY 4.0" in text and "Quick, Draw!" in text and "Hershey" in text
+    assert "SANA" in text and "Apache License 2.0" in text and "Gemma" in text
 
 
 def test_load_from_env_and_custom_dir(tmp_path, monkeypatch):

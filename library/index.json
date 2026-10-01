@@ -1,197 +1,564 @@
 {
  "version": 1,
- "source": "Quick, Draw! by Google Creative Lab (CC BY 4.0); see ATTRIBUTION.md",
+ "source": "Quick, Draw! by Google Creative Lab (CC BY 4.0); see ATTRIBUTION.md. Categories with source 'sana': SANA 1600M line art (Apache-2.0)",
+ "default_style": "icon",
  "categories": {
+  "airplane": {
+   "file": "sana/airplane.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "aeroplane",
+    "jet",
+    "plane"
+   ]
+  },
   "apple": {
-   "file": "quickdraw/apple.json",
-   "variants": 3,
+   "file": "sana/apple.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/apple.json",
+   "synonyms": []
+  },
+  "balloon": {
+   "file": "sana/balloon.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
+  },
+  "banana": {
+   "file": "sana/banana.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
    "synonyms": []
   },
   "bed": {
-   "file": "quickdraw/bed.json",
-   "variants": 3,
+   "file": "sana/bed.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/bed.json",
    "synonyms": []
   },
+  "bee": {
+   "file": "sana/bee.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "bumblebee"
+   ]
+  },
   "bench": {
-   "file": "quickdraw/bench.json",
-   "variants": 3,
+   "file": "sana/bench.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/bench.json",
    "synonyms": []
   },
   "bicycle": {
-   "file": "quickdraw/bicycle.json",
-   "variants": 3,
+   "file": "sana/bicycle.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/bicycle.json",
    "synonyms": [
     "bike"
    ]
   },
   "bird": {
-   "file": "quickdraw/bird.json",
-   "variants": 3,
+   "file": "sana/bird.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/bird.json",
    "synonyms": [
     "birdie"
    ]
   },
   "brain": {
-   "file": "quickdraw/brain.json",
-   "variants": 3,
+   "file": "sana/brain.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/brain.json",
    "synonyms": [
     "mind"
    ]
   },
+  "bus": {
+   "file": "sana/bus.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "coach"
+   ]
+  },
   "bush": {
-   "file": "quickdraw/bush.json",
-   "variants": 3,
+   "file": "sana/bush.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/bush.json",
    "synonyms": [
     "hedge",
     "shrub"
    ]
   },
+  "butterfly": {
+   "file": "sana/butterfly.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
+  },
+  "cake": {
+   "file": "sana/cake.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "birthday cake"
+   ]
+  },
   "camera": {
-   "file": "quickdraw/camera.json",
-   "variants": 3,
+   "file": "sana/camera.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/camera.json",
    "synonyms": [
     "webcam"
    ]
   },
   "car": {
-   "file": "quickdraw/car.json",
-   "variants": 3,
+   "file": "sana/car.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/car.json",
    "synonyms": [
     "automobile"
    ]
   },
+  "castle": {
+   "file": "sana/castle.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "palace"
+   ]
+  },
   "cat": {
-   "file": "quickdraw/cat.json",
-   "variants": 3,
+   "file": "sana/cat.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/cat.json",
    "synonyms": [
     "kitten",
     "kitty"
    ]
   },
   "chair": {
-   "file": "quickdraw/chair.json",
-   "variants": 3,
+   "file": "sana/chair.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/chair.json",
    "synonyms": [
     "seat"
    ]
   },
+  "clock": {
+   "file": "sana/clock.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "watch"
+   ]
+  },
   "cloud": {
-   "file": "quickdraw/cloud.json",
-   "variants": 3,
+   "file": "sana/cloud.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/cloud.json",
    "synonyms": [
     "clouds"
    ]
   },
   "couch": {
-   "file": "quickdraw/couch.json",
-   "variants": 3,
+   "file": "sana/couch.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/couch.json",
    "synonyms": [
     "settee",
     "sofa"
    ]
   },
   "crown": {
-   "file": "quickdraw/crown.json",
-   "variants": 3,
+   "file": "sana/crown.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/crown.json",
    "synonyms": [
     "tiara"
    ]
   },
   "cup": {
-   "file": "quickdraw/cup.json",
-   "variants": 3,
+   "file": "sana/cup.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/cup.json",
    "synonyms": [
     "mug",
     "teacup"
    ]
   },
   "dog": {
-   "file": "quickdraw/dog.json",
-   "variants": 3,
+   "file": "sana/dog.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/dog.json",
    "synonyms": [
     "doggy",
     "puppy"
    ]
   },
   "door": {
-   "file": "quickdraw/door.json",
-   "variants": 3,
+   "file": "sana/door.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/door.json",
    "synonyms": []
   },
+  "duck": {
+   "file": "sana/duck.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "duckling"
+   ]
+  },
   "ear": {
-   "file": "quickdraw/ear.json",
-   "variants": 4,
+   "file": "sana/ear.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/ear.json",
    "synonyms": [
     "ears"
    ]
   },
+  "elephant": {
+   "file": "sana/elephant.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
+  },
   "eye": {
-   "file": "quickdraw/eye.json",
-   "variants": 3,
+   "file": "sana/eye.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/eye.json",
    "synonyms": [
     "eyeball"
    ]
   },
   "fence": {
-   "file": "quickdraw/fence.json",
-   "variants": 3,
+   "file": "sana/fence.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/fence.json",
    "synonyms": [
     "gate"
    ]
   },
   "fish": {
-   "file": "quickdraw/fish.json",
-   "variants": 3,
+   "file": "sana/fish.json",
+   "variants": 5,
+   "source": "sana",
+   "styles": {
+    "colouring": 2,
+    "icon": 3
+   },
+   "fallback": "quickdraw/fish.json",
    "synonyms": []
   },
   "floor lamp": {
-   "file": "quickdraw/floor lamp.json",
-   "variants": 3,
+   "file": "sana/floor lamp.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/floor lamp.json",
    "synonyms": [
     "lamp"
    ]
   },
   "flower": {
-   "file": "quickdraw/flower.json",
-   "variants": 3,
+   "file": "sana/flower.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/flower.json",
    "synonyms": [
     "daisy",
     "flowers",
     "rose"
    ]
   },
+  "frog": {
+   "file": "sana/frog.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "toad"
+   ]
+  },
+  "gift": {
+   "file": "sana/gift.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "parcel",
+    "present"
+   ]
+  },
   "hand": {
-   "file": "quickdraw/hand.json",
-   "variants": 4,
+   "file": "sana/hand.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/hand.json",
    "synonyms": [
     "hands",
     "palm"
    ]
   },
   "hat": {
-   "file": "quickdraw/hat.json",
-   "variants": 3,
+   "file": "sana/hat.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/hat.json",
    "synonyms": [
     "cap"
    ]
   },
+  "heart": {
+   "file": "sana/heart.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "love heart"
+   ]
+  },
   "house": {
-   "file": "quickdraw/house.json",
-   "variants": 3,
+   "file": "sana/house.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/house.json",
    "synonyms": [
     "cottage",
     "home",
     "hut"
    ]
   },
+  "ice cream": {
+   "file": "sana/ice cream.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "cone",
+    "icecream"
+   ]
+  },
   "key": {
-   "file": "quickdraw/key.json",
-   "variants": 3,
+   "file": "sana/key.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/key.json",
    "synonyms": []
   },
+  "kite": {
+   "file": "sana/kite.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
+  },
+  "ladybug": {
+   "file": "sana/ladybug.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "ladybird"
+   ]
+  },
   "laptop": {
-   "file": "quickdraw/laptop.json",
-   "variants": 3,
+   "file": "sana/laptop.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/laptop.json",
    "synonyms": [
     "computer",
     "notebook",
@@ -199,60 +566,182 @@
    ]
   },
   "light bulb": {
-   "file": "quickdraw/light bulb.json",
-   "variants": 3,
+   "file": "sana/light bulb.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/light bulb.json",
    "synonyms": [
     "bulb",
     "lightbulb"
    ]
   },
   "microphone": {
-   "file": "quickdraw/microphone.json",
-   "variants": 3,
+   "file": "sana/microphone.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/microphone.json",
    "synonyms": [
     "mic",
     "microphones"
    ]
   },
   "moon": {
-   "file": "quickdraw/moon.json",
-   "variants": 3,
+   "file": "sana/moon.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/moon.json",
    "synonyms": []
   },
   "mountain": {
-   "file": "quickdraw/mountain.json",
-   "variants": 3,
+   "file": "sana/mountain.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/mountain.json",
    "synonyms": [
     "hill",
     "mountains"
    ]
   },
   "mouth": {
-   "file": "quickdraw/mouth.json",
-   "variants": 4,
+   "file": "sana/mouth.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/mouth.json",
    "synonyms": [
     "lips"
    ]
   },
+  "mushroom": {
+   "file": "sana/mushroom.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "toadstool"
+   ]
+  },
+  "owl": {
+   "file": "sana/owl.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
+  },
+  "person": {
+   "file": "sana/person.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "boy",
+    "child",
+    "girl",
+    "kid",
+    "man",
+    "stick figure",
+    "woman"
+   ]
+  },
   "pond": {
-   "file": "quickdraw/pond.json",
+   "file": "sana/pond.json",
    "variants": 3,
+   "source": "sana",
+   "styles": {
+    "icon": 3
+   },
+   "fallback": "quickdraw/pond.json",
    "synonyms": [
     "lake",
     "puddle"
    ]
   },
+  "rabbit": {
+   "file": "sana/rabbit.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "bunny",
+    "hare"
+   ]
+  },
+  "rainbow": {
+   "file": "sana/rainbow.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
+  },
+  "rocket": {
+   "file": "sana/rocket.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "spaceship"
+   ]
+  },
   "sailboat": {
-   "file": "quickdraw/sailboat.json",
-   "variants": 3,
+   "file": "sana/sailboat.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/sailboat.json",
    "synonyms": [
     "boat",
     "yacht"
    ]
   },
   "smiley face": {
-   "file": "quickdraw/smiley face.json",
-   "variants": 3,
+   "file": "sana/smiley face.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/smiley face.json",
    "synonyms": [
     "face",
     "happy face",
@@ -260,82 +749,212 @@
     "smiley"
    ]
   },
+  "snail": {
+   "file": "sana/snail.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
+  },
+  "snowman": {
+   "file": "sana/snowman.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "snow man"
+   ]
+  },
   "star": {
-   "file": "quickdraw/star.json",
-   "variants": 3,
+   "file": "sana/star.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/star.json",
    "synonyms": [
     "stars"
    ]
   },
+  "strawberry": {
+   "file": "sana/strawberry.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
+  },
   "sun": {
-   "file": "quickdraw/sun.json",
-   "variants": 3,
+   "file": "sana/sun.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/sun.json",
    "synonyms": [
     "sunshine"
    ]
   },
   "table": {
-   "file": "quickdraw/table.json",
-   "variants": 3,
+   "file": "sana/table.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/table.json",
    "synonyms": [
     "desk"
    ]
   },
   "television": {
-   "file": "quickdraw/television.json",
-   "variants": 3,
+   "file": "sana/television.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/television.json",
    "synonyms": [
     "screen",
     "telly",
     "tv"
    ]
   },
+  "train": {
+   "file": "sana/train.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": [
+    "engine",
+    "locomotive"
+   ]
+  },
   "tree": {
-   "file": "quickdraw/tree.json",
-   "variants": 3,
+   "file": "sana/tree.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "fallback": "quickdraw/tree.json",
    "synonyms": [
     "trees"
    ]
+  },
+  "turtle": {
+   "file": "sana/turtle.json",
+   "variants": 5,
+   "source": "sana",
+   "styles": {
+    "colouring": 2,
+    "icon": 3
+   },
+   "synonyms": [
+    "tortoise"
+   ]
+  },
+  "umbrella": {
+   "file": "sana/umbrella.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
+  },
+  "whale": {
+   "file": "sana/whale.json",
+   "variants": 6,
+   "source": "sana",
+   "styles": {
+    "colouring": 3,
+    "icon": 3
+   },
+   "synonyms": []
   }
  },
  "synonyms": {
+  "aeroplane": "airplane",
   "automobile": "car",
   "bike": "bicycle",
   "birdie": "bird",
+  "birthday cake": "cake",
   "boat": "sailboat",
+  "boy": "person",
   "bulb": "light bulb",
+  "bumblebee": "bee",
+  "bunny": "rabbit",
   "cap": "hat",
+  "child": "person",
   "clouds": "cloud",
+  "coach": "bus",
   "computer": "laptop",
+  "cone": "ice cream",
   "cottage": "house",
   "daisy": "flower",
   "desk": "table",
   "doggy": "dog",
+  "duckling": "duck",
   "ears": "ear",
+  "engine": "train",
   "eyeball": "eye",
   "face": "smiley face",
   "flowers": "flower",
   "gate": "fence",
+  "girl": "person",
   "hands": "hand",
   "happy face": "smiley face",
+  "hare": "rabbit",
   "hedge": "bush",
   "hill": "mountain",
   "home": "house",
   "hut": "house",
+  "icecream": "ice cream",
+  "jet": "airplane",
+  "kid": "person",
   "kitten": "cat",
   "kitty": "cat",
+  "ladybird": "ladybug",
   "lake": "pond",
   "lamp": "floor lamp",
   "lightbulb": "light bulb",
   "lips": "mouth",
+  "locomotive": "train",
+  "love heart": "heart",
+  "man": "person",
   "mic": "microphone",
   "microphones": "microphone",
   "mind": "brain",
   "mountains": "mountain",
   "mug": "cup",
   "notebook": "laptop",
+  "palace": "castle",
   "palm": "hand",
+  "parcel": "gift",
   "pc": "laptop",
+  "plane": "airplane",
+  "present": "gift",
   "puddle": "pond",
   "puppy": "dog",
   "rose": "flower",
@@ -345,15 +964,23 @@
   "shrub": "bush",
   "smile": "smiley face",
   "smiley": "smiley face",
+  "snow man": "snowman",
   "sofa": "couch",
+  "spaceship": "rocket",
   "stars": "star",
+  "stick figure": "person",
   "sunshine": "sun",
   "teacup": "cup",
   "telly": "television",
   "tiara": "crown",
+  "toad": "frog",
+  "toadstool": "mushroom",
+  "tortoise": "turtle",
   "trees": "tree",
   "tv": "television",
+  "watch": "clock",
   "webcam": "camera",
+  "woman": "person",
   "yacht": "sailboat"
  }
 }
