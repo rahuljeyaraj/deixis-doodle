@@ -37,7 +37,7 @@
 #   # then write the run in docs/gpu-usage-log.md
 #
 # Settings (environment variables override the defaults below):
-#   LIBRARY_SET (pilot|full), JOB_NAME, IMAGE, PLATFORM, PRESET, DISK_SIZE, TIMEOUT, INNER_MIN,
+#   LIBRARY_SET (pilot|style_test|full), JOB_NAME, IMAGE, PLATFORM, PRESET, DISK_SIZE, TIMEOUT, INNER_MIN,
 #   PREEMPTIBLE (true|false), MODEL (sana|sana-4.8b|flux), BUCKET, S3_ENDPOINT,
 #   NEBIUS_PARENT_ID, NEBIUS_SUBNET_ID, NEBIUS_BIN (default ~/.nebius/bin/nebius),
 #   ENV_FILE (default <repo>/.env; HF_TOKEN is read from it and redacted in all output)
@@ -117,8 +117,9 @@ ENV_FILE="${ENV_FILE:-$REPO_DIR/.env}"
 SET="${LIBRARY_SET:-pilot}"
 case "$SET" in
   pilot) D_INNER=25 ;;
+  style_test) D_INNER=25 ;;
   full) D_INNER=50 ;;
-  *) echo "unknown LIBRARY_SET '$SET' (use pilot or full)" >&2; exit 2 ;;
+  *) echo "unknown LIBRARY_SET '$SET' (use pilot, style_test or full)" >&2; exit 2 ;;
 esac
 
 NAME="${JOB_NAME:-deixis-library-$SET}"

@@ -8,10 +8,27 @@ style: >-
   a clean line drawing of {subject}, thin even black lines, white background,
   no shading, no text, simple, centred
 
+# Style test (1 Oct 2026). The pilot's `style` above gave detailed book illustrations
+# (eyelashes, shading, hundreds of twigs: 120 to 400 pen strokes for eyes and trees). These
+# ask for the neat, simple look of a kid's drawing done well. A set with `styles:` makes every
+# object in each of them; the winner becomes `style`.
+styles:
+  icon: >-
+    a simple outline icon of {subject}, bold even black outline, only a few inner lines,
+    flat, no texture, no shading, white background, centred
+  colouring: >-
+    a page from a toddler's colouring book: {subject}, clean thick black outlines, big simple
+    shapes, large empty white areas, no shading, no texture, centred
+  doodle: >-
+    a neat cute doodle of {subject}, drawn with one black felt-tip pen in a few smooth
+    strokes, simple and friendly, no shading, white background, centred
+
 negative: >-
-  shading, hatching, cross-hatching, grey fill, solid black areas, colour, gradient,
-  texture, shadow, text, letters, words, watermark, signature, frame, border, photo,
-  photorealistic, 3d render, multiple objects, cropped, blurry
+  shading, hatching, cross-hatching, stippling, grey fill, solid black areas, filled black
+  shapes, colour, gradient, texture, fur, hair strands, eyelashes, leaf texture, many small
+  details, intricate, realistic, detailed illustration, shadow, text, letters, words,
+  watermark, signature, frame, border, photo, photorealistic, 3d render, multiple objects,
+  cropped, blurry
 
 # Sampling. SANA 1600M model-card defaults: 20 steps, guidance 4.5, 1024 x 1024.
 params:
@@ -24,9 +41,13 @@ params:
 # How the object is named in the prompt, where plain "a <object>" is vague.
 subjects:
   ear: a human ear, side view
-  eye: a human eye, front view
-  brain: a human brain, side view
-  hand: an open human hand, palm facing the viewer, fingers spread
+  eye: a human eye, front view, the pupil an open circle
+  brain: a human brain, side view, a few smooth folds
+  hand: an open human hand with five fingers, palm facing the viewer
+  tree: a tree with a round fluffy crown and a straight trunk
+  house: a little house with a pointed roof, a door and two windows
+  cat: a sitting cat, front view
+  flower: a flower with five round petals and a stem with two leaves
   mouth: a pair of smiling lips
   microphone: a handheld microphone
   camera: a photo camera
@@ -46,6 +67,12 @@ subjects:
   key: a door key
 
 sets:
+  # 3 styles x 8 objects x 3 images (1 Oct 2026): pick the style before the full run
+  style_test:
+    per_object: 3
+    max_minutes: 10
+    styles: [icon, colouring, doodle]
+    objects: [ear, eye, brain, hand, tree, house, cat, flower]
   # 5 hero-demo objects x 4 images: proves generation + centre-line tracing before the full run
   pilot:
     per_object: 4

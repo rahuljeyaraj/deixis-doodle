@@ -72,9 +72,12 @@ def load_prompts(path: Path) -> dict:
         return yaml.safe_load(fh)
 
 
-def prompt_for(cfg: dict, obj: str) -> str:
+def prompt_for(cfg: dict, obj: str, style: str | None = None) -> str:
+    """The prompt for one object: the style template (a named one from `styles`, else
+    `style`) with the object's subject text."""
     subject = (cfg.get("subjects") or {}).get(obj) or f"a {obj}"
-    return " ".join(cfg["style"].format(subject=subject).split())
+    template = cfg["styles"][style] if style else cfg["style"]
+    return " ".join(template.format(subject=subject).split())
 
 
 def start_watchdog(limit_s: float) -> None:
@@ -310,33 +313,34 @@ def main() -> int:
     }
     sink = Sink(args.out, args.work, to_log=not args.no_log_files)
     done = 0
+    styles = s.get("styles") or [None]  # a style test makes every object in several styles
     for obj in objects:
-        prompt = prompt_for(cfg, obj)
         folder = obj.replace(" ", "_")
-        for i in range(per):
-            if time.time() - start > limit_s:
-                log(f"time limit reached after {done} images: stopping")
-                manifest["stopped_early"] = True
+        for style in styles:
+            prompt = prompt_for(cfg, obj, style)
+            tag = f"_{style}" if style else ""
+            for i in range(per):
+                if time.time() - start > limit_s:
+                    log(f"time limit reached after {done} images: stopping")
+                    manifest["stopped_early"] = True
+                    break
+                seed = int(params["seed_base"]) + i
+                t0 = time.time()
+                img = generate(prompt, negative, seed, params)
+                took = time.time() - t0
+                rel = f"{folder}/{folder}{tag}_s{seed}.png"
+                buf = io.BytesIO()
+                img.save(buf, "PNG")
+                sink.put(rel, buf.getvalue(), compact_png(img))
+                entry = {"file": rel, "object": obj, "seed": seed, "prompt": prompt}
+                if style:
+                    entry["style"] = style
+                entry["seconds"] = round(took, 2)
+                manifest["images"].append(entry)
+                done += 1
+                log(f"{done:4d} {obj}{' ' + style if style else ''} seed {seed}: {took:.1f} s")
+            if manifest["stopped_early"]:
                 break
-            seed = int(params["seed_base"]) + i
-            t0 = time.time()
-            img = generate(prompt, negative, seed, params)
-            took = time.time() - t0
-            rel = f"{folder}/{folder}_s{seed}.png"
-            buf = io.BytesIO()
-            img.save(buf, "PNG")
-            sink.put(rel, buf.getvalue(), compact_png(img))
-            manifest["images"].append(
-                {
-                    "file": rel,
-                    "object": obj,
-                    "seed": seed,
-                    "prompt": prompt,
-                    "seconds": round(took, 2),
-                }
-            )
-            done += 1
-            log(f"{done:4d} {obj} seed {seed}: {took:.1f} s")
         if manifest["stopped_early"]:
             break
     manifest["finished"] = datetime.now(UTC).isoformat(timespec="seconds")
