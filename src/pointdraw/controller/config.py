@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Literal, Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -47,7 +47,9 @@ class Feedrates(_Model):
     normal: float = Field(1800, gt=0)  # drawing
     fast: float = Field(2500, gt=0)  # drawing
     travel: float = Field(3000, gt=0)  # pen-up moves
-    preview: float = Field(2000, gt=0)  # pen-up preview trace, slow enough to follow by eye
+    # Pen-up preview trace. 2,000 until 2 Oct; 3,500 (and the diagonal path) cut the time from
+    # the end of speech to the pen by 3.8 s over all scenes (scripts/start_latency.py).
+    preview: float = Field(3500, gt=0)
     z: float = Field(300, gt=0)  # pen lifts; stock Ender 3 Marlin caps Z at 5 mm/s
 
 
@@ -111,6 +113,10 @@ class MachineConfig(_Model):
 
     # Interlock: hands must have been clear this long before motion starts or resumes.
     hands_clear_hold_s: float = Field(0.5, ge=0)
+
+    # The pen-up preview trace: "box" goes round the outline; "diagonal" goes corner to
+    # opposite corner (about a third of the path for a square, so drawing starts sooner).
+    preview_path: Literal["box", "diagonal"] = "diagonal"
 
     @property
     def travel_box(self) -> Box:

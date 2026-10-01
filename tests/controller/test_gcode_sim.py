@@ -8,7 +8,7 @@ import pytest
 
 from deixis.geometry import Box
 from pointdraw.controller import gcode
-from pointdraw.controller.config import MachineConfig
+from pointdraw.controller.config import MachineConfig, with_changes
 from pointdraw.controller.safety import check_line, parse_line
 from pointdraw.controller.simulator import SimulatedPlotter
 from pointdraw.controller.transport import LinkStopped
@@ -93,12 +93,24 @@ def test_joined_polylines_do_not_lift_and_dots_work():
 
 def test_preview_is_pen_up_only():
     box = Box(60, 50, 40, 30)
-    lines = gcode.preview_box_gcode(box, CFG)
+    outline = with_changes(CFG, {"preview_path": "box"})
+    lines = gcode.preview_box_gcode(box, outline)
     assert all(not ln.startswith("G1") for ln in lines)
     sim = run(lines)
     assert sim.strokes == []
-    assert sim.position[:2] == (60, 50)
+    assert sim.position[:2] == (60, 50)  # round the box and back to its corner
     assert all(ln.endswith(f"F{gcode.fmt(CFG.feed.preview)}") for ln in lines[2:])
+
+
+def test_diagonal_preview_goes_corner_to_corner_pen_up():
+    box = Box(60, 50, 40, 30)
+    lines = gcode.preview_box_gcode(box, CFG)  # the default since 2 Oct
+    assert CFG.preview_path == "diagonal"
+    assert all(not ln.startswith("G1") for ln in lines)
+    sim = run(lines)
+    assert sim.strokes == [] and sim.position[:2] == (100, 80)
+    outline = gcode.preview_box_gcode(box, with_changes(CFG, {"preview_path": "box"}))
+    assert len(lines) < len(outline) / 2  # 50 mm of path, not 140
 
 
 def test_park_and_home():

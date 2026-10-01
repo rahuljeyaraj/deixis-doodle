@@ -133,7 +133,7 @@ class RuntimeParams:
     step_mm: float = 5.0  # one "a bit" step for adjust
     size_wait_s: float = 6.0  # after "this big", how long to wait for the fingers to open
     auto_confirm: bool = True
-    confirm_quiet_s: float = 2.0
+    confirm_quiet_s: float = 1.5  # 2.0 until 2 Oct (scripts/start_latency.py)
     resolver: ResolverParams = field(default_factory=ResolverParams)
 
 

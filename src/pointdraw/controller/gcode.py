@@ -119,10 +119,13 @@ def polylines_to_gcode(
 def preview_box_gcode(
     box: Box, c: MachineConfig, *, loops: int = 1, start: Point | None = None
 ) -> list[str]:
-    """Trace the box outline pen-up at the preview feedrate, ending back at its corner."""
+    """Trace the box pen-up at the preview feedrate: round the outline, ending back at its
+    corner, or (`c.preview_path == "diagonal"`) from one corner to the opposite one."""
     e = _Emitter(c, start)
     e.up()
     corners = [(box.x, box.y), (box.x2, box.y), (box.x2, box.y2), (box.x, box.y2), (box.x, box.y)]
+    if c.preview_path == "diagonal":
+        corners = [(box.x, box.y), (box.x2, box.y2)]
     e.move(corners[0], c.feed.travel, draw=False)
     for _ in range(loops):
         for p in corners[1:]:
