@@ -4,6 +4,8 @@
     uv run python scripts/live_run.py --dry-run --backend msmf               # print G-code only
     uv run python scripts/live_run.py --dry-run --backend msmf --type        # type, don't talk
     uv run python scripts/live_run.py --port COM9 --backend msmf --ai mock   # no network
+    uv run python scripts/live_run.py --dry-run --frames out/live/20261001-225450 --type
+                                       # no camera: replay a run's saved pictures
 
 Camera (fixed bed homography from `.cache/calibration/bed.json`, no bed markers), MediaPipe
 hands, `GestureTracker` (holds, sizes, the hands-clear interlock), the microphone with local
@@ -18,7 +20,9 @@ The window shows the camera turned 180 degrees, as the user sees the bed. The ru
 in `out/live/<time>/`: `timeline.jsonl` (the runtime's events), `hands.jsonl` (a header
 with the start time, then per frame: each hand's landmarks, pose and fingertip, and what the
 gesture tracker made of it) and `frames/` (a small picture twice a second, named by
-milliseconds since start). `scripts/replay_live.py` runs a logged session again offline.
+milliseconds since start). The timeline also has the plotter's own events (kind "plotter":
+job start and end, pause request, paused, resumed, halted), written as they happen.
+`scripts/replay_live.py` runs a logged session again offline.
 
 Keys: Q or Esc quit, Space stop the plotter, S save a snapshot.
 """
@@ -52,6 +56,7 @@ from pointdraw.controller.simulator import SimulatedPlotter  # noqa: E402
 from pointdraw.controller.transport import LinkError, Transport  # noqa: E402
 from pointdraw.drawing import Library  # noqa: E402
 from pointdraw.live.agent import BackgroundAgent  # noqa: E402
+from pointdraw.live.frames import SavedFrames, frame_paths  # noqa: E402
 from pointdraw.live.logs import TimelineWriter  # noqa: E402
 from pointdraw.live.view import BedView, PaperCamera  # noqa: E402
 from pointdraw.m1 import over_bed  # noqa: E402
@@ -89,6 +94,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--width", type=int, default=1920)
     ap.add_argument("--height", type=int, default=1080)
     ap.add_argument("--exposure", type=float, default=None, help="e.g. -6 (MSMF)")
+    ap.add_argument(
+        "--frames", type=Path, default=None, help="play a run's saved pictures, not the camera"
+    )
     ap.add_argument("--calib", type=Path, default=DEFAULT_CALIBRATION_PATH)
     ap.add_argument("--lens", type=Path, default=DEFAULT_LENS_PATH)
 
@@ -272,16 +280,19 @@ def run(args: argparse.Namespace) -> int:
     index = args.camera if args.camera is not None else get_settings().camera_index
     print(f"start: camera {index} ({args.backend})", flush=True)
     try:
-        cam = Camera(
-            CameraSettings(
-                index=index,
-                width=args.width,
-                height=args.height,
-                backend=args.backend,
-                exposure=args.exposure,
-            )
-        ).start()
-    except CameraUnavailable as e:
+        if args.frames is not None:
+            cam = SavedFrames(frame_paths(args.frames), size=(args.width, args.height))
+        else:
+            cam = Camera(
+                CameraSettings(
+                    index=index,
+                    width=args.width,
+                    height=args.height,
+                    backend=args.backend,
+                    exposure=args.exposure,
+                )
+            ).start()
+    except (CameraUnavailable, ValueError) as e:
         print(f"No camera: {e}. Try --camera 1 or --backend dshow.")
         hands.close()
         return 1
@@ -379,6 +390,7 @@ def run(args: argparse.Namespace) -> int:
                         lines = (lines + [text])[-4:]
             shown = len(log.events)
             timeline.write_new(log.events)
+            timeline.write_plotter(plotter.events)
 
             key = -1
             if not args.headless:
@@ -422,9 +434,9 @@ def run(args: argparse.Namespace) -> int:
             cv2.destroyAllWindows()
         out.mkdir(parents=True, exist_ok=True)
         hands_log.close()
-        with (out / "timeline.jsonl").open("w", encoding="utf-8") as f:
-            for e in log.events:
-                f.write(json.dumps(e, default=str) + "\n")
+        timeline.write_new(log.events)
+        timeline.write_plotter(plotter.events)
+        timeline.close()
         print(f"log: {out / 'timeline.jsonl'}")
     return 0
 

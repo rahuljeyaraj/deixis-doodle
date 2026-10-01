@@ -69,3 +69,43 @@ def test_startup_check_counts_native_crashes_only():
     check = load_script("startup_check")
     assert check.crashed(-11) and check.crashed(0xC0000005)
     assert not check.crashed(0) and not check.crashed(1)  # a Python error is a failure
+
+
+def test_plotter_events_go_in_the_timeline_and_replay_skips_them(tmp_path):
+    from pointdraw.live.replay import load
+    from pointdraw.virtual.lockstep import LockstepPlotter
+
+    path = tmp_path / "timeline.jsonl"
+    w = TimelineWriter(path)
+    w.write_new([{"t": 0.0, "kind": "state", "state": "LISTEN"}])
+    with LockstepPlotter() as p:
+        p.set_hands_clear(True)
+        p.draw_polylines([[(60.0, 100.0), (180.0, 100.0)]], tag="cross#1")
+        t = 0.0
+        while t < 15.0:
+            t += 1 / 23
+            p.tick(t)
+            if 1.0 < t < 1.1:
+                p.set_hands_clear(False)  # a hand over the paper mid-line
+            if t > 2.0:
+                p.set_hands_clear(True)
+            w.write_plotter(p.events)
+    w.close()
+    lines = [json.loads(x) for x in path.read_text().splitlines()]
+    plot = [e for e in lines if e["kind"] == "plotter"]
+    assert [e["event"] for e in plot] == [
+        "job_start",
+        "pause_request",
+        "paused",
+        "resumed",
+        "job_end",
+    ]
+    for e in plot:
+        assert set(e) >= {"t", "kind", "event", "label", "tag", "x", "y"}
+        assert e["label"] == "draw" and e["tag"] == "cross#1"
+    assert [e["t"] for e in plot] == sorted(e["t"] for e in plot)
+
+    (tmp_path / "hands.jsonl").write_text('{"t0": 0.0}\n{"t": 0.1, "hands": []}\n')
+    s = load(tmp_path)
+    assert [e["kind"] for e in s.events] == ["state"]
+    assert len(s.plotter) == len(plot)

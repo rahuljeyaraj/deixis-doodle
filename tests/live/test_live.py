@@ -121,3 +121,27 @@ def test_paper_camera_keeps_the_bed_position_of_its_frame():
     assert abs((out.shape[0] - rows.mean() - 0.5) * s - 30.0) < 1.0
     cam.offer(np.full_like(img, 128), 0.7, hands_over_paper=False)  # still for 0.6 s
     assert cam.t == 0.7 and cam.offset_y == -40.0
+
+
+def test_saved_frames_turn_back_and_play_like_a_camera(tmp_path):
+    import cv2
+
+    from pointdraw.live.frames import SavedFrames, camera_image, frame_paths
+
+    (tmp_path / "frames").mkdir()
+    for ms, val in ((0, 50), (500, 150)):
+        img = np.full((360, 640, 3), val, np.uint8)
+        img[:10, :10] = 255  # top left as saved = bottom right for the camera
+        cv2.imwrite(str(tmp_path / "frames" / f"{ms:07d}.jpg"), img)
+    paths = frame_paths(tmp_path)
+    assert [p.name for p in paths] == ["0000000.jpg", "0000500.jpg"]
+    cam_img = camera_image(paths[0])
+    assert cam_img.shape == (1080, 1920, 3)
+    assert cam_img[-5, -5].min() > 200 and cam_img[5, 5].max() < 100
+    src = SavedFrames(paths, fps=100.0, loop=False)
+    seen = []
+    while (f := src.read()) is not None:
+        seen.append((f.t, int(f.image[540, 960, 0])))
+    assert [t for t, _ in seen] == sorted(t for t, _ in seen)
+    vals = [v for _, v in seen]
+    assert vals[0] < 100 and vals[-1] > 100 and 80 <= len(seen) <= 110  # about 1 s at 100 fps

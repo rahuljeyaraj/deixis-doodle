@@ -11,13 +11,15 @@ happened on the Ender, without the Ender.
   order), else the rule parser. A reply recorded in another context can differ from what the
   model would say now.
 - There is no camera image, so marks drawn by hand on the sheet are not seen.
+- The plotter's events in the timeline (kind "plotter", logged from 2 Oct) are kept apart in
+  `Session.plotter` and not fed in: the replay's own plotter makes its own.
 """
 
 from __future__ import annotations
 
 import json
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +30,7 @@ from pointdraw.agent.fallback_parser import parse as fallback_parse
 from pointdraw.agent.nemotron import AgentResult
 from pointdraw.agent.schema import ToolCallError, norm_word, parse_call
 from pointdraw.controller.config import MachineConfig
+from pointdraw.live.logs import PLOTTER
 from pointdraw.runtime.events import EventLog
 from pointdraw.runtime.planner import Planner
 from pointdraw.runtime.runtime import Runtime
@@ -39,7 +42,8 @@ from pointdraw.vision.hands import HandObservation, HandsFrame, classify_pointin
 class Session:
     t0: float  # the camera's first frame, on the shared clock
     frames: list[HandsFrame]  # times on the shared clock
-    events: list[dict[str, Any]]  # the original timeline
+    events: list[dict[str, Any]]  # the original timeline (the runtime's events)
+    plotter: list[dict[str, Any]] = field(default_factory=list)  # the plotter's, if logged
 
 
 class RecordedAgent:
@@ -100,10 +104,12 @@ def load(run_dir: str | Path) -> Session:
                 HandObservation(h.get("handedness", "Right"), h["score"], mm * 4, mm, world, pose)
             )
         frames.append(HandsFrame(t0 + r["t"], hands, (1920, 1080)))
-    events = [
+    timeline = [
         json.loads(x) for x in (d / "timeline.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    return Session(t0, frames, events)
+    events = [e for e in timeline if e["kind"] != PLOTTER]
+    plotter = [e for e in timeline if e["kind"] == PLOTTER]
+    return Session(t0, frames, events, plotter)
 
 
 def replay(
