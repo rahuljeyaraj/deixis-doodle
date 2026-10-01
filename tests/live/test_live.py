@@ -145,3 +145,15 @@ def test_saved_frames_turn_back_and_play_like_a_camera(tmp_path):
     assert [t for t, _ in seen] == sorted(t for t, _ in seen)
     vals = [v for _, v in seen]
     assert vals[0] < 100 and vals[-1] > 100 and 80 <= len(seen) <= 110  # about 1 s at 100 fps
+
+
+def test_a_full_size_snapshot_is_the_camera_view(tmp_path):
+    import cv2
+
+    from pointdraw.live.frames import camera_image
+
+    img = np.zeros((1080, 1920, 3), np.uint8)
+    img[:10, :10] = 255
+    cv2.imwrite(str(tmp_path / "snap.png"), img)
+    out = camera_image(tmp_path / "snap.png")
+    assert out[5, 5].min() == 255  # not turned

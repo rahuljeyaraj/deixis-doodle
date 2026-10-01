@@ -21,10 +21,14 @@ CAMERA_SIZE = (1920, 1080)
 
 
 def camera_image(path: str | Path, size: tuple[int, int] = CAMERA_SIZE) -> np.ndarray:
-    """A saved picture, turned back and scaled to the camera's size."""
+    """A saved picture, turned back and scaled to the camera's size. A picture already at
+    the camera's size (a snapshot saved with S in the live window) is the camera's own view
+    and is returned as it is."""
     img = cv2.imread(str(path), cv2.IMREAD_COLOR)
     if img is None:
         raise FileNotFoundError(path)
+    if (img.shape[1], img.shape[0]) == tuple(size):
+        return img
     return cv2.resize(cv2.rotate(img, cv2.ROTATE_180), size, interpolation=cv2.INTER_LINEAR)
 
 

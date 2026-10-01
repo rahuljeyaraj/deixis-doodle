@@ -2,6 +2,7 @@
 
     uv run python scripts/paper_check.py
     uv run python scripts/paper_check.py --photo out/live/20261001-225450/frames/0123026.jpg
+    uv run python scripts/paper_check.py --photo out/live/<run>/000123-camera.png  # S in live_run
 
 `PaperCamera` and `segment_ink` had only run on virtual sheets. This takes a saved picture
 of the sheet from a live run (640x360, turned 180 degrees: turned back and scaled to
