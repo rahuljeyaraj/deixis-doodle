@@ -16,7 +16,10 @@ At start it homes Y (the bed slips if pushed) and parks, once no hand is over th
 The plotter moves only when no hand has been over the paper (plus 10 mm) for half a second,
 and pauses when one comes back. If the camera stops, so does the plotter.
 
-The window shows the camera turned 180 degrees, as the user sees the bed. The run is logged
+The window shows the camera turned 180 degrees, as the user sees the bed, with a banner in
+big words saying what the plotter is doing and why it waits ("Waiting: hand over the
+paper", "Drawing", "Paused: hand over the paper", "Stopped", "Plotter problem"); the
+banner's changes go in the timeline (kind "banner"). The run is logged
 in `out/live/<time>/`: `timeline.jsonl` (the runtime's events), `hands.jsonl` (a header
 with the start time, then per frame: each hand's landmarks, pose and fingertip, and what the
 gesture tracker made of it) and `frames/` (a small picture twice a second, named by
@@ -65,6 +68,7 @@ from pointdraw.drawing import Library  # noqa: E402
 from pointdraw.live.agent import BackgroundAgent  # noqa: E402
 from pointdraw.live.frames import SavedFrames, frame_paths  # noqa: E402
 from pointdraw.live.logs import JsonlWriter, TimelineWriter  # noqa: E402
+from pointdraw.live.status import Banner  # noqa: E402
 from pointdraw.live.view import BedView, PaperCamera  # noqa: E402
 from pointdraw.m1 import over_bed  # noqa: E402
 from pointdraw.runtime.events import EventLog  # noqa: E402
@@ -130,6 +134,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
     ap.add_argument("--headless", action="store_true", help="no window")
     ap.add_argument("--profile", action="store_true", help="time each stage of the loop")
+    ap.add_argument("--shots", type=int, default=0, help="save the window every N frames")
     ap.add_argument(
         "--hands-log",
         choices=["thread", "sync"],
@@ -304,16 +309,26 @@ def draw_overlay(vis, hf, view: BedView, paper, plotter: LivePlotter, scale: flo
         cv2.circle(vis, tuple(lm[INDEX_TIP]), 7, col, 2)
 
 
-def render_window(img, hf, view: BedView, paper, plotter: LivePlotter, top, lines) -> np.ndarray:
+def render_window(
+    img, hf, view: BedView, paper, plotter: LivePlotter, top, lines, banner=None
+) -> np.ndarray:
     """The window's picture: shrunk first (drawing on the full 1080p frame took ~7 ms), the
-    overlay, turned 180 degrees as the user sees the bed, then `top` [(text, colour)] at the
-    top and the last few `lines` at the bottom."""
+    overlay, turned 180 degrees as the user sees the bed, then the `banner` (text, colour) in
+    big letters on a bar, `top` [(text, colour)] under it and the last few `lines` at the
+    bottom."""
     scale = min(1.0, WINDOW_W / img.shape[1])
     vis = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     draw_overlay(vis, hf, view, paper, plotter, scale)
     vis = cv2.rotate(vis, cv2.ROTATE_180)
+    y0 = 32
+    if banner is not None:
+        text, colour = banner
+        cv2.rectangle(vis, (0, 0), (vis.shape[1], 64), colour, -1)
+        cv2.putText(vis, text, (16, 46), cv2.FONT_HERSHEY_DUPLEX, 1.25, (0, 0, 0), 7, cv2.LINE_AA)
+        cv2.putText(vis, text, (16, 46), cv2.FONT_HERSHEY_DUPLEX, 1.25, WHITE, 2, cv2.LINE_AA)
+        y0 = 96
     for i, (text, colour) in enumerate(top):
-        put(vis, text, (14, 32 + 32 * i), colour)
+        put(vis, text, (14, y0 + 30 * i), colour)
     for i, s in enumerate(lines):
         put(vis, s, (14, vis.shape[0] - 20 - 30 * (len(lines) - 1 - i)))
     return vis
@@ -460,6 +475,10 @@ def run(args: argparse.Namespace) -> int:
     next_pic = 0.0
     window = "pointdraw live (Q quit, Space stop, S save, R reconnect)"
     mic_problem: str | None = None
+    banner = Banner()
+    said_banner = ""
+    if args.shots:
+        (out / "window").mkdir(parents=True, exist_ok=True)
     shown = 0
     frames = 0
     lines: list[str] = []
@@ -520,11 +539,23 @@ def run(args: argparse.Namespace) -> int:
 
             key = -1
             st = plotter.status()  # also notices a link that died while idle
-            if not args.headless:
-                held = "" if rt.tracker.hands_clear else "  (hand over the paper)"
-                top = [(f"plotter {st.state}{held}", YELLOW), (f"app {rt.state}", YELLOW)]
+            banner.update(plotter.events)
+            words_now = banner.text(
+                st.state, plotter.busy, rt.tracker.hands_clear, rt.state, rt.plotter_problem
+            )
+            if words_now[0] != said_banner:
+                said_banner = words_now[0]
+                log.add(t, "banner", text=said_banner)
+            shoot = args.shots and frames % args.shots == 0
+            if not args.headless or shoot:
+                top = [(f"plotter {st.state}, app {rt.state}", YELLOW)]
                 top += [(text, RED) for text in problems(st.state, rt.plotter_problem, mic_problem)]
-                cv2.imshow(window, render_window(img, hf, view, paper, plotter, top, lines))
+                vis = render_window(img, hf, view, paper, plotter, top, lines, words_now)
+                if shoot:
+                    slug = "".join(c if c.isalnum() else "-" for c in words_now[0].lower())
+                    cv2.imwrite(str(out / "window" / f"{frames:06d}-{slug[:24]}.png"), vis)
+            if not args.headless:
+                cv2.imshow(window, vis)
                 key = cv2.waitKey(1) & 0xFF
             laps.lap("window")
             if key in (ord("q"), 27):
