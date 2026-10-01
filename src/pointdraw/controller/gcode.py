@@ -43,7 +43,7 @@ def pen_down(c: MachineConfig, z: float | None = None) -> str:
 
 
 def startup_block(c: MachineConfig) -> list[str]:
-    """Units, absolute mode, soft endstops on, and conservative motion limits."""
+    """Units, absolute mode, soft endstops on, conservative motion limits, motors held."""
     lim = c.limits
     return [
         "G21",
@@ -52,6 +52,9 @@ def startup_block(c: MachineConfig) -> list[str]:
         f"M201 X{fmt(lim.accel_xy)} Y{fmt(lim.accel_xy)} Z{fmt(lim.accel_z)}",
         f"M203 X{fmt(lim.max_xy_mm_s)} Y{fmt(lim.max_xy_mm_s)} Z{fmt(lim.max_z_mm_s)}",
         f"M204 P{fmt(lim.accel_xy)} T{fmt(lim.accel_travel)}",
+        # Marlin powers the motors down after a few idle minutes; the bed then slides if
+        # bumped and every later move is off by that much. Keep them on.
+        "M84 S0",
     ]
 
 
@@ -154,10 +157,11 @@ def insert_syncs(
     the planner to empty every so often bounds how much motion is queued, so a pause or a stop
     without the emergency parser still takes effect within about `every_mm` of travel.
 
-    `M400` brings the head to a full stop, which leaves a blot if the pen is down. With
-    `pen_up_above` (the Z above which the pen is clear of the paper), a due sync waits until
-    the pen is next up, so a stroke is never interrupted; inside a stroke, the planner's own
-    depth bounds the queued motion instead.
+    `M400` brings the head to a full stop, which leaves a blot if the pen is down and a
+    visible stutter on a travel move. With `pen_up_above` (the Z above which the pen is clear
+    of the paper), a due sync waits for the next pen lift and goes right after it, where the
+    head is stopped for the Z move anyway. Elsewhere the planner's own depth (about 16
+    `max_segment_mm` pieces) bounds the queued motion.
     """
     out: list[str] = []
     pos: Point | None = None
@@ -171,6 +175,7 @@ def insert_syncs(
         if cmd == "G28":
             pos = None
             z = 0.0
+        was_up = pen_up_above is None or z is None or z > pen_up_above
         if cmd in ("G0", "G1") and params.get("Z") is not None:
             z = params["Z"]
         if cmd not in ("G0", "G1"):
@@ -184,8 +189,11 @@ def insert_syncs(
             if pos is not None:
                 acc += math.dist(pos, new)
             pos = new
-        pen_up = pen_up_above is None or z is None or z > pen_up_above
-        if acc >= every_mm and pen_up:
+        if pen_up_above is None:
+            due = True
+        else:  # only on the line that lifts the pen
+            due = not was_up and z is not None and z > pen_up_above
+        if acc >= every_mm and due:
             out.append("M400")
             acc = 0.0
     return out

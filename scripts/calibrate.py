@@ -276,7 +276,10 @@ def run(args: argparse.Namespace) -> int:
     print(f"calibrated: {res.summary()}")
     print(f"saved {path}; overlay {save_overlay(out, img, res)}")
     if len(res.calibration.marker_corners_mm) < 2:
-        print("warning: fewer than 2 markers learned; the live bed tracking needs at least 2")
+        print(
+            "fewer than 2 bed markers learned: the cross fit is used as is, so keep the camera "
+            "still and run this again if it moves"
+        )
     if res.fit.rms_mm > WARN_RMS_MM:
         print(f"warning: residual rms {res.fit.rms_mm:.2f} mm is high: check focus, light, lens")
     return 0

@@ -212,11 +212,36 @@ def solve_bed_homography(
     )
 
 
+def fixed_bed_homography(
+    calib: BedCalibration, t: float | None = None, lens: LensModel | None = None
+) -> BedHomography | None:
+    """The calibration photo's cross fit, used as is: right only while the camera stays put.
+
+    The lens is applied only if the fit was made on undistorted pixels.
+    """
+    if calib.H_px_to_mm is None:
+        return None
+    rms = calib.cross_rms_mm or 0.0
+    return BedHomography(
+        H=calib.H_px_to_mm,
+        marker_ids=(),
+        rms_mm=rms,
+        max_mm=calib.cross_max_mm if calib.cross_max_mm is not None else rms,
+        rms_px=float("nan"),
+        t=t,
+        lens=lens if calib.notes.get("undistorted") else None,
+    )
+
+
 class BedTracker:
     """Keeps the latest good bed homography, so a hand briefly covering markers is harmless.
 
     A new solution is accepted when its corner RMS is under `max_rms_mm`. The last good one is
     reused for up to `max_age_s` seconds.
+
+    A calibration that learned fewer than `min_markers` markers (a bed with no room for them)
+    has nothing to track: the cross fit is used for every frame, so the camera must not move
+    and frames must be taken with the bed parked, as at calibration.
     """
 
     def __init__(
@@ -235,6 +260,9 @@ class BedTracker:
         self.last: BedHomography | None = None
 
     def update(self, detections: list[MarkerDetection], t: float) -> BedHomography | None:
+        if len(self.calib.marker_corners_mm) < max(1, self.min_markers):
+            self.last = fixed_bed_homography(self.calib, t, self.lens)
+            return self.last
         h = solve_bed_homography(detections, self.calib, self.min_markers, t=t, lens=self.lens)
         if h is not None and h.rms_mm <= self.max_rms_mm:
             self.last = h

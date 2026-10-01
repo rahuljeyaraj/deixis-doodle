@@ -58,6 +58,7 @@ STARTUP_COMMANDS: dict[str, frozenset[str]] = {
     "M203": frozenset("XYZ"),
     "M204": frozenset("PT"),
     "M211": frozenset("S"),
+    "M84": frozenset("S"),  # only as M84 S0: keep the motors on while idle
 }
 # Read-only diagnostics: firmware info and temperature report. Neither moves nor heats anything.
 # M105 is how bring-up confirms the 100 kOhm resistor trick reads about 25 C.

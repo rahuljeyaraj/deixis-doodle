@@ -111,6 +111,18 @@ def test_bed_tracker_holds_last_good_solution(scene_and_image):
     assert tr.update([], t=12.0) is None  # too old
 
 
+def test_bed_tracker_without_markers_uses_the_cross_fit(scene_and_image):
+    scene, H, img = scene_and_image
+    calib = calibrate_from_image(img, scene.crosses).calibration
+    calib.marker_corners_mm = {}  # a bed with no room for markers
+    tr = BedTracker(calib)
+    bed = tr.update([], t=10.0)
+    assert bed is not None and bed.marker_ids == ()
+    px = apply_homography(np.linalg.inv(calib.H_px_to_mm), scene.crosses)
+    assert np.abs(bed.to_mm(px) - scene.crosses).max() < 1e-6
+    assert tr.update([], t=1000.0) is not None  # never goes stale
+
+
 @pytest.mark.parametrize("deg", [0, 90, 180, 270])
 def test_match_asymmetric_pattern_any_rotation_without_prior(deg):
     scene, H = syn.default_scene()

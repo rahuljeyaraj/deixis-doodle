@@ -37,7 +37,7 @@ from pointdraw.controller.controller import Controller
 from pointdraw.controller.serial_link import SerialLink
 from pointdraw.controller.simulator import SimulatedPlotter
 from pointdraw.controller.transport import LinkError, Transport
-from pointdraw.m1 import CrossUnderFinger, load_targets
+from pointdraw.m1 import CrossUnderFinger, load_targets, over_bed
 from pointdraw.vision.aruco import (
     DEFAULT_CALIBRATION_PATH,
     BedCalibration,
@@ -83,6 +83,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     plot.add_argument("--sim", type=Path, metavar="OUT.PNG", help="simulated plotter, rendered")
     plot.add_argument("--dry-run", action="store_true", help="simulated plotter, print G-code")
     ap.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="machine config JSON")
+    ap.add_argument(
+        "--no-home-y",
+        action="store_true",
+        help="skip homing the bed (Y) at start; a bed pushed by hand is then off by that much",
+    )
 
     ap.add_argument("--trigger", choices=["hold", "key"], default="hold")
     ap.add_argument("--cross-size", type=float, default=6.0, help="mm")
@@ -182,6 +187,10 @@ def run(args: argparse.Namespace) -> int:
         hands_tracker.close()
         print(f"could not connect to the plotter: {e}")
         return 1
+    if not args.no_home_y:
+        # The bed is the axis a hand can push (the motors hold it only weakly), and the camera
+        # calibration assumes it parked exactly where it was then. Homing Y alone takes ~15 s.
+        ctl.run_lines(["G28 Y"], label="home Y")
     ctl.park()  # runs once hands are clear; pointing happens with the bed parked
 
     targets = load_targets(args.targets, cfg.paper_box) if args.targets else []
@@ -210,7 +219,10 @@ def run(args: argparse.Namespace) -> int:
             hf = hands_tracker.process(img, t, bed.to_mm if bed is not None else None)
             hand = hf.primary()
             tip = hand.index_tip_mm if (hand is not None and bed is not None) else None
-            trial = app.update(t, tip, bool(hand and hand.pointing), bool(hf.hands))
+            # The paper plus 10 mm, as in the runtime: the camera looks from the front, so a
+            # hand raised in front of the bed appears over its front edge (parallax).
+            near = any(over_bed(h.landmarks_mm, cfg.paper_box, 10.0) for h in hf.hands)
+            trial = app.update(t, tip, bool(hand and hand.pointing), near)
             if trial is not None:
                 print(f"trial {len(app.trials)}: {trial}")
 

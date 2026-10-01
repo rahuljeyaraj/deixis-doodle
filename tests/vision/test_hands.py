@@ -10,6 +10,7 @@ from pointdraw.vision.hands import (
     INDEX_TIP,
     THUMB_TIP,
     HandsFrame,
+    PoseParams,
     classify_pointing,
     observations_from_result,
 )
@@ -77,6 +78,16 @@ def test_pointing_detected_in_any_orientation(seed):
 def test_pointing_with_thumb_out_and_lazy_pinky():
     lazy = dict(POINT, pinky=(30, 30, 10))
     assert classify_pointing(make_hand(lazy, thumb_out=True)).pointing
+
+
+def test_pointing_down_at_the_paper():
+    # Fingertip pressed on the sheet: the index bends a little and is neither straight nor
+    # curled. It counts by default, not with half_index_ok off.
+    hand = make_hand(dict(POINT, index=(0, 40, 30)))
+    fs = classify_pointing(hand).fingers["index"]
+    assert not fs.extended and not fs.curled
+    assert classify_pointing(hand).pointing
+    assert not classify_pointing(hand, PoseParams(half_index_ok=False)).pointing
 
 
 @pytest.mark.parametrize(

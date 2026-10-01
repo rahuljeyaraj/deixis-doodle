@@ -68,6 +68,10 @@ class PoseParams:
     curled_reach: float = 1.02
     curled_bend_deg: float = 90.0
     min_curled_of_ring_pinky: int = 1  # the middle finger must curl; ring or pinky may lag
+    # A fingertip pressed on the paper bends the index a little, and seen from straight above
+    # it is foreshortened: neither straight nor curled. On the Ender (1 Oct 2026) that was most
+    # frames of a held point. Count it, as long as the index still reaches past the middle.
+    half_index_ok: bool = True
 
 
 DEFAULT_POSE = PoseParams()
@@ -106,7 +110,8 @@ def finger_state(lm: np.ndarray, finger: str, p: PoseParams = DEFAULT_POSE) -> F
 
 
 def classify_pointing(lm: np.ndarray, p: PoseParams = DEFAULT_POSE) -> PoseResult:
-    """Pointing = index extended, middle curled, and ring or pinky curled.
+    """Pointing = index extended (or, with `half_index_ok`, not curled and reaching further
+    than the middle finger), middle curled, and ring or pinky curled.
 
     `lm` is (21, 3) world landmarks (preferred) or (21, 2) image landmarks.
     The thumb is ignored: people point with the thumb in or out.
@@ -114,11 +119,9 @@ def classify_pointing(lm: np.ndarray, p: PoseParams = DEFAULT_POSE) -> PoseResul
     lm = np.asarray(lm, dtype=np.float64)
     fingers = {f: finger_state(lm, f, p) for f in FINGERS}
     others = sum(fingers[f].curled for f in ("ring", "pinky"))
-    pointing = (
-        fingers["index"].extended
-        and fingers["middle"].curled
-        and others >= p.min_curled_of_ring_pinky
-    )
+    index, middle = fingers["index"], fingers["middle"]
+    half = p.half_index_ok and not index.curled and index.reach > middle.reach
+    pointing = (index.extended or half) and middle.curled and others >= p.min_curled_of_ring_pinky
     return PoseResult(pointing=pointing, fingers=fingers)
 
 

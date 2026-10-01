@@ -57,7 +57,8 @@ def test_split_segment(length):
 def test_startup_block():
     lines = gcode.startup_block(CFG)
     assert lines[:3] == ["G21", "G90", "M211 S1"]
-    assert [ln.split()[0] for ln in lines[3:]] == ["M201", "M203", "M204"]
+    assert [ln.split()[0] for ln in lines[3:]] == ["M201", "M203", "M204", "M84"]
+    assert lines[-1] == "M84 S0"  # motors stay on, so a bumped bed cannot slide
     for line in lines:
         check_line(line, phase="startup", config=CFG)
 
@@ -129,6 +130,10 @@ def test_insert_syncs_waits_for_pen_up():
             assert z is None or z > CFG.pen_threshold_z
     assert synced.count("M400") >= 1
     assert [x for x in synced if x != "M400"] == lines
+    # ...and only straight after a lift: a long travel move runs without stops
+    for i, line in enumerate(synced):
+        if line == "M400":
+            assert synced[i - 1] == gcode.pen_up(CFG)
 
 
 def test_end_position():

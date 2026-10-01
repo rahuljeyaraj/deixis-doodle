@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
+
 from deixis.filters import OneEuroFilter2D
 from deixis.geometry import Box, Point
 from deixis.holds import HoldDetector, HoldParams
@@ -56,6 +58,24 @@ def load_targets(path: str | Path, paper: Box) -> list[Target]:
         Target(int(t["id"]), paper.x + float(t["x_mm"]), paper.y + float(t["y_mm"]))
         for t in data["targets"]
     ]
+
+
+def over_bed(landmarks_mm, bed: Box, margin_mm: float = 20.0) -> bool:
+    """True if any hand landmark (bed mm) is over the bed, or within `margin_mm` of it.
+
+    A hand or foot elsewhere in the picture must not pause the plotter; one reaching in must.
+    `None` (no camera-to-bed mapping) counts as over the bed, to stay safe.
+    """
+    if landmarks_mm is None:
+        return True
+    lm = np.asarray(landmarks_mm, dtype=np.float64).reshape(-1, 2)
+    inside = (
+        (lm[:, 0] >= bed.x - margin_mm)
+        & (lm[:, 0] <= bed.x2 + margin_mm)
+        & (lm[:, 1] >= bed.y - margin_mm)
+        & (lm[:, 1] <= bed.y2 + margin_mm)
+    )
+    return bool(inside.any())
 
 
 def nearest_target(p: Point, targets: list[Target]) -> tuple[Target, float] | None:
