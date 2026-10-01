@@ -104,3 +104,30 @@ def test_fetch_reads_a_big_log_in_slices_under_the_api_limit(tmp_path):
     got = {ln.split("] ", 1)[1] for ln in lines}
     assert got == {s for _, s in log}  # nothing lost; duplicates from the overlap are fine
     assert len(asked) > 4  # it had to split
+
+
+def test_a_rebuilt_manifest_reads_object_and_style_from_the_path(tmp_path):
+    """No manifest in the log (job killed early): object from the folder, style from the name."""
+    import base64
+    import hashlib
+
+    mod = _logs_to_files()
+    lines = []
+    for no, rel in enumerate(["ice_cream/ice_cream_icon_s1002.png", "ear/ear_s1000.png"], 1):
+        data = f"png {rel}".encode()
+        b64 = base64.b64encode(data).decode()
+        lines.append(f"@@FILE {no} 1 {len(data)} {hashlib.sha256(data).hexdigest()} {rel}")
+        lines.append(f"@@C {no} 0 {b64}")
+    log = tmp_path / "job.log"
+    log.write_text("\n".join(lines) + "\n")
+    assert mod.main([str(log), str(tmp_path / "out")]) == 0
+    man = json.loads((tmp_path / "out" / "manifest.json").read_text())
+    assert man["images"] == [
+        {"file": "ear/ear_s1000.png", "object": "ear", "seed": 1000},
+        {
+            "file": "ice_cream/ice_cream_icon_s1002.png",
+            "object": "ice cream",
+            "seed": 1002,
+            "style": "icon",
+        },
+    ]

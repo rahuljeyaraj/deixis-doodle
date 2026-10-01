@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 PREFIX = re.compile(r"^\[[^\]]*\]\s?")
-NAME = re.compile(r"^(?P<obj>.+)_s(?P<seed>\d+)\.png$")
+NAME = re.compile(r"^(?P<stem>.+)_s(?P<seed>\d+)\.png$")
 
 
 LIMIT = 1000  # lines per logs request (the API's maximum)
@@ -131,8 +131,12 @@ def main(argv: list[str] | None = None) -> int:
         for rel in sorted(r for r in written if r.endswith(".png")):
             m = NAME.match(Path(rel).name)
             if m:
-                obj = m["obj"].replace("_", " ")
-                images.append({"file": rel, "object": obj, "seed": int(m["seed"])})
+                folder = Path(rel).parent.name  # <object>/<object>[_<style>]_s<seed>.png
+                entry = {"file": rel, "object": folder.replace("_", " "), "seed": int(m["seed"])}
+                style = m["stem"][len(folder) + 1 :] if m["stem"].startswith(folder + "_") else ""
+                if style:
+                    entry["style"] = style
+                images.append(entry)
         manifest = {"model": None, "rebuilt_from_log": True, "images": images}
         (out / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
         written.append("manifest.json (rebuilt from file names)")
