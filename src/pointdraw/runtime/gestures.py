@@ -41,7 +41,9 @@ class GestureParams:
     enter_frames: int = 2  # frames over the paper before the interlock trips
     exit_frames: int = 3  # frames clear before it releases
     thumb_out_ratio: float = 0.6  # |thumb tip - index MCP| / |wrist - middle MCP|
-    holds: HoldParams = field(default_factory=HoldParams)
+    # Kept 2 min, not 30 s: a "How big?" answered 40 s later still needs the request's point
+    # (live run, 1 Oct 2026). Old holds never match new words: assignment goes by word time.
+    holds: HoldParams = field(default_factory=lambda: HoldParams(history_s=120.0))
     spans: SpanParams = field(default_factory=SpanParams)
 
 

@@ -40,7 +40,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from deixis.geometry import Box, Point
-from deixis.resolver import ResolverParams
+from deixis.resolver import Ask, ResolverParams, pick_span
 from deixis.types import Word
 from pointdraw.agent.nemotron import AgentResult
 from pointdraw.agent.prompts import AgentContext
@@ -56,7 +56,13 @@ from pointdraw.drawing import Placed, optimize
 from pointdraw.runtime.events import EventLog
 from pointdraw.runtime.gestures import GestureTracker
 from pointdraw.runtime.planner import Planner
-from pointdraw.runtime.references import NeedAsk, Question, References, Utterance
+from pointdraw.runtime.references import (
+    NeedAsk,
+    Question,
+    References,
+    Utterance,
+    deictic_words,
+)
 from pointdraw.scene.ink import segment_ink
 from pointdraw.scene.model import SceneModel, SceneObject, union_box
 
@@ -80,6 +86,7 @@ CANCEL_ANSWERS = {"cancel", "nevermind", "never", "forget", "nothing"}
 ACKS = {"yes", "yeah", "yep", "yup", "sure", "right", "alright", "fine", "hmm", "hm", "mm"}
 ACKS |= {"mhm", "hello", "hi", "hey", "so", "well", "and", "i", "mean", "just"}
 # Words that let place_drawing repeat an object the person didn't name ("another one").
+SIZE_WORDS = {"this", "that", "so", "big", "small", "large", "long", "wide", "tall", "size"}
 REPEAT_WORDS = {"another", "again", "same", "more", "copy", "one", "ones"}
 
 
@@ -420,7 +427,9 @@ class Runtime:
         if new:
             self._propose(new, utt.id, t)
 
-    def _refs(self, utt: Utterance, overrides: dict | None = None) -> References:
+    def _refs(
+        self, utt: Utterance, overrides: dict | None = None, sizes: dict | None = None
+    ) -> References:
         holds = self.tracker.holds.holds()
         spans = self.tracker.spans.holds()
         return References(
@@ -431,6 +440,7 @@ class Runtime:
             self.params.resolver,
             self.params.default_size_mm,
             overrides,
+            sizes,
         )
 
     def _handle(self, call: ToolCall, refs: References, new: list[SceneObject], t: float) -> None:
@@ -921,6 +931,20 @@ class Runtime:
                 call = _retarget(call, obj)
             self._rerun(oq.utt, call, t, overrides)
             return True
+        if q.reason == "no_size" and oq.call is not None and oq.utt is not None:
+            # "How big?" ... "this big": the size comes from this answer's gesture, the rest
+            # from the request (on the Ender the agent, asked alone, guessed a new object).
+            span = self._answer_span(utt)
+            if span is not None:
+                self.question = None
+                self.log.add(t, "answer", question=q.text, answer="size", size=round(span, 1))
+                _, sizes = deictic_words(oq.call.args)
+                hold = self._answer_span(utt, hold=True)
+                self._rerun(oq.utt, oq.call, t, {}, {i: hold for i in sizes})
+                return True
+            if set(toks) & (SIZE_WORDS - {"this", "that", "so"}):  # "this big", no gesture seen
+                self._ask(q, oq.utt, oq.call, t)
+                return True
         demos = [i for i, w in enumerate(toks) if w in ("here", "there", "this", "that")]
         if q.reason in ("no_gesture", "unsteady", "ambiguous") and demos and oq.call is not None:
             refs = self._refs(utt)
@@ -942,9 +966,26 @@ class Runtime:
         self.asked = oq.call  # but the agent may read it as one ("How big?" ... "this big")
         return False
 
-    def _rerun(self, utt: Utterance | None, call: ToolCall, t: float, overrides: dict) -> None:
+    def _answer_span(self, utt: Utterance, hold: bool = False) -> Any:
+        """The size gesture shown with an answer like "this big" (its span in mm, or the hold)."""
+        spans = self.tracker.spans.holds()
+        for w in utt.words:
+            if norm_word(w.text) in SIZE_WORDS:
+                pick = pick_span(w, spans, self.params.resolver)
+                if not isinstance(pick, Ask):
+                    return pick.hold if hold else pick.hold.span_mm
+        return None
+
+    def _rerun(
+        self,
+        utt: Utterance | None,
+        call: ToolCall,
+        t: float,
+        overrides: dict,
+        sizes: dict | None = None,
+    ) -> None:
         assert utt is not None
-        refs = self._refs(utt, overrides)
+        refs = self._refs(utt, overrides, sizes)
         refs.prepare([call])
         new: list[SceneObject] = []
         try:

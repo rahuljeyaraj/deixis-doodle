@@ -118,6 +118,7 @@ class References:
         params: ResolverParams | None = None,
         default_size: float = 40.0,
         overrides: dict[int, Hold] | None = None,
+        size_overrides: dict[int, SpanHold] | None = None,
     ) -> None:
         self.utt = utt
         self.holds = holds
@@ -128,6 +129,7 @@ class References:
         self.avoid = size_holds(holds, spans, self.p)
         self.picks: dict[int, Pick | Ask] = {}
         self.overrides = overrides or {}  # word index -> hold, from a clarifying answer
+        self.size_overrides = size_overrides or {}  # word index -> span, from "this big"
         self.log: list[dict[str, Any]] = []
 
     def prepare(self, calls: list[Any]) -> None:
@@ -225,10 +227,12 @@ class References:
             return max(o.box.w, o.box.h)
         if isinstance(ref, DeicticSize):
             w = self.utt.words[ref.word_index]
-            pick = pick_span(w, self.spans, self.p)
-            if isinstance(pick, Ask):
-                raise NeedAsk(Question(pick.question, pick.reason))
-            span = pick.hold
+            span = self.size_overrides.get(ref.word_index)
+            if span is None:
+                pick = pick_span(w, self.spans, self.p)
+                if isinstance(pick, Ask):
+                    raise NeedAsk(Question(pick.question, pick.reason))
+                span = pick.hold
             assert isinstance(span, SpanHold)
             entry = {"size": round(span.span_mm, 2), "size_kind": span.kind, "word": w.text}
             self.log.append(entry)
