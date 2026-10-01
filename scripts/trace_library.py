@@ -391,7 +391,7 @@ def trace_images(
         )
         meta = manifest.get(p.name, {})
         v = {"key_id": p.stem, "strokes": round_strokes(lib)}
-        for k in ("model", "seed", "prompt"):
+        for k in ("model", "seed", "prompt", "style"):
             if meta.get(k) is not None:
                 v[k] = meta[k]
         v["trace"] = {
