@@ -6,6 +6,8 @@
     uv run python scripts/live_run.py --port COM9 --backend msmf --ai mock   # no network
     uv run python scripts/live_run.py --dry-run --frames out/live/20261001-225450 --type
                                        # no camera: replay a run's saved pictures
+    uv run python scripts/live_run.py --port COM9 --backend msmf --speak     # replies aloud
+    uv run python scripts/live_run.py --dry-run --type --speak-wav out/speech  # to WAV, silent
 
 Camera (fixed bed homography from `.cache/calibration/bed.json`, no bed markers), MediaPipe
 hands, `GestureTracker` (holds, sizes, the hands-clear interlock), the microphone with local
@@ -30,6 +32,11 @@ job start and end, pause request, paused, resumed, halted), written as they happ
 If the USB cable to the plotter is pulled, the window says so, nothing moves, and R
 reconnects (the plotter then homes and parks). If the microphone is unplugged, the window
 says so and it is tried again every 2 s.
+
+With `--speak` the app says its replies in Windows' voice ("Where should it go?"). The
+microphone is muted while it speaks and for 0.3 s after, so it never hears itself. With
+`--speak-wav DIR` the replies go to WAV files instead (no sound). `--quiet` turns speech off
+(the default).
 
 Keys: Q or Esc quit, Space stop the plotter, S save a snapshot, R reconnect the plotter.
 """
@@ -131,6 +138,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--mic", default=None, help="input device index or name")
     ap.add_argument("--asr", default=None, help="ASR model (default: the code default)")
     ap.add_argument("--vad", default="silero", choices=["silero", "energy"])
+    ap.add_argument("--speak", action="store_true", help="say the replies aloud")
+    ap.add_argument(
+        "--speak-wav", type=Path, default=None, help="write the replies to WAVs here (no sound)"
+    )
+    ap.add_argument("--quiet", action="store_true", help="never speak (the default)")
 
     ap.add_argument("--headless", action="store_true", help="no window")
     ap.add_argument("--profile", action="store_true", help="time each stage of the loop")
@@ -173,7 +185,15 @@ def make_agent(args: argparse.Namespace, categories: list[str]) -> BackgroundAge
     return BackgroundAgent(inner, categories)
 
 
-def make_words(args: argparse.Namespace):
+def make_speaker(args: argparse.Namespace):
+    if args.quiet or not (args.speak or args.speak_wav):
+        return None
+    from pointdraw.live.speaker import Speaker
+
+    return Speaker(play=args.speak_wav is None, wav_dir=args.speak_wav)
+
+
+def make_words(args: argparse.Namespace, muted=None):
     from pointdraw.live.speech import Listener, TypedInput
 
     if args.type:
@@ -186,7 +206,7 @@ def make_words(args: argparse.Namespace):
     asr = LocalAsr(AsrConfig(model=args.asr or DEFAULT_ASR))
     mic = int(args.mic) if args.mic and args.mic.isdigit() else args.mic
     print(f"speech: {args.asr or DEFAULT_ASR} loaded in {asr.load_s:.1f} s")
-    return Listener(asr, make_vad(args.vad), device=mic).start()
+    return Listener(asr, make_vad(args.vad), device=mic, muted=muted).start()
 
 
 def load_lens(path: Path, size: tuple[int, int]) -> LensModel | None:
@@ -458,7 +478,8 @@ def run(args: argparse.Namespace) -> int:
         vision = LiveVision()
     log = EventLog()
     rt = Runtime(agent, plotter, cfg, planner, camera=camera, vision=vision, log=log)
-    words = make_words(args)
+    speaker = make_speaker(args)
+    words = make_words(args, muted=speaker.muted if speaker else None)
 
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = args.out / stamp
@@ -527,6 +548,8 @@ def run(args: argparse.Namespace) -> int:
             laps.lap("picture")
             rt.tick(t)
             for e in log.events[shown:]:
+                if e["kind"] == "say" and speaker is not None:
+                    speaker.say(e["text"])
                 text = describe(e)
                 if text:
                     print(f"[{e['t'] - first.t:7.2f}] {text}")
@@ -580,6 +603,8 @@ def run(args: argparse.Namespace) -> int:
             plotter.wait(10)
         plotter.close()
         words.close()
+        if speaker is not None:
+            speaker.close()
         agent.close()
         cam.close()
         hands.close()

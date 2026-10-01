@@ -30,6 +30,9 @@ class Listener:
     If the microphone fails (unplugged, or no audio for 3 s), it says so once (`error`),
     then tries to open it again every `retry_s` until it works (`mic_back`). On 1 Oct a lost
     microphone stopped speech input for good.
+
+    While `muted()` is True (the app is speaking), the segmenter is muted, so the robot's own
+    voice never becomes an utterance.
     """
 
     def __init__(
@@ -40,6 +43,7 @@ class Listener:
         *,
         retry_s: float = 2.0,
         capture: Callable[[], Any] | None = None,
+        muted: Callable[[], bool] | None = None,
     ) -> None:
         from pointdraw.audio.segmenter import Segmenter
 
@@ -49,6 +53,7 @@ class Listener:
         self.retry_s = retry_s
         self._capture = capture or self._open
         self.lost = False
+        self.muted = muted  # e.g. `Speaker.muted`: the app is talking, don't listen
         self.events: queue.Queue[tuple] = queue.Queue()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="listener", daemon=True)
@@ -93,6 +98,12 @@ class Listener:
         for samples, t0 in cap.blocks(timeout=3.0):
             if self._stop.is_set():
                 return
+            if self.muted is not None and self.muted():
+                if not seg.muted:
+                    seg.mute()  # drops an utterance in progress: it may be our own voice
+                continue
+            if seg.muted:
+                seg.unmute()
             was = seg.in_speech
             utts = seg.push(samples, t0)
             if seg.in_speech and not was:
