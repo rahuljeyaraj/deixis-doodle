@@ -79,6 +79,26 @@ def test_this_big_answers_how_big():
     assert abs(item.center[0] - 60) < 3 and abs(item.center[1] - 50) < 3
 
 
+def test_fingers_opened_a_few_seconds_after_this_big():
+    # Live run, 1 Oct 2026: pointing while saying "this big", the size shown 3-4 s later.
+    agent = OnlyTheRequest()
+    rt = Runtime(agent, VirtualPlotter(CFG), CFG, Planner())
+    rt.start(0.0)
+    frames(rt, 0.0, 2.0, pointing(60, 50))
+    said = ["Draw", "a", "cross", "here", "this", "big"]
+    rt.on_utterance([Word(w, 0.4 + 0.25 * i, 0.6 + 0.25 * i) for i, w in enumerate(said)], 2.0)
+    frames(rt, 2.0, 3.0, None)
+    frames(rt, 3.0, 4.0, pointing(60, 50))
+    rt.on_utterance([Word("This", 3.4, 3.6), Word("big", 3.7, 3.9)], 4.1)
+    frames(rt, 4.1, 7.0, pointing(60, 50))
+    assert rt.proposal is None and rt.question is not None
+    frames(rt, 7.0, 8.0, pinch(30.0))
+    frames(rt, 8.0, 9.0, None)
+    assert len(agent.asked) == 1
+    item = rt.proposal.items[0]
+    assert abs(max(item.box.w, item.box.h) - 30.0) < 4.0
+
+
 def test_this_big_without_a_gesture_asks_again():
     agent = OnlyTheRequest()
     rt = Runtime(agent, VirtualPlotter(CFG), CFG, Planner())
@@ -88,7 +108,8 @@ def test_this_big_without_a_gesture_asks_again():
     rt.on_utterance([Word(w, 0.4 + 0.25 * i, 0.6 + 0.25 * i) for i, w in enumerate(said)], 2.0)
     frames(rt, 2.0, 3.0, None)
     rt.on_utterance([Word("This", 3.4, 3.6), Word("big", 3.7, 3.9)], 4.1)
-    frames(rt, 4.1, 5.0, None)
+    frames(rt, 4.1, 11.0, None)  # no fingers within size_wait_s: ask again
     assert len(agent.asked) == 1
     assert rt.question is not None and rt.question.q.reason == "no_size"
-    assert [a["question"] for a in rt.log.of("ask")][-1].startswith("How big?")
+    asks = [a["question"] for a in rt.log.of("ask")]
+    assert len(asks) == 2 and asks[-1].startswith("How big?")

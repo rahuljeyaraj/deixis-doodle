@@ -131,6 +131,7 @@ class RuntimeParams:
     label_cap_mm: float = 5.0  # label cap height when no size is given
     label_gap_mm: float = 3.0
     step_mm: float = 5.0  # one "a bit" step for adjust
+    size_wait_s: float = 6.0  # after "this big", how long to wait for the fingers to open
     auto_confirm: bool = True
     confirm_quiet_s: float = 2.0
     resolver: ResolverParams = field(default_factory=ResolverParams)
@@ -212,6 +213,7 @@ class Runtime:
         self._clear: bool | None = None
         self.backlog: list[Utterance] = []  # heard while an earlier one was being understood
         self.asked: ToolCall | None = None  # the call of a question just left unanswered
+        self.size_wait: tuple[float, float] | None = None  # "this big" said at, wait until
         self._tags = 0
 
     # ------------------------------------------------------------------ inputs
@@ -239,6 +241,7 @@ class Runtime:
                 spread=round(max(h.spread), 2),
             )
         sp = self.tracker.ended_span
+        self._check_size_wait(frame.t, sp)
         if sp is not None:
             self.log.add(
                 sp.t1,
@@ -331,6 +334,7 @@ class Runtime:
     def tick(self, t: float) -> None:
         self.t = max(self.t, t)
         self._plotter_events()
+        self._check_size_wait(t)
         for p in self.pending:
             if p.result is None and p.future is not None and p.future.done():
                 p.result, p.t_ready = p.future.result(), t
@@ -936,14 +940,14 @@ class Runtime:
             # from the request (on the Ender the agent, asked alone, guessed a new object).
             span = self._answer_span(utt)
             if span is not None:
-                self.question = None
-                self.log.add(t, "answer", question=q.text, answer="size", size=round(span, 1))
-                _, sizes = deictic_words(oq.call.args)
-                hold = self._answer_span(utt, hold=True)
-                self._rerun(oq.utt, oq.call, t, {}, {i: hold for i in sizes})
+                self._size_answer(oq, span, t)
                 return True
-            if set(toks) & (SIZE_WORDS - {"this", "that", "so"}):  # "this big", no gesture seen
-                self._ask(q, oq.utt, oq.call, t)
+            if set(toks) & (SIZE_WORDS - {"this", "that", "so"}):
+                # "this big" with no gesture yet: on the Ender the fingers often opened a few
+                # seconds after the words. The next steady span answers; else ask again.
+                said = utt.words[0].t0 if utt.words else t
+                self.size_wait = (said, t + self.params.size_wait_s)
+                self.log.add(t, "waiting", why="size gesture after 'this big'")
                 return True
         demos = [i for i, w in enumerate(toks) if w in ("here", "there", "this", "that")]
         if q.reason in ("no_gesture", "unsteady", "ambiguous") and demos and oq.call is not None:
@@ -966,15 +970,37 @@ class Runtime:
         self.asked = oq.call  # but the agent may read it as one ("How big?" ... "this big")
         return False
 
-    def _answer_span(self, utt: Utterance, hold: bool = False) -> Any:
-        """The size gesture shown with an answer like "this big" (its span in mm, or the hold)."""
+    def _answer_span(self, utt: Utterance) -> Any:
+        """The size gesture (a SpanHold) shown with an answer like "this big", if any."""
         spans = self.tracker.spans.holds()
         for w in utt.words:
             if norm_word(w.text) in SIZE_WORDS:
                 pick = pick_span(w, spans, self.params.resolver)
                 if not isinstance(pick, Ask):
-                    return pick.hold if hold else pick.hold.span_mm
+                    return pick.hold
         return None
+
+    def _size_answer(self, oq: OpenQuestion, span: Any, t: float) -> None:
+        """Answer "How big?" with a size gesture: rerun the asked call with that size."""
+        assert oq.call is not None and oq.utt is not None
+        self.question, self.size_wait = None, None
+        self.log.add(t, "answer", question=oq.q.text, answer="size", size=round(span.span_mm, 1))
+        _, sizes = deictic_words(oq.call.args)
+        self._rerun(oq.utt, oq.call, t, {}, {i: span for i in sizes})
+
+    def _check_size_wait(self, t: float, span: Any = None) -> None:
+        if self.size_wait is None:
+            return
+        oq = self.question
+        if oq is None or oq.q.reason != "no_size":
+            self.size_wait = None
+            return
+        said, deadline = self.size_wait
+        if span is not None and span.t1 >= said - 1.0:
+            self._size_answer(oq, span, t)
+        elif t > deadline:
+            self.size_wait = None
+            self._ask(oq.q, oq.utt, oq.call, t)
 
     def _rerun(
         self,
