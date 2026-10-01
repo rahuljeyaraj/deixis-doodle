@@ -18,3 +18,8 @@ expect:
   min_pen_mm: 5
   say_contains: ["Stopped"]
 variations: {hover_mm: null}
+# The Ender runs BTT's prebuilt Marlin, which has EMERGENCY_PARSER on (docs/hardware-bringup.md,
+# Path A): M410 acts at once. Without it, a stop that lands while Marlin's queue holds a pen
+# lift and its M400 waits for up to 16 planned moves: 2.2 s and 45.6 mm at worst (night 2 Oct,
+# a sweep of stop moments). That case is pinned in tests/virtual/test_plotter.py.
+plotter: {emergency_parser: true}

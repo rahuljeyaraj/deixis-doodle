@@ -1,0 +1,26 @@
+id: S31
+title: "Draw a tree here ... this big (hooked point, then thumb and index opened)"
+tests: "rahul's size gesture in one sentence: the place from the hooked point, the size from the pinch shown before 'this big'"
+# For the live test on 2 Oct: rahul points with the index pressed and bent, rests the other
+# hand in front of the sheet, then opens thumb and index along the paper and says "this big".
+lines:
+  - at: 1.3
+    text: "Draw a tree here, this big."
+    words: [[Draw, 1.3], [a, 1.5], [tree, 1.6], ["here,", 1.95], [this, 3.5], [big., 3.75]]
+hand:
+  - {rest: [40, -60]}
+  - {at: 0.2, enter: [150, -40]}
+  - {pose: hooked}
+  - {move: [100, 70], dur: 0.6}
+  - {hold: 1.8}
+  - {move: [104, 74], dur: 0.25}
+  - {pinch: 60}
+  - {hold: 2.0}
+  - {leave: true}
+expect:
+  calls: [place_drawing]
+  drawn:
+    - {kind: object, label: tree, center: [100, 70], size: 60}
+  asks: 0
+variations:
+  shifts: []

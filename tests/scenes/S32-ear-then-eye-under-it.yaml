@@ -1,0 +1,24 @@
+id: S32
+title: "An ear here, about this big ... an eye under it (rahul's gestures)"
+tests: "place + size from a hooked point and a pinch, then a relation to the robot's own drawing"
+lines:
+  - {at: 1.2, text: "Draw an ear here."}
+  - {at: 3.0, text: "About this big."}
+  - {at: 18.0, text: "An eye under it."}
+hand:
+  - {rest: [40, -60]}
+  - {at: 0.2, enter: [60, -40]}
+  - {pose: hooked}
+  - {move: [40, 105], dur: 0.7}
+  - {hold: 1.6}
+  - {move: [46, 110], dur: 0.25}
+  - {pinch: 32}
+  - {hold: 1.4}
+  - {leave: true}
+expect:
+  calls: [place_drawing, place_drawing]
+  drawn:
+    - {kind: object, label: ear, center: [40, 105], size: 32}
+    - {kind: object, label: eye, near: ear, near_mm: 15, empty: true}
+  asks: 0
+variations: {hover_mm: null}

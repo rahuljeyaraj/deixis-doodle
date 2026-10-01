@@ -88,6 +88,14 @@ ACKS |= {"mhm", "hello", "hi", "hey", "so", "well", "and", "i", "mean", "just"}
 # Words that let place_drawing repeat an object the person didn't name ("another one").
 SIZE_WORDS = {"this", "that", "so", "big", "small", "large", "long", "wide", "tall", "size"}
 REPEAT_WORDS = {"another", "again", "same", "more", "copy", "one", "ones"}
+# Words that say a place relative to something, or a size. Live Nemotron (2 Oct, garden scene)
+# answered "A sun up here" with "above the house, small": neither was said, and the pointing
+# was lost. Without such words, a relation or a size preset in a call was made up.
+RELATION_WORDS = {"next", "beside", "near", "left", "right", "above", "over", "under"}
+RELATION_WORDS |= {"underneath", "beneath", "below", "between", "inside", "in", "on", "top"}
+RELATION_WORDS |= {"by", "around", "behind", "front", "it", "them"}
+PRESET_WORDS = {"tiny", "little", "small", "smaller", "medium", "big", "bigger", "large"}
+PRESET_WORDS |= {"larger", "huge", "giant", "whole", "page", "full", "half"}
 
 
 class AgentPort(Protocol):
@@ -416,6 +424,7 @@ class Runtime:
             if not calls:
                 self.say(t, "Sorry, I didn't catch that. Could you say it again?")
                 return
+        calls = [self._grounded(c, utt, t) for c in calls]
         refs = self._refs(utt)
         refs.prepare(calls)
         new: list[SceneObject] = []
@@ -1088,6 +1097,39 @@ class Runtime:
                 if form and (self.planner.resolve(form) or form) == target:
                     return False
         return True
+
+    def _grounded(self, call: ToolCall, utt: Utterance, t: float) -> ToolCall:
+        """Undo a place or a size the model made up: "a sun up here" is the pointed place,
+        not "above the house"; nobody said "small"."""
+        if call.name not in ("place_drawing", "write_label"):
+            return call
+        from pointdraw.agent.schema import PresetSize
+
+        toks = [norm_word(w.text) for w in utt.words]
+        args = call.args
+        upd: dict[str, Any] = {}
+        place = getattr(args, "place", None)
+        demos = [i for i, w in enumerate(toks) if w in ("here", "there")]
+        if (
+            demos
+            and isinstance(place, RelationPlace)
+            and not set(toks) & RELATION_WORDS
+            and not any(isinstance(o, DeicticObject) for o in (place.target, place.target2))
+        ):
+            upd["place"] = DeicticPlace(deixis=toks[demos[0]], word_index=demos[0])
+        size = getattr(args, "size", None)
+        if isinstance(size, PresetSize) and not set(toks) & PRESET_WORDS:
+            upd["size"] = None
+        if not upd:
+            return call
+        self.log.add(
+            t,
+            "guard",
+            said=utt.text,
+            why="a place or size not said: "
+            + ", ".join(f"{k} {getattr(args, k).model_dump()}" for k in upd),
+        )
+        return ToolCall(name=call.name, args=args.model_copy(update=upd))
 
     def _is_stop(self, utt: Utterance) -> bool:
         toks = [norm_word(w.text) for w in utt.words]

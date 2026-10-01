@@ -1,0 +1,55 @@
+id: S30
+title: "The garden (backup hero): a house, a tree next to it, a sun, a flower, a label"
+tests: "the whole demo in rahul's way of gesturing: hooked point, the other hand resting, sizes shown then 'this big'"
+notes: >
+  Planned as S27 in virtual-report.md; S27-S29 went to the 1 Oct live gestures. Each step
+  starts once the drawing before it is done (pointing while the pen moves pauses it: S21).
+# Layout (paper mm): house left, tree to its right, sun top right, flower bottom right,
+# the label under the house.
+lines:
+  - {at: 1.2, text: "Draw a house here."}
+  - {at: 3.4, text: "About this big."}
+  - {at: 45.0, text: "A tree next to it."}
+  - {at: 80.0, text: "A sun up here."}
+  - {at: 115.0, text: "A flower here."}
+  - {at: 150.0, text: "Label that one 'garden'."}
+hand:
+  - {rest: [40, -60]}
+  # 1. a house here ... about this big (thumb and index opened along the paper)
+  - {at: 0.2, enter: [80, -40]}
+  - {pose: hooked}
+  - {move: [55, 62], dur: 0.7}
+  - {hold: 1.8}
+  - {move: [60, 66], dur: 0.25}
+  - {pinch: 45}
+  - {hold: 1.6}
+  - {leave: true}
+  # 3. a sun up here
+  - {at: 79.0, enter: [170, -40]}
+  - {pose: hooked}
+  - {move: [165, 112], dur: 0.8}
+  - {hold: 1.8}
+  - {leave: true}
+  # 4. a flower here
+  - {at: 114.0, enter: [170, -40]}
+  - {pose: hooked}
+  - {move: [165, 36], dur: 0.6}
+  - {hold: 1.8}
+  - {leave: true}
+  # 5. label that one (the house)
+  - {at: 149.0, enter: [80, -40]}
+  - {pose: hooked}
+  - {move: [55, 62], dur: 0.7}
+  - {hold: 1.8}
+  - {leave: true}
+expect:
+  calls: [place_drawing, place_drawing, place_drawing, place_drawing, write_label]
+  drawn:
+    - {kind: object, label: house, center: [55, 62], size: 45}
+    - {kind: object, label: tree, near: house, near_mm: 15, empty: true}
+    - {kind: object, label: sun, center: [165, 112]}
+    - {kind: object, label: flower, center: [165, 36]}
+    - {kind: label, text: garden, below: house}
+  asks: 0
+variations: {hover_mm: null}
+max_time: 220

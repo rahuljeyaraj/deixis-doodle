@@ -65,6 +65,25 @@ def test_stop_halts_and_next_job_homes(ep):
     assert "G28" in p.sent[-5:] or any(line == "G28" for line in p.sent)
 
 
+def test_stop_without_the_emergency_parser_worst_case():
+    """Without EMERGENCY_PARSER, M410 waits behind an M400 after a pen lift until Marlin's
+    planner drains (up to 16 moves). Swept over stop moments in S22 (night 2 Oct): up to
+    2.2 s and 45.6 mm, so the 1.7 s CTRL estimate doesn't hold in the worst case; the Ender's
+    firmware has the emergency parser. This pins the worst case so it can't grow unseen."""
+    from pointdraw.virtual import scenefile, world
+    from pointdraw.virtual.world import RunConfig
+
+    base = scenefile.find("S22")
+    worst_s = worst_mm = 0.0
+    for k in range(0, 25, 2):
+        spec = base.model_copy(deep=True)
+        spec.lines[1].at = 17.0 + 0.25 * k
+        m = world.run(spec, RunConfig(emergency_parser=False)).report["metrics"]
+        worst_s = max(worst_s, m["stop_latency_s"])
+        worst_mm = max(worst_mm, m["stop_travel_mm"])
+    assert worst_s <= 2.3 and worst_mm <= 50.0  # the distance limit holds; the time does not
+
+
 def test_outside_the_drawable_area_is_refused():
     p = VirtualPlotter()
     with pytest.raises(SafetyError):

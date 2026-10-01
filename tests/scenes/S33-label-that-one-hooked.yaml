@@ -1,0 +1,21 @@
+id: S33
+title: "Label that one 'Nemotron' (hooked point, the other hand resting)"
+tests: "write_label below a pointed object, with rahul's hooked point and a resting second hand"
+sheet:
+  robot:
+    - {object: brain, at: [105, 85], size: 45}
+lines:
+  - at: 1.4
+    text: "Label that one 'Nemotron'."
+hand:
+  - {rest: [40, -60]}
+  - {at: 0.2, enter: [150, -40]}
+  - {pose: hooked}
+  - {move: [105, 85], dur: 0.6}
+  - {hold: 1.8}
+  - {leave: true}
+expect:
+  calls: [write_label]
+  drawn:
+    - {kind: label, text: nemotron, below: brain}
+  asks: 0

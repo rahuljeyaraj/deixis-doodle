@@ -78,3 +78,64 @@ def test_an_answer_to_how_big_keeps_the_asked_object():
     rt.tick(4.0)
     assert not rt.log.of("guard")
     assert rt.proposal is not None and rt.proposal.items[0].label == "cross"
+
+
+class Says:
+    """Answers with one given call (as recorded from live Nemotron)."""
+
+    def __init__(self, call) -> None:
+        self.call = call
+
+    def understand(self, words, context):
+        return AgentResult(calls=[self.call], source="cache")
+
+
+def grounded(text: str, args: dict):
+    """The guard's version of the model's call for `text` (and the runtime, for its log)."""
+    from pointdraw.runtime.references import Utterance
+
+    rt = Runtime(Says(parse_call("place_drawing", args)), VirtualPlotter(), MachineConfig())
+    rt.start(0.0)
+    words = [Word(w, 1.0 + 0.3 * i, 1.2 + 0.3 * i) for i, w in enumerate(text.split())]
+    return rt, rt._grounded(rt.agent.call, Utterance(0, words, 3.0), 3.0)
+
+
+SUN_ABOVE = {
+    "object": "sun",
+    "place": {"relation": "above", "target": {"label": "house"}},
+    "size": {"preset": "small"},
+}
+
+
+def test_a_place_and_size_not_said_become_the_pointed_place():
+    """Live Nemotron, 2 Oct (garden scene): "A sun up here" came back as above the house,
+    small. The pointing was lost; nobody said small."""
+    rt, call = grounded("A sun up here", SUN_ABOVE)
+    assert call.args.place.deixis == "here" and call.args.place.word_index == 3
+    assert call.args.size is None
+    assert rt.log.of("guard")[-1]["why"].startswith("a place or size not said")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "A sun above the house",  # the relation was said
+        "A sun up here over it",  # a relation word
+        "A sun here, a small one",  # the size was said (place grounded, size kept)
+    ],
+)
+def test_said_places_and_sizes_are_kept(text):
+    _, call = grounded(text, SUN_ABOVE)
+    if "small" in text:
+        assert call.args.size is not None
+    else:
+        assert call.args.place.relation == "above"
+
+
+def test_a_relation_to_the_pointed_object_is_kept():
+    args = {
+        "object": "hand",
+        "place": {"relation": "inside", "target": {"deixis": "that", "word_index": 3}},
+    }
+    _, call = grounded("Put a hand that here", args)
+    assert call.args.place.relation == "inside"
