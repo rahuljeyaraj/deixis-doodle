@@ -11,8 +11,13 @@ Inputs, all stamped on one clock (real or simulated):
 - `tick(t)`: timers, agent results that are due, and the plotter's progress.
 
 The agent (Nemotron, the recorded-reply cache or the rule parser) only returns typed tool
-calls. Places, sizes and objects are resolved here by the deixis resolver and the scene
-model; the language model never produces coordinates or G-code (plan 4.1).
+calls. In simulated time it answers at once and its reply is applied `latency_s` later. A
+live agent may instead offer `submit(words, context) -> Future`: the model is then asked in
+the background, so camera frames (and the hands-clear interlock) keep flowing, and `tick`
+applies the reply when it arrives.
+
+Places, sizes and objects are resolved here by the deixis resolver and the scene model; the
+language model never produces coordinates or G-code (plan 4.1).
 
 Confirmation: a request is previewed (the pen traces its box, pen up), then drawn when the
 person says "yes", or on its own after `confirm_quiet_s` of quiet once the trace is done
@@ -75,6 +80,11 @@ class AgentPort(Protocol):
     def understand(self, words: list[str], context: AgentContext) -> AgentResult: ...
 
 
+class FutureResult(Protocol):
+    def done(self) -> bool: ...
+    def result(self) -> AgentResult: ...
+
+
 class CameraPort(Protocol):
     def paper_image(self, t: float) -> tuple[Any, float]:
         """A top-down image of the paper (user at the bottom) and its mm per pixel."""
@@ -128,8 +138,10 @@ class Proposal:
 class Pending:
     t_ready: float
     utt: Utterance
-    result: AgentResult
+    result: AgentResult | None
     deferred: bool = False  # waiting for the pen to park before looking at the paper
+    future: FutureResult | None = None  # a background agent call (result None until done)
+    context: AgentContext | None = None
 
 
 @dataclass
@@ -274,7 +286,18 @@ class Runtime:
         if not self.plotter.busy:
             self.refresh_scene(t)
         ctx = self.context()
-        res = self.agent.understand(utt.tokens(), ctx)
+        submit = getattr(self.agent, "submit", None)
+        if submit is not None:
+            fut = submit(utt.tokens(), ctx)
+            self.pending.append(Pending(math.inf, utt, None, future=fut, context=ctx))
+        else:
+            res = self.agent.understand(utt.tokens(), ctx)
+            self._log_calls(t, utt, res, ctx)
+            self.pending.append(Pending(t + res.latency_s, utt, res))
+        if self.state == LISTEN:
+            self._set_state(UNDERSTAND, t)
+
+    def _log_calls(self, t: float, utt: Utterance, res: AgentResult, ctx: AgentContext) -> None:
         self.log.add(
             t,
             "tool_calls",
@@ -286,15 +309,18 @@ class Runtime:
             speech=res.speech,
             context=ctx.lines(),
         )
-        self.pending.append(Pending(t + res.latency_s, utt, res))
-        if self.state == LISTEN:
-            self._set_state(UNDERSTAND, t)
 
     def tick(self, t: float) -> None:
         self.t = max(self.t, t)
         self._plotter_events()
+        for p in self.pending:
+            if p.result is None and p.future is not None and p.future.done():
+                p.result, p.t_ready = p.future.result(), t
+                assert p.context is not None
+                self._log_calls(t, p.utt, p.result, p.context)
         due = [p for p in self.pending if p.t_ready <= t]
         for p in due:
+            assert p.result is not None
             if self.plotter.busy and _needs_view(p.result.calls):
                 # "Put a hand inside that" while the pen is drawing: finish, park, look at the
                 # paper (the user may have just drawn something), then resolve.
