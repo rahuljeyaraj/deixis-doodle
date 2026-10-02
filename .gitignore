@@ -29,3 +29,6 @@ docs/explainer/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# editor workspace (rahul, 2 Oct)
+*.code-workspace
