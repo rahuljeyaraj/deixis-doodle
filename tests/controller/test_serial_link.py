@@ -241,6 +241,53 @@ def test_quickstop_jumps_the_queue_then_resync(fake_marlin):
         link.close()
 
 
+def test_a_second_stop_empties_the_lines_that_waited_at_the_first(fake_marlin):
+    # The Ender, 2 Oct 2026: the lines still waiting at an M410 were planned once Marlin's
+    # stop was over, and the carriage moved on about 20 mm a second after it had halted.
+    fake = fake_marlin()
+    link = make_link(fake)
+    fake.auto_ok = False
+    t = threading.Thread(target=lambda: _send_until_stopped(link, moves(6)))
+    t.start()
+    try:
+        time.sleep(0.2)  # two moves sent, both waiting for their ok
+        link.quickstop()
+        t.join(2)
+        fake.auto_ok = True
+        fake.release()  # Marlin's stop is over: the waiting moves are planned
+        assert fake.ran_after_stop == ["G1 X10 Y20 F1800", "G1 X11 Y20 F1800"]
+        link.resync(timeout=2)
+        assert fake.emergency_stops == 2
+        assert fake.ran_after_stop == []  # emptied before they started
+        assert fake.received[-1] == numbered(0, "M110 N0")
+    finally:
+        fake.auto_ok = True
+        fake.release()
+        t.join(2)
+        link.close()
+
+
+def test_a_stop_with_nothing_waiting_sends_one_m410(fake_marlin):
+    fake = fake_marlin()
+    link = make_link(fake)
+    try:
+        link.send("G1 X10 Y20 F1800")
+        link.wait_idle(timeout=2)
+        link.quickstop()
+        link.resync(timeout=2)
+        assert fake.emergency_stops == 1  # no second stop, no second 1 s pause
+    finally:
+        link.close()
+
+
+def _send_until_stopped(link, lines: list[str]) -> None:
+    try:
+        for line in lines:
+            link.send(line)
+    except LinkStopped:
+        pass
+
+
 def test_open_failure_is_a_link_error():
     def boom():
         raise OSError("no such port")

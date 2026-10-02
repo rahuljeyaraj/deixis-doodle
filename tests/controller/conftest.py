@@ -24,6 +24,11 @@ class FakeMarlin:
     - `corrupt={n}` makes the first copy of line n arrive damaged (checksum mismatch).
     - `ignore_first_m110` drops the first handshake line, like a board still booting.
     - `hooks[cmd] = fn(fake) -> list[str] | None` customises replies (None = send nothing).
+
+    Stops behave like Marlin with `EMERGENCY_PARSER`: M410 empties the planner, but a move
+    still waiting for its ok (held) is planned once its ok goes out, after the stop, and
+    would run (Marlin issue #19774). `ran_after_stop` lists those moves, unless a later M410
+    emptied them before they started.
     """
 
     def __init__(
@@ -43,7 +48,10 @@ class FakeMarlin:
         self.auto_ok = auto_ok
         self.silent = silent
         self.ignore_m110 = 1 if ignore_first_m110 else 0
-        self.held: deque[list[str]] = deque()
+        self.held: deque[tuple[str, list[str]]] = deque()  # (command, its replies)
+        self.ran_after_stop: list[str] = []
+        self._waiting_at_stop: set[int] = set()  # ids of held entries an M410 found waiting
+        self._last_cmd = ""
         self.unacked = 0
         self.max_unacked = 0
         self.emergency_stops = 0
@@ -73,7 +81,13 @@ class FakeMarlin:
     def release(self, groups: int = 1_000_000) -> None:
         with self._lock:
             for _ in range(min(groups, len(self.held))):
-                self._emit_now(self.held.popleft())
+                entry = self.held.popleft()
+                cmd, replies = entry
+                if id(entry) in self._waiting_at_stop:
+                    self._waiting_at_stop.discard(id(entry))
+                    if cmd.split()[0] in ("G0", "G1"):
+                        self.ran_after_stop.append(cmd)  # planned now, after the stop
+                self._emit_now(replies)
 
     def emit(self, *lines: str) -> None:
         for line in lines:
@@ -92,6 +106,8 @@ class FakeMarlin:
                 return
             if "M410" in raw:
                 self.emergency_stops += 1  # the emergency parser acts on arrival
+                self.ran_after_stop.clear()  # planned but not started: emptied too
+                self._waiting_at_stop |= {id(e) for e in self.held}
             self.unacked += 1
             self.max_unacked = max(self.max_unacked, self.unacked)
             replies = self._process(raw)
@@ -101,7 +117,7 @@ class FakeMarlin:
             if self.auto_ok:
                 self._emit_now(replies)
             else:
-                self.held.append(replies)
+                self.held.append((self._last_cmd, replies))
 
     def _emit_now(self, lines: list[str]) -> None:
         for line in lines:
@@ -114,6 +130,7 @@ class FakeMarlin:
         return [f"Error:{why}, Last Line: {self.last_n}", f"Resend: {self.last_n + 1}", "ok"]
 
     def _process(self, raw: str) -> list[str] | None:
+        self._last_cmd = ""  # set below once the line is accepted
         cmd = raw
         if raw.startswith("N"):
             body, star, cs = raw.partition("*")
@@ -134,6 +151,7 @@ class FakeMarlin:
             else:
                 self.last_n = n
         self.executed.append(cmd)
+        self._last_cmd = cmd
         name = cmd.split()[0]
         if name in self.hooks:
             return self.hooks[name](self)

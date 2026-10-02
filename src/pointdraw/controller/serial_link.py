@@ -19,6 +19,13 @@ With `EMERGENCY_PARSER` in the firmware, Marlin acts on it the moment the bytes 
 it, M410 waits in Marlin's command queue behind the (at most `window`) lines already sent, so
 motion halts only once those are planned: within about `sync_every_mm` plus two segments of
 travel. Either way the hardware E-stop on the 24 V line is the real emergency stop.
+
+M410 empties the planner but not the lines still waiting to get into it (Marlin issue
+#19774). The quickstop then holds Marlin for its 1 s "drop new moves" time, and those lines
+are planned just after it and would run (seen on the Ender, 2 Oct 2026: the carriage halted
+in 0.05 s, then moved on about 20 mm a second later). So `resync()` waits until every line
+has its `ok`, which means planned but not started (Marlin holds a first move 100 ms), and
+sends a second M410 that empties them. A stop with no line waiting does not need it.
 """
 
 from __future__ import annotations
@@ -100,6 +107,7 @@ class SerialLink:
         self._last_resend: int | None = None
         self._ignore_resends = 0
         self._stopped = False
+        self._waiting_at_stop = False  # numbered lines were unacknowledged when M410 went out
         self._error: LinkError | None = None
         self._last_rx = now()
         self._connected = False
@@ -117,6 +125,7 @@ class SerialLink:
             self._last_resend = None
             self._ignore_resends = 0
             self._stopped = False
+            self._waiting_at_stop = False
             self._next_n = 1
             self._last_rx = now()
         try:
@@ -266,6 +275,8 @@ class SerialLink:
         with self._cond:
             self._stopped = True
             self._resend_from = None
+            if any(e.n is not None for e in self._pending):
+                self._waiting_at_stop = True
             try:
                 self._raw_write("M410")
             except LinkError:
@@ -276,14 +287,19 @@ class SerialLink:
 
     def resync(self, timeout: float | None = 5.0) -> None:
         with self._cond:
-            try:
-                self._wait(lambda: not self._pending, timeout)
-            except LinkTimeout:
-                log.warning("pending lines not acknowledged after stop; renumbering anyway")
-            if isinstance(self._error, LinkTimeout):
-                self._error = None
-            if self._error is not None:
-                raise self._error
+            self._drain(timeout)
+            if self._waiting_at_stop:
+                # Every line now has its ok: the ones that waited at the stop are planned
+                # and about to run. Stop again before they move (see the module notes).
+                self._waiting_at_stop = False
+                log.info("second M410: lines that waited at the stop were planned after it")
+                try:
+                    self._raw_write("M410")
+                except LinkError:
+                    log.exception("could not send the second M410")
+                else:
+                    self._pending.append(_Entry(None))
+                    self._drain(timeout)
             self._pending.clear()
             self._ignore_resends = 0
             self._last_resend = None
@@ -291,6 +307,17 @@ class SerialLink:
             self._next_n = 1
             self._wait(lambda: entry.done, timeout)
             self._stopped = False
+
+    def _drain(self, timeout: float | None) -> None:
+        """Wait (lock held) until every line has its ok; a silent firmware is not fatal here."""
+        try:
+            self._wait(lambda: not self._pending, timeout)
+        except LinkTimeout:
+            log.warning("pending lines not acknowledged after stop; renumbering anyway")
+        if isinstance(self._error, LinkTimeout):
+            self._error = None
+        if self._error is not None:
+            raise self._error
 
     # ------------------------------------------------------------------ reading
 

@@ -250,7 +250,9 @@ def test_serial_stop_sends_m410_then_renumbers_and_lifts(fake_marlin):
         assert ctl.status().state == "stopped"
         i = fake.received.index("M410")
         after = fake.received[i + 1 :]
-        assert after[0] == "N0 M110 N0*125"
+        # the two lines that waited at the stop were planned after it: a second M410 empties them
+        assert after[:2] == ["M410", "N0 M110 N0*125"]
+        assert fake.ran_after_stop == []
         # stopped before the pen came down from the clear_z travel: it stays up there
         assert fake.commands[-1] == gcode.pen_clear(CFG)
         assert not any(" G1 X" in r for r in after)  # no drawing after the stop
