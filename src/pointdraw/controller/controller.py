@@ -85,6 +85,7 @@ class Controller:
         self._busy = False
         self._closing = False
         self._pen_down = False
+        self._z = 0.0  # the last Z sent (unknown counts as low)
         self._needs_home = False
         self._job: _Job | None = None  # the job the worker is running
         self._cut: _Job | None = None  # the job a stop interrupted (it met LinkStopped)
@@ -244,6 +245,7 @@ class Controller:
             self._needs_home = True
             self._end = (0.0, 0.0)
             self._pen_down = True  # unknown: lift on the first pause
+            self._z = 0.0
             if self._worker is None or not self._worker.is_alive():
                 self._closing = False
                 self._worker = threading.Thread(
@@ -405,13 +407,17 @@ class Controller:
         cmd, p = parse_line(line)
         if cmd == "G28":
             self._pen_down = True  # Z homes to 0, which is at or below pen-down
+            self._z = 0.0
         elif cmd in ("G0", "G1") and p.get("Z") is not None:
             self._pen_down = p["Z"] < self.config.pen_threshold_z
+            self._z = p["Z"]
 
     def _recover(self, job: _Job) -> None:
         self._t.resync(timeout=self.config.ack_timeout_s)  # motion has ended once M410 is done
         self._emit("halted", job.stopped, dropped=job.dropped)
-        self._send(gcode.pen_up(self.config))
+        # A stop during (or on the way to) a clear_z travel must not lower the pen onto a clip.
+        high = self._z > self.config.pen_up_z
+        self._send(gcode.pen_clear(self.config) if high else gcode.pen_up(self.config))
         self._t.wait_idle(timeout=self.config.ack_timeout_s)
         with self._cond:
             if job.gen == self._gen:

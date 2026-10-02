@@ -81,13 +81,15 @@ def test_plotter_events_go_in_the_timeline_and_replay_skips_them(tmp_path):
     with LockstepPlotter() as p:
         p.set_hands_clear(True)
         p.draw_polylines([[(60.0, 100.0), (180.0, 100.0)]], tag="cross#1")
-        t = 0.0
-        while t < 15.0:
+        t, t_ink = 0.0, None
+        while t < 25.0:
             t += 1 / 23
             p.tick(t)
-            if 1.0 < t < 1.1:
+            if t_ink is None and p.ink_polylines():
+                t_ink = t  # drawing (after the lift to clear_z and the drop)
+            if t_ink is not None and t_ink + 1.0 < t < t_ink + 1.1:
                 p.set_hands_clear(False)  # a hand over the paper mid-line
-            if t > 2.0:
+            if t_ink is not None and t > t_ink + 2.0:
                 p.set_hands_clear(True)
             w.write_plotter(p.events)
     w.close()

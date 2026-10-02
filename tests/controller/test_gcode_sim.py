@@ -68,9 +68,10 @@ def test_polylines_to_gcode_structure():
     lines = gcode.polylines_to_gcode(pls, CFG, CFG.feed.normal)
     for line in lines:
         check_line(line, config=CFG)
-    assert lines[0] == gcode.pen_up(CFG)
+    assert lines[0] == gcode.pen_clear(CFG)  # unknown start: over the clips
     assert lines[-1] == gcode.pen_up(CFG)
     assert lines.count(gcode.pen_down(CFG)) == 2
+    assert lines.count(gcode.pen_clear(CFG)) == 1  # the travel between strokes stays low
     for _, a, b in xy_moves(lines, start=(50, 50)):
         assert math.dist(a, b) <= CFG.max_segment_mm + 1e-6
     for line in lines:
@@ -116,8 +117,34 @@ def test_diagonal_preview_goes_corner_to_corner_pen_up():
 def test_park_and_home():
     sim = run(gcode.home_gcode(CFG) + gcode.park_gcode(CFG))
     assert sim.homed
-    assert sim.position == (CFG.park_x, CFG.park_y, CFG.pen_up_z)
+    assert sim.position == (CFG.park_x, CFG.park_y, CFG.clear_z)
     assert sim.strokes == []
+
+
+def test_travel_off_the_drawable_area_goes_over_the_clips():
+    """2 Oct 2026: the travel from home to the first stroke hit a front clip at pen_up_z."""
+    d = CFG.drawable
+    inside = (d.x + 10, d.y + 10)
+    lines = gcode.home_gcode(CFG) + gcode.polylines_to_gcode(
+        [[inside, (d.x + 30, d.y + 10)], [(d.x + 30, d.y + 30), (d.x + 50, d.y + 30)]],
+        CFG,
+        CFG.feed.normal,
+        start=(0.0, 0.0),
+    )
+    z = None
+    for line in lines:
+        cmd, p = parse_line(line)
+        if p.get("Z") is not None:
+            z = p["Z"]
+        x, y = p.get("X"), p.get("Y")
+        if cmd == "G0" and x is not None and not d.contains((x, y)):
+            assert z == CFG.clear_z, line
+    first_down = lines.index(gcode.pen_down(CFG))
+    assert gcode.pen_up(CFG) not in lines[:first_down]  # no drop to pen_up_z off the paper
+    assert lines.count(gcode.pen_up(CFG)) == 2  # between the strokes and at the end, low
+    # leaving for park from inside the drawable area lifts again
+    park = gcode.park_gcode(CFG, start=inside)
+    assert park[:2] == [gcode.pen_up(CFG), gcode.pen_clear(CFG)]
 
 
 def test_insert_syncs():

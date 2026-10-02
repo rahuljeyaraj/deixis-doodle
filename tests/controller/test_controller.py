@@ -87,7 +87,7 @@ def test_preview_and_park(fast):
     ctl.park()
     assert ctl.wait(3)
     assert sim.strokes == []
-    assert sim.position == (CFG.park_x, CFG.park_y, CFG.pen_up_z)
+    assert sim.position == (CFG.park_x, CFG.park_y, CFG.clear_z)  # park is off the drawable area
 
 
 def test_not_started_raises():
@@ -251,7 +251,8 @@ def test_serial_stop_sends_m410_then_renumbers_and_lifts(fake_marlin):
         i = fake.received.index("M410")
         after = fake.received[i + 1 :]
         assert after[0] == "N0 M110 N0*125"
-        assert fake.commands[-1] == gcode.pen_up(CFG)
+        # stopped before the pen came down from the clear_z travel: it stays up there
+        assert fake.commands[-1] == gcode.pen_clear(CFG)
         assert not any(" G1 X" in r for r in after)  # no drawing after the stop
     finally:
         fake.auto_ok = True

@@ -38,6 +38,11 @@ def pen_up(c: MachineConfig) -> str:
     return f"G0 Z{fmt(c.pen_up_z)} F{fmt(c.feed.z)}"
 
 
+def pen_clear(c: MachineConfig) -> str:
+    """Lift high enough to pass over the paper's clips."""
+    return f"G0 Z{fmt(c.clear_z)} F{fmt(c.feed.z)}"
+
+
 def pen_down(c: MachineConfig, z: float | None = None) -> str:
     return f"G1 Z{fmt(c.pen_down_z if z is None else z)} F{fmt(c.feed.z)}"
 
@@ -59,26 +64,47 @@ def startup_block(c: MachineConfig) -> list[str]:
 
 
 class _Emitter:
-    """Tracks where the head is while emitting lines, so moves can be split."""
+    """Tracks where the head is while emitting lines, so moves can be split.
+
+    Pen-up moves that start or end outside the drawable area (home, park, an unknown start)
+    go at `clear_z`, over the clips; the drawable area is a box, so a move between two points
+    inside it never leaves it.
+    """
 
     def __init__(self, c: MachineConfig, start: Point | None = None) -> None:
         self.c = c
         self.lines: list[str] = []
         self.pos = start
         self.pen_is_down: bool | None = None
+        self.clear = False  # at clear_z
+        self._safe = c.drawable.inset(-c.clamp_tolerance_mm)
+
+    def _inside(self, p: Point | None) -> bool:
+        return p is not None and self._safe.contains(p)
 
     def up(self) -> None:
-        if self.pen_is_down is not False:
+        if not self._inside(self.pos):
+            self.lift_clear()
+        elif self.pen_is_down is not False:
             self.lines.append(pen_up(self.c))
             self.pen_is_down = False
+
+    def lift_clear(self) -> None:
+        if not self.clear:
+            self.lines.append(pen_clear(self.c))
+            self.pen_is_down = False
+            self.clear = True
 
     def down(self) -> None:
         if self.pen_is_down is not True:
             self.lines.append(pen_down(self.c))
             self.pen_is_down = True
+            self.clear = False
 
     def move(self, p: Point, feed: float, draw: bool) -> None:
         code = "G1" if draw else "G0"
+        if not draw and not (self._inside(self.pos) and self._inside(p)):
+            self.lift_clear()
         pts = [p] if self.pos is None else split_segment(self.pos, p, self.c.max_segment_mm)
         for x, y in pts:
             self.lines.append(f"{code} X{fmt(x)} Y{fmt(y)} F{fmt(feed)}")
@@ -147,8 +173,8 @@ def park_gcode(c: MachineConfig, *, start: Point | None = None) -> list[str]:
 
 
 def home_gcode(c: MachineConfig) -> list[str]:
-    """Home all axes, then lift the pen clear of the paper."""
-    return ["G28", pen_up(c)]
+    """Home all axes, then lift the pen over the clips (home is off the paper)."""
+    return ["G28", pen_clear(c)]
 
 
 def insert_syncs(

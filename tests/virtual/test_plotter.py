@@ -19,6 +19,16 @@ def run_until(p: VirtualPlotter, t_end: float, dt: float = 0.02, on=None):
             on(t)
 
 
+def run_until_drawing(p: VirtualPlotter, mm: float = 20.0, t_max: float = 30.0) -> None:
+    """Run until `mm` of ink is down: the job first lifts to clear_z and comes down, which
+    takes a few seconds, so a fixed time isn't a fixed place in the line."""
+    t = p.t
+    while sum(math.dist(s.a, s.b) for s in p.ink) < mm:
+        assert t < t_max, "never started drawing"
+        t += 0.02
+        p.tick(t)
+
+
 def test_never_starts_without_hands_clear():
     p = VirtualPlotter()
     p.draw_polylines(LINE, tag="a")
@@ -35,15 +45,15 @@ def test_pause_drains_to_the_next_sync_then_resumes():
     p = VirtualPlotter()
     p.set_hands_clear(True)
     p.draw_polylines(LINE, tag="a")
-    run_until(p, 6.0)  # travel from park, then drawing
+    run_until_drawing(p)  # lift, travel from park, then drawing
     p.set_hands_clear(False)
     req = p.t
-    run_until(p, 12.0)
+    run_until(p, req + 6.0)
     paused = next(e for e in p.events if e.kind == "paused")
     assert paused.t - req <= 1.7
     assert not p.sim.pen_is_down
     p.set_hands_clear(True)
-    run_until(p, 40.0)
+    run_until(p, p.t + 40.0)
     assert any(e.kind == "resumed" for e in p.events)
     assert math.isclose(sum(math.dist(s.a, s.b) for s in p.ink), 150.0, abs_tol=0.01)
 
@@ -53,15 +63,15 @@ def test_stop_halts_and_next_job_homes(ep):
     p = VirtualPlotter(emergency_parser=ep)
     p.set_hands_clear(True)
     p.draw_polylines(LINE, tag="a")
-    run_until(p, 6.0)
+    run_until_drawing(p)
     p.stop()
-    run_until(p, 10.0)
+    run_until(p, p.t + 4.0)
     halt = next(e for e in p.events if e.kind == "halted")
     req = next(e for e in p.events if e.kind == "stop_request")
     assert halt.t - req.t <= (0.0 if ep else 1.7) + 1e-9
     assert p.state == "stopped" and not p.sim.pen_is_down
     p.park()
-    run_until(p, 20.0)
+    run_until(p, p.t + 20.0)
     assert "G28" in p.sent[-5:] or any(line == "G28" for line in p.sent)
 
 

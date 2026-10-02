@@ -95,10 +95,14 @@ def test_stop_halts_drops_the_queue_and_rehomes():
         p.set_hands_clear(True)
         p.draw_polylines(LINE, tag="a")
         p.park(tag="park")
-        run_until(p, 4.0)
+        t = 0.0
+        while ink_mm(p, "a") < 10:  # the job lifts to clear_z and comes down first
+            t += 1 / 23
+            assert t < 30
+            p.tick(t)
         assert 0 < ink_mm(p, "a") < 120
         p.stop()
-        run_until(p, 8.0)
+        run_until(p, t + 4.0)
         assert kinds(p)[-2:] == ["stop_request", "halted"]
         halt = p.events[-1]
         assert halt.tag == "a" and halt.label == "draw" and halt.detail["dropped"] == 1
@@ -106,7 +110,7 @@ def test_stop_halts_drops_the_queue_and_rehomes():
         assert "park" not in [e.tag for e in p.events]
         drawn = ink_mm(p, "a")
         p.draw_polylines([[(60.0, 150.0), (100.0, 150.0)]], tag="b")
-        run_until(p, 30.0)
+        run_until(p, t + 40.0)
         assert "G28" in p.sent  # the next job homes first: M410 may lose steps
         assert kinds(p, "b") == ["job_start", "job_end"]
         assert math.isclose(ink_mm(p, "a"), drawn)  # nothing more of the stopped job

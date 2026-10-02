@@ -84,6 +84,9 @@ class MachineConfig(_Model):
 
     pen_up_z: float = 3.0
     pen_down_z: float = 0.0
+    # Pen-up height for any move that starts or ends outside the drawable area: the paper's
+    # clips stand taller than pen_up_z (the travel from home hit a front clip, 2 Oct 2026).
+    clear_z: float = 15.0
 
     feed: Feedrates = Feedrates()
     limits: MotionLimits = MotionLimits()
@@ -152,6 +155,8 @@ class MachineConfig(_Model):
             raise ValueError("park position must lie inside the travel limits")
         if not self.pen_up_z > self.pen_down_z:
             raise ValueError("pen_up_z must be above pen_down_z")
+        if not self.pen_up_z <= self.clear_z <= self.z_max:
+            raise ValueError("clear_z must lie within pen_up_z..z_max")
         for name in ("pen_up_z", "pen_down_z"):
             if not self.z_min <= getattr(self, name) <= self.z_max:
                 raise ValueError(f"{name} must lie within z_min..z_max")
