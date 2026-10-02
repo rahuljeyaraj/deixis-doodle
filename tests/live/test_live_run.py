@@ -7,6 +7,8 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 from pointdraw.live.logs import TimelineWriter
 from pointdraw.vision.camera import CameraUnavailable
 
@@ -147,3 +149,23 @@ def test_window_picture_is_window_sized_and_turned(tmp_path):
     )
     assert vis.shape == (720, 1280, 3)
     assert vis[-2, -2].min() > 200
+
+
+def test_parked_photos_one_per_rest_with_the_paper_clear(tmp_path):
+    """A photo once the plotter rests at park and no hand is near for 1 s; one per rest."""
+    live_run = load_script("live_run")
+    ph = live_run.ParkedPhotos(tmp_path / "photos", (0.0, 220.0), clear_s=1.0)
+    img = np.zeros((4, 4, 3), np.uint8)
+    park, away = (0.0, 220.0, 15.0), (80.0, 100.0, 4.5)
+    assert ph.offer(img, 0.0, False, True, park) is None  # still moving
+    assert ph.offer(img, 0.5, False, False, (None, None, None)) is None  # not known yet
+    assert ph.offer(img, 1.0, False, False, park) is None  # parked, clear since 1.0
+    assert ph.offer(img, 1.5, True, False, park) is None  # a hand comes in
+    assert ph.offer(img, 2.0, False, False, park) is None  # clear again since 2.0
+    assert ph.offer(img, 3.0, False, False, park) == "photos/3000.png"
+    assert (tmp_path / "photos" / "3000.png").exists()
+    assert ph.offer(img, 5.0, False, False, park) is None  # one per rest
+    assert ph.offer(img, 6.0, False, False, away) is None  # previewing over the paper
+    assert ph.offer(img, 9.0, False, True, park) is None  # drawing, then parking
+    assert ph.offer(img, 10.0, False, False, park) is None
+    assert ph.offer(img, 11.0, False, False, park) == "photos/11000.png"

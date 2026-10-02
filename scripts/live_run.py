@@ -245,6 +245,45 @@ def describe(e: dict) -> str | None:
     return None
 
 
+class ParkedPhotos:
+    """One full-size camera photo each time the plotter rests at park with no hand over the
+    paper for `clear_s`: at start and after every drawing (the runtime parks after each).
+    `scripts/m2_score.py` finds each drawing's ink between the photo before and after it."""
+
+    def __init__(self, folder: Path, park: tuple[float, float], clear_s: float = 1.0) -> None:
+        self.folder = folder
+        self.park = park
+        self.clear_s = clear_s
+        self.taken = False  # already one for this rest
+        self.since: float | None = None  # parked, idle and clear since
+
+    def offer(self, img: np.ndarray, t: float, near: bool, busy: bool, pos) -> str | None:
+        """The photo's path relative to the run folder, when one is taken."""
+        x, y = pos[0], pos[1]
+        parked = (
+            not busy
+            and x is not None
+            and y is not None
+            and abs(x - self.park[0]) < 0.5
+            and abs(y - self.park[1]) < 0.5
+        )
+        if not parked:
+            self.taken, self.since = False, None
+            return None
+        if near:
+            self.since = None
+            return None
+        if self.since is None:
+            self.since = t
+        if self.taken or t - self.since < self.clear_s:
+            return None
+        self.taken = True
+        self.folder.mkdir(parents=True, exist_ok=True)
+        name = f"{round(t * 1000):d}.png"
+        cv2.imwrite(str(self.folder / name), img, [cv2.IMWRITE_PNG_COMPRESSION, 1])
+        return f"{self.folder.name}/{name}"
+
+
 def hand_record(t: float, hf, rt: Runtime, paper) -> dict:
     """One line of hands.jsonl: what the camera saw and what the gesture tracker made of it."""
     s = rt.tracker.last
@@ -491,7 +530,20 @@ def run(args: argparse.Namespace) -> int:
         hands_log.write = lambda r: print(json.dumps(r), file=sync_log)  # type: ignore[method-assign]
         hands_log.close = sync_log.close  # type: ignore[method-assign]
     timeline = TimelineWriter(out / "timeline.jsonl")
-    hands_log.write({"t0": first.t, "config": args.config, "hand_scale": args.hand_scale})
+    hands_log.write(
+        {
+            "t0": first.t,
+            "config": args.config,
+            "hand_scale": args.hand_scale,
+            "paper": [
+                paper.x,
+                paper.y,
+                paper.w,
+                paper.h,
+            ],  # hands' tip and holds are from its corner
+        }
+    )
+    photos = ParkedPhotos(out / "photos", (cfg.park_x, cfg.park_y))
     laps = Laps(args.profile)
     next_pic = 0.0
     window = "pointdraw live (Q quit, Space stop, S save, R reconnect)"
@@ -523,6 +575,9 @@ def run(args: argparse.Namespace) -> int:
             laps.lap("hands")
             near = any(over_bed(h.landmarks_mm, paper, 10.0) for h in hf.hands)
             camera.offer(img, t, near)
+            shot = photos.offer(img, t, near, plotter.busy, plotter.position())
+            if shot:
+                log.add(t, "photo", file=shot)
             while not words.events.empty():
                 ev = words.events.get_nowait()
                 if ev[0] == "speech_start":
