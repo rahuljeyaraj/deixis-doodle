@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from deixis.geometry import Point, Polyline
+from deixis.geometry import Box, Point, Polyline
 
 
 def cross(center: Point, size: float) -> list[Polyline]:
@@ -24,3 +24,11 @@ def cross_grid(center: Point, cols: int, rows: int, spacing: float) -> list[dict
                 {"id": len(out), "col": c, "row": r, "x": x0 + c * spacing, "y": y0 + r * spacing}
             )
     return out
+
+
+def frame(box: Box) -> Polyline:
+    """The box's outline, closed, from its south-west corner. The live app draws the drawing
+    area's frame at the start of a session: everything inside it is seen by the parked camera
+    and reached by the pen (rahul, 2 Oct)."""
+    x0, y0, x1, y1 = box.x, box.y, box.x + box.w, box.y + box.h
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]

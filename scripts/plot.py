@@ -9,6 +9,8 @@ Examples (from the repo root):
     uv run python scripts/plot.py --sim out/square.png square --size 50
     uv run python scripts/plot.py --dry-run circle --diameter 40
     uv run python scripts/plot.py --port COM5 crosses --grid 3x3 --spacing 50
+    uv run python scripts/plot.py --port COM5 frame --pen-up   # trace the drawing area
+    uv run python scripts/plot.py --port COM5 frame            # draw its outline
     uv run python scripts/plot.py --port COM5 pen-test --z 0.5
     uv run python scripts/plot.py --port COM5 feed-test --feeds 1000,2000,3000
     uv run python scripts/plot.py config --set pen_down_z=0.4 --set feed.normal=2000
@@ -40,7 +42,7 @@ from pointdraw.controller.config import (
 from pointdraw.controller.controller import Controller
 from pointdraw.controller.safety import SafetyError, validate_points
 from pointdraw.controller.serial_link import SerialLink, list_ports
-from pointdraw.controller.shapes import cross, cross_grid
+from pointdraw.controller.shapes import cross, cross_grid, frame
 from pointdraw.controller.simulator import SimulatedPlotter
 from pointdraw.controller.transport import LinkError, Transport
 
@@ -239,6 +241,15 @@ def do_circle(args: argparse.Namespace, cfg: MachineConfig, ctl: Controller, sim
     return 0
 
 
+def do_frame(args: argparse.Namespace, cfg: MachineConfig, ctl: Controller, sim: bool) -> int:
+    if args.pen_up:  # along the outline at clear Z, over the clips
+        moves = [f"G0 X{x:g} Y{y:g} F{cfg.feed.travel:g}" for x, y in frame(cfg.drawable)]
+        ctl.run_lines([gcode.pen_clear(cfg), *moves, "M400"], label="frame, pen up")
+    else:
+        ctl.draw_polylines([frame(cfg.drawable)], args.speed)
+    return 0
+
+
 def do_crosses(args: argparse.Namespace, cfg: MachineConfig, ctl: Controller, sim: bool) -> int:
     cols, rows = args.grid
     points = cross_grid(centre(args, cfg), cols, rows, args.spacing)
@@ -294,6 +305,7 @@ COMMANDS = {
     "park": do_park,
     "square": do_square,
     "circle": do_circle,
+    "frame": do_frame,
     "crosses": do_crosses,
     "pen-test": do_pen_test,
     "feed-test": do_feed_test,
@@ -330,6 +342,8 @@ def build_parser() -> argparse.ArgumentParser:
     with_center(sub.add_parser("circle", help="draw a circle")).add_argument(
         "--diameter", type=float, default=40
     )
+    fr = sub.add_parser("frame", help="draw the drawing area's outline")
+    fr.add_argument("--pen-up", action="store_true", help="only trace it, pen up")
     cr = with_center(sub.add_parser("crosses", help="draw a grid of crosses for calibration"))
     cr.add_argument("--grid", type=parse_grid, default=(3, 3), help="COLSxROWS, e.g. 3x3")
     cr.add_argument("--spacing", type=float, default=50)

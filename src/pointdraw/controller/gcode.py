@@ -168,8 +168,12 @@ def travel_gcode(p: Point, c: MachineConfig, *, start: Point | None = None) -> l
 
 
 def park_gcode(c: MachineConfig, *, start: Point | None = None) -> list[str]:
-    """Pen up, bed toward the user, carriage to the side."""
-    return travel_gcode((c.park_x, c.park_y), c, start=start)
+    """Pen up, bed toward the user, carriage to the side.
+
+    Ends with `M400`, so the job ends when the head is there, not when Marlin has the moves
+    queued: a parked photo taken right after (`live_run.ParkedPhotos`) caught the holder still
+    on its way, over the drawing (M2 cat 10, 2 Oct)."""
+    return travel_gcode((c.park_x, c.park_y), c, start=start) + ["M400"]
 
 
 def home_gcode(c: MachineConfig) -> list[str]:

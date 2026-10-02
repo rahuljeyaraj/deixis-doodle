@@ -14,7 +14,10 @@ hands, `GestureTracker` (holds, sizes, the hands-clear interlock), the microphon
 ASR (or `--type`), the agent (Nemotron, or `--ai mock`: recorded replies and the rule
 parser), and the real controller behind `LivePlotter`. Cosmos is off unless `--cosmos live`.
 
-At start it homes Y (the bed slips if pushed) and parks, once no hand is over the paper.
+At start it homes Y (the bed slips if pushed), draws the frame (the drawing area's outline,
+rahul 2 Oct: everything inside it is seen by the parked camera and reached by the pen; every
+drawing stays inside it, cut at its edge) and parks, once no hand is over the paper.
+`--no-frame` skips the frame (the sheet already has one, in the same place).
 The plotter moves only when no hand has been over the paper (plus 10 mm) for half a second,
 and pauses when one comes back. If the camera stops, so does the plotter.
 
@@ -69,6 +72,7 @@ from pointdraw.controller.config import (  # noqa: E402
 )
 from pointdraw.controller.controller import Controller  # noqa: E402
 from pointdraw.controller.serial_link import SerialLink  # noqa: E402
+from pointdraw.controller.shapes import frame as frame_outline  # noqa: E402
 from pointdraw.controller.simulator import SimulatedPlotter  # noqa: E402
 from pointdraw.controller.transport import LinkError, Transport  # noqa: E402
 from pointdraw.drawing import Library  # noqa: E402
@@ -130,6 +134,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     plot.add_argument("--dry-run", action="store_true", help="simulated plotter, print G-code")
     ap.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="machine config JSON")
     ap.add_argument("--no-home-y", action="store_true", help="skip homing the bed (Y) at start")
+    ap.add_argument("--no-frame", action="store_true", help="don't draw the frame at start")
 
     ap.add_argument("--ai", choices=["live", "mock"], default="live")
     ap.add_argument("--model", default=None, help="live agent model (default: the code default)")
@@ -503,6 +508,8 @@ def run(args: argparse.Namespace) -> int:
     if not args.no_home_y:
         # The bed slips if pushed, and the camera fit assumes it parked where it was then.
         plotter.ctl.run_lines(["G28 Y"], label="home Y", tag="start")
+    if not args.no_frame:
+        plotter.draw_polylines([frame_outline(cfg.drawable)], tag="frame")
     plotter.park(tag="start")
     paper = cfg.paper_box
     view = BedView(bed, cfg.park_y, lambda: plotter.position()[1])
