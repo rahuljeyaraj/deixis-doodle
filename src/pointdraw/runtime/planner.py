@@ -2,7 +2,8 @@
 
 The resolver supplies a centre and a size (never the language model); this module turns
 them into polylines with `pointdraw.drawing`, and keeps every drawing inside the drawable
-area (moving or shrinking it a little if needed, so the robot can say so).
+area by leaving out any part that falls outside it (never moving or shrinking it: the user
+said where), so the robot can say so.
 
 Shapes that aren't in the Quick, Draw! library but that people ask for ("a cross here"
 for M1, "a circle") are drawn as clean primitives.
@@ -16,7 +17,7 @@ from deixis.geometry import Box, Point
 from pointdraw.controller.shapes import cross
 from pointdraw.drawing import Library, Placed, place_label, place_object
 from pointdraw.drawing import primitives as prim
-from pointdraw.drawing.place import bbox, keep_inside, transform
+from pointdraw.drawing.place import bbox, clip_inside, transform
 
 
 def _triangle(c: Point, size: float) -> list[list[Point]]:
@@ -112,14 +113,21 @@ class Planner:
             pls = prim.arrow(a, b, a_box, b_box, gap=2.0)
         return Placed(id or kind, "arrow", pls, bbox(pls))
 
-    def keep_inside(self, p: Placed) -> tuple[Placed, bool]:
-        """Move (or shrink) a drawing so it lies inside the drawable area."""
+    def clip_inside(self, p: Placed) -> tuple[Placed, bool]:
+        """Leave out any part of a drawing outside the drawable area; the rest stays put.
+        True if something was cut. If nothing is left, the drawing has no lines and a
+        zero-size box at its old centre, pulled onto the area."""
         if self.drawable is None:
             return p, False
-        pls, moved = keep_inside(p.polylines, self.drawable)
-        if not moved:
+        pls, cut = clip_inside(p.polylines, self.drawable)
+        if not cut:
             return p, False
-        return Placed(p.id, p.kind, pls, bbox(pls), p.category, p.key_id), True
+        if pls:
+            box = bbox(pls)
+        else:
+            d, (cx, cy) = self.drawable, p.box.center
+            box = Box(min(max(cx, d.x), d.x2), min(max(cy, d.y), d.y2), 0.0, 0.0)
+        return Placed(p.id, p.kind, pls, box, p.category, p.key_id), True
 
     @staticmethod
     def shift(p: Placed, dx: float, dy: float, scale: float = 1.0) -> Placed:

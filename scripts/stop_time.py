@@ -38,23 +38,28 @@ from pointdraw.controller.serial_link import SerialLink
 from pointdraw.vision.camera import Camera, CameraSettings
 
 ROWS = (700, 860)  # image rows the holder moves along at park Y (1920x1080, 2 Oct camera)
+COLS = (550, 1680)  # image columns the holder can reach (x 0 is near 1416, x 250 near 650);
+# outside them the wooden desk reads as orange (2 Oct afternoon: it was taken for the holder)
 SETTLED_PX = 3.0  # within this of where it ends counts as still (about 1 mm; camera jitter 2 px)
 
 
 def holder_x(img: np.ndarray) -> float | None:
     """Image x of the orange pen holder's centre, or None if it is not seen."""
-    band = img[ROWS[0] : ROWS[1]]
+    band = img[ROWS[0] : ROWS[1], COLS[0] : COLS[1]]
     m = cv2.inRange(cv2.cvtColor(band, cv2.COLOR_BGR2HSV), (5, 120, 120), (22, 255, 255))
     n, _, st, cen = cv2.connectedComponentsWithStats(m)
     if n < 2:
         return None
     i = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
-    return float(cen[i][0]) if st[i, cv2.CC_STAT_AREA] > 2000 else None
+    return float(cen[i][0]) + COLS[0] if st[i, cv2.CC_STAT_AREA] > 2000 else None
 
 
 def settled(ts: np.ndarray, xs: np.ndarray, t_stop: float) -> float:
     """When the holder came to rest for good: after it, every frame is within SETTLED_PX of
     where it ended. Also catches a restart: the end is then where the late move stopped."""
+    if len(xs) >= 5:  # a 5-frame median: single frames jump about 5 px (2 Oct, 2.1.2.8 run)
+        pad = np.pad(xs, 2, mode="edge")
+        xs = np.median(np.lib.stride_tricks.sliding_window_view(pad, 5), axis=1)
     end = float(np.median(xs[-5:]))
     off = np.abs(xs - end) > SETTLED_PX
     last = int(np.nonzero(off)[0][-1]) + 1 if off.any() else 0
@@ -115,7 +120,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             for k in range(a.trials):
                 start, end = (a.x[0], a.x[1]) if k % 2 == 0 else (a.x[1], a.x[0])
-                ctl.run_lines(gcode.travel_gcode((start, y), cfg), "to start")
+                # M400: an ok only means the move is planned; after a stop the controller
+                # homes first, and the trial must not start while that travel still runs
+                ctl.run_lines(gcode.travel_gcode((start, y), cfg) + ["M400"], "to start")
                 ctl.wait()
                 time.sleep(1.0)
                 with lock:

@@ -57,7 +57,7 @@ class Command:
     preview_t: float  # the last preview shown before it was drawn
     drawn_t: float
     shown_xy: list[float] | None  # the hold the app used, paper mm
-    planned_xy: list[float]  # where the drawing was centred (moved if it did not fit)
+    planned_xy: list[float]  # where it was centred: the place said (off-paper parts cut)
     planned_box: list[float]  # x, y, w, h, paper mm
     shown_size: float | None
     size_kind: str | None
@@ -482,7 +482,9 @@ def main(argv: list[str] | None = None) -> int:
         a.json.parent.mkdir(parents=True, exist_ok=True)
         a.json.write_text(
             json.dumps(
-                {"run": str(a.run), "summary": summ, "commands": [c.row() for c in cmds]}, indent=1
+                {"run": str(a.run), "summary": summ, "commands": [c.row() for c in cmds]},
+                indent=1,
+                default=lambda o: o.item() if isinstance(o, np.generic) else str(o),
             ),
             encoding="utf-8",
         )

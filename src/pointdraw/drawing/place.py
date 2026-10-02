@@ -161,3 +161,70 @@ def keep_inside(
         out = transform(out, 1.0, dx, dy)
         changed = True
     return out, changed
+
+
+def _clip_segment(a: Point, b: Point, box: Box) -> tuple[Point, Point] | None:
+    """The part of segment a-b inside `box` (Liang-Barsky), or None if none is."""
+    t0, t1 = 0.0, 1.0
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    for p, q in (
+        (-dx, a[0] - box.x),
+        (dx, box.x2 - a[0]),
+        (-dy, a[1] - box.y),
+        (dy, box.y2 - a[1]),
+    ):
+        if p == 0:
+            if q < 0:
+                return None
+            continue
+        r = q / p
+        if p < 0:
+            t0 = max(t0, r)
+        else:
+            t1 = min(t1, r)
+        if t0 > t1:
+            return None
+    return (a[0] + t0 * dx, a[1] + t0 * dy), (a[0] + t1 * dx, a[1] + t1 * dy)
+
+
+def clip_inside(polylines: Sequence[Sequence[Point]], area: Box) -> tuple[list[Polyline], bool]:
+    """Cut away every part of the drawing outside `area`; the rest stays where it is.
+
+    rahul, 2 Oct 2026: never move or shrink a drawing to make it fit ("if you move it, what
+    was the point in asking to draw here"); a part that would go off the paper is left out.
+    A polyline that leaves the area and comes back is split in two. Returns the polylines
+    left (maybe none) and whether anything was cut.
+    """
+    out: list[Polyline] = []
+    cut = False
+    for pl in polylines:
+        if len(pl) == 1:
+            if area.contains(pl[0]):
+                out.append([pl[0]])
+            else:
+                cut = True
+            continue
+        cur: Polyline = []
+        for a, b in zip(pl, pl[1:], strict=False):
+            seg = _clip_segment(a, b, area)
+            if seg is None:
+                cut = True
+                if cur:
+                    out.append(cur)
+                    cur = []
+                continue
+            p, q = seg
+            if p != a:
+                cut = True
+            if not cur or cur[-1] != p:
+                if cur:
+                    out.append(cur)
+                cur = [p]
+            cur.append(q)
+            if q != b:
+                cut = True
+                out.append(cur)
+                cur = []
+        if cur:
+            out.append(cur)
+    return out, cut

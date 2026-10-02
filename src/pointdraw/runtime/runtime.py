@@ -88,6 +88,13 @@ ACKS |= {"mhm", "hello", "hi", "hey", "so", "well", "and", "i", "mean", "just"}
 # Words that let place_drawing repeat an object the person didn't name ("another one").
 SIZE_WORDS = {"this", "that", "so", "big", "small", "large", "long", "wide", "tall", "size"}
 REPEAT_WORDS = {"another", "again", "same", "more", "copy", "one", "ones"}
+# Words that ask to move or resize the preview. Live 2 Oct: "I think" (half heard) came back
+# as adjust(dx=-1, scale=0.8) and the cat moved 5 mm off rahul's point; an adjust needs one.
+ADJUST_WORDS = {"left", "right", "up", "down", "north", "south", "east", "west", "move"}
+ADJUST_WORDS |= {"shift", "higher", "lower", "back", "forward", "closer", "away", "further"}
+ADJUST_WORDS |= {"bigger", "smaller", "larger", "wider", "narrower", "taller", "shorter"}
+ADJUST_WORDS |= {"grow", "shrink", "half", "double", "twice", "less", "bit", "little"}
+ADJUST_WORDS |= {"tiny", "big", "small", "large", "long", "wide", "tall", "size", "more"}
 # Words that say a place relative to something, or a size. Live Nemotron (2 Oct, garden scene)
 # answered "A sun up here" with "above the house, small": neither was said, and the pointing
 # was lost. Without such words, a relation or a size preset in a call was made up.
@@ -424,6 +431,15 @@ class Runtime:
             if not calls:
                 self.say(t, "Sorry, I didn't catch that. Could you say it again?")
                 return
+        if any(c.name == "adjust" for c in calls):
+            if self._resize_to_gesture(utt, t):
+                return
+            toks = {norm_word(w.text) for w in utt.words}
+            if not toks & ADJUST_WORDS:
+                self.log.add(t, "guard", said=utt.text, why="adjust with no move or size word")
+                calls = [c for c in calls if c.name != "adjust"]
+                if not calls:
+                    return  # stay quiet: it was not meant for the robot
         calls = [self._grounded(c, utt, t) for c in calls]
         refs = self._refs(utt)
         refs.prepare(calls)
@@ -649,7 +665,7 @@ class Runtime:
         target: SceneObject | None = None,
         anchor: str | None = None,
     ) -> SceneObject:
-        placed, moved = self.planner.keep_inside(placed)
+        placed, cut = self.planner.clip_inside(placed)
         obj = SceneObject(
             placed.id,
             "robot",
@@ -675,14 +691,16 @@ class Runtime:
             box=_box(obj.box),
             center=_pt(obj.center),
             where=where,
-            moved=moved,
+            cut=cut,
         )
-        if moved:
-            self.say(t, "I moved it a little so it fits on the page.")
+        if cut and not placed.polylines:
+            self.say(t, "That's off the page, so I can't draw it there.")
+        elif cut:
+            self.say(t, "Part of it goes off the page, so I'll leave that part out.")
         return obj
 
     def _replace(self, old: SceneObject, placed: Placed, t: float, where: dict | None) -> None:
-        placed, moved = self.planner.keep_inside(placed)
+        placed, cut = self.planner.clip_inside(placed)
         old.polylines, old.box, old.key_id = placed.polylines, placed.box, placed.key_id
         self.log.add(
             t,
@@ -694,7 +712,7 @@ class Runtime:
             box=_box(old.box),
             center=_pt(old.center),
             where=where,
-            moved=moved,
+            cut=cut,
             replaced=True,
         )
         self._preview(t)
@@ -758,7 +776,7 @@ class Runtime:
         p = self.planner.shift(p, dx * step, dy * step, scale)
         self.log.add(t, "adjust", id=obj.id, dx=dx, dy=dy, scale=scale)
         if target is not None:  # not previewed yet: just change it
-            p, _ = self.planner.keep_inside(p)
+            p, _ = self.planner.clip_inside(p)
             obj.polylines, obj.box = p.polylines, p.box
             self.log.add(
                 t,
@@ -770,7 +788,7 @@ class Runtime:
                 box=_box(obj.box),
                 center=_pt(obj.center),
                 where=None,
-                moved=False,
+                cut=False,
                 replaced=True,
             )
             return
@@ -1016,6 +1034,34 @@ class Runtime:
         self.question = None  # not an answer: treat it as a new request
         self.asked = oq.call  # but the agent may read it as one ("How big?" ... "this big")
         return False
+
+    def _resize_to_gesture(self, utt: Utterance, t: float) -> bool:
+        """A lone "this big" with the fingers open, while an object is previewed: make it
+        that size where it is. Live 2 Oct: "draw a cat here" ... "this big" was sent to the
+        agent alone, which answered adjust(scale=0.8) and ignored rahul's 26 mm pinch."""
+        prev = self._previewed_item()
+        toks = {norm_word(w.text) for w in utt.words}
+        if (
+            prev is None
+            or prev.kind != "object"
+            or not toks & (SIZE_WORDS - {"this", "that", "so"})
+        ):
+            return False
+        span = self._answer_span(utt)
+        if span is None:
+            return False
+        self.log.add(
+            t,
+            "guard",
+            said=utt.text,
+            why="size gesture: resize the preview",
+            size=round(span.span_mm, 1),
+        )
+        again = self.planner.object(
+            prev.label or prev.kind, prev.center, span.span_mm, id=prev.id, variant=prev.key_id
+        )
+        self._replace(prev, again, t, None)
+        return True
 
     def _answer_span(self, utt: Utterance) -> Any:
         """The size gesture (a SpanHold) shown with an answer like "this big", if any."""

@@ -90,3 +90,32 @@ def test_keep_inside_no_change():
     pls = [[(10, 10), (20, 20)]]
     out, changed = keep_inside(pls, Box(0, 0, 210, 148))
     assert not changed and out == [[(10, 10), (20, 20)]]
+
+
+def test_clip_inside_cuts_not_moves():
+    from pointdraw.drawing.place import clip_inside
+
+    paper = Box(0, 0, 100, 100)
+    # a cross centred near the east edge: the arm past x 100 is cut, the centre stays
+    pls = [[(80, 50), (120, 50)], [(100, 30), (100, 70)], [(90, 40), (90, 60)]]
+    out, cut = clip_inside(pls, paper)
+    assert cut
+    assert out[0] == [(80, 50), (100.0, 50.0)]
+    assert out[2] == [(90, 40), (90, 60)]
+    assert bbox(out).x2 <= 100
+
+
+def test_clip_inside_splits_a_line_that_leaves_and_returns():
+    from pointdraw.drawing.place import clip_inside
+
+    out, cut = clip_inside([[(10, 90), (10, 110), (20, 110), (20, 90)]], Box(0, 0, 100, 100))
+    assert cut
+    assert out == [[(10, 90), (10.0, 100.0)], [(20.0, 100.0), (20, 90)]]
+
+
+def test_clip_inside_no_change_and_all_outside():
+    from pointdraw.drawing.place import clip_inside
+
+    pls = [[(10, 10), (20, 20), (30, 10)]]
+    assert clip_inside(pls, Box(0, 0, 100, 100)) == (pls, False)
+    assert clip_inside([[(200, 200), (210, 210)]], Box(0, 0, 100, 100)) == ([], True)
