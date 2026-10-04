@@ -2,7 +2,9 @@
 
 `DEIXIS_MODE=mcp` (the default) starts one `deixis-mcp` child process per profile and sends
 every resolve over MCP; `DEIXIS_MODE=direct` calls the core in-process. In MCP mode a failed
-call falls back to in-process calls, logged loudly (filming-day safety, plan 4.9).
+call falls back to in-process calls, logged loudly (filming-day safety, plan 4.9);
+`DEIXIS_FALLBACK=none` makes it fail instead (the tests set this, so a quiet fallback can't
+pass for MCP).
 
 Runtimes with the same profile (the same drawable area) share one client, so the virtual
 scenes start one server for the whole test session.
@@ -13,6 +15,7 @@ from __future__ import annotations
 import atexit
 import os
 import threading
+from typing import Literal
 
 from deixis.mcp import DeixisClient
 from deixis.profile import Profile
@@ -25,15 +28,25 @@ def mode() -> str:
     return os.environ.get("DEIXIS_MODE", "mcp")
 
 
+def fallback() -> Literal["direct"] | None:
+    return None if os.environ.get("DEIXIS_FALLBACK", "direct") == "none" else "direct"
+
+
 def core_client(profile: Profile) -> DeixisClient:
     """The shared client for this profile (started on first use)."""
     key = (mode(), profile.model_dump_json())
     with _lock:
         client = _clients.get(key)
         if client is None:
-            client = DeixisClient(profile, mode=key[0], fallback="direct")  # type: ignore[arg-type]
+            client = DeixisClient(profile, mode=key[0], fallback=fallback())  # type: ignore[arg-type]
             _clients[key] = client
         return client
+
+
+def clients() -> list[DeixisClient]:
+    """The clients started so far."""
+    with _lock:
+        return list(_clients.values())
 
 
 def close_all() -> None:

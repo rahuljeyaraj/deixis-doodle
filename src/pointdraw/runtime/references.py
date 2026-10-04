@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from deixis.actions import Call, CallError
 from deixis.api import Request, RequestError, Response
-from deixis.geometry import Point
+from deixis.geometry import Box, Point
 from deixis.mcp import DeixisClient
 from deixis.refs import DEMONSTRATIVES, norm_word
 from deixis.resolver import Pick, ResolverParams, SpanHold
@@ -278,6 +278,17 @@ class References:
         assert w.mean_mm is not None
         return w.mean_mm, w
 
+    def measure(self, word_index: int) -> SpanHold | None:
+        """The size gesture shown with an answer like "this big" (word `word_index`), or None
+        when the core finds none (or one outside the profile's sizes)."""
+        call = {"name": "measure", "args": {"size": {"word_index": word_index}}}
+        res = self._request([call], None, [])
+        size = res.calls[0].size("size") if res.status == "ok" else None
+        if size is None:
+            return None
+        t = size.evidence.get("span_t")
+        return next((s for s in self.spans if [round(s.t0, 3), round(s.t1, 3)] == t), None)
+
     def last_point(self) -> tuple[Point, Where]:
         k = self._current_index()
         w = Where.model_validate(self._arg(self._resolve_call(k), k, "place"))
@@ -338,6 +349,23 @@ class References:
             float(imposed) if isinstance(imposed, (int, float)) else None,
             self.scene.get(target) if target else None,
         )
+
+
+def adjust_offset(
+    scene: SceneModel, box: Box, dx: float, dy: float, scale: float = 1.0,
+    client: DeixisClient | None = None,
+) -> Point:  # fmt: skip
+    """How far "a bit left" moves a drawing: the core steps along the viewer's directions
+    (plan 7.1); the planner moves the polylines by this much."""
+    client = client or core_client(scene.profile)
+    before = Where(
+        frame=scene.profile.frame,
+        kind="box",
+        box_mm=(box.x, box.y, box.w, box.h),
+        source="geometry",
+    )
+    ox, oy = client.adjust(before, dx, dy, scale).evidence["offset_mm"]
+    return ox, oy
 
 
 def _span_size(span: SpanHold) -> Size:
