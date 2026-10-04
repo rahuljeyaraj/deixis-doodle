@@ -117,6 +117,16 @@ def test_floor_markers_one_per_page(out: Path) -> None:
         assert edges[0] == pytest.approx(expected, rel=0.02)
 
 
+def test_robot_marker(out: Path) -> None:
+    from pointdraw.layout import ROBOT_MARKER_ID, ROBOT_MARKER_SIZE_MM
+
+    dpi = 150
+    (page,) = _render(out / "robot-marker.pdf", dpi)
+    ids, edges = _detect(page)
+    assert ids == [ROBOT_MARKER_ID]
+    assert edges[0] == pytest.approx(ROBOT_MARKER_SIZE_MM / 25.4 * dpi, rel=0.02)
+
+
 def test_m1_targets_json(out: Path) -> None:
     data = json.loads((out / "m1-targets.json").read_text(encoding="utf-8"))
     targets = data["targets"]

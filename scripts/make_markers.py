@@ -7,6 +7,8 @@ Writes, into hardware/print/ by default:
 - m1-targets.pdf: an A5 landscape sheet of numbered crosshair targets for the M1 test.
 - m1-targets.json: those targets in mm, paper frame (origin at the sheet's bottom-left
   corner as the user sees it, +x to the right, +y away from the user).
+- robot-marker.pdf: one 100 mm marker (ID 14) for the vacuum's lid (floor-to-map
+  calibration, `scripts/vacuum_calibrate.py`).
 
 Sizes, IDs and the dictionary come from pointdraw.layout. Markers are drawn as vector
 rectangles, so they stay sharp at any printer resolution. Output is byte-for-byte
@@ -37,6 +39,8 @@ from pointdraw.layout import (
     FLOOR_MARKER_SIZE_MM,
     PAPER_HEIGHT_MM,
     PAPER_WIDTH_MM,
+    ROBOT_MARKER_ID,
+    ROBOT_MARKER_SIZE_MM,
 )
 
 DEFAULT_OUT = Path(__file__).resolve().parents[1] / "hardware" / "print"
@@ -197,6 +201,38 @@ def make_floor_markers(path: Path) -> None:
     c.save()
 
 
+def make_robot_marker(path: Path) -> None:
+    """One A4 page: the marker for the vacuum's lid (floor-to-map calibration)."""
+    page_w, page_h = A4[0] / mm, A4[1] / mm
+    size = ROBOT_MARKER_SIZE_MM
+    x0 = (page_w - size) / 2
+    y0 = (page_h - size) / 2
+    c = _canvas(path, A4, "Robot marker")
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont("Helvetica", 8.5)
+    lines = [
+        f"Robot marker, ArUco {ARUCO_DICTIONARY}, for the vacuum's lid.",
+        ACTUAL_SIZE,
+        f"Black square = {size:.0f} mm. Cut along the dashed line; keep the white margin.",
+        "Tape it flat with this side up and FRONT toward the robot's front.",
+        "Never cover the LiDAR turret or the front bumper's sensors.",
+    ]
+    for k, line in enumerate(lines):
+        c.drawString(20 * mm, (page_h - 18 - 4.5 * k) * mm, line)
+    draw_marker(c, ROBOT_MARKER_ID, x0, y0, size)
+    q = FLOOR_QUIET_ZONE_MM / 2
+    c.setDash(3, 3)
+    c.rect((x0 - q) * mm, (y0 - q - 12) * mm, (size + 2 * q) * mm, (size + 2 * q + 24) * mm)
+    c.setDash()
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawCentredString(page_w / 2 * mm, (y0 + size + 4) * mm, "FRONT")
+    c.drawCentredString(page_w / 2 * mm, (y0 - 9) * mm, f"ID {ROBOT_MARKER_ID}")
+    draw_scale_bar(c, (page_w - 100) / 2, 22)
+    c.showPage()
+    c.save()
+
+
 def m1_target_positions() -> list[Target]:
     """15 targets: a 5 x 3 grid with fixed jitter, in the paper frame (mm)."""
     rng = random.Random(M1_SEED)
@@ -263,10 +299,12 @@ def make_m1_targets(pdf_path: Path, json_path: Path) -> list[Target]:
 
 def make_all(out: Path) -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
-    paths = [out / n for n in ("bed-markers.pdf", "floor-markers.pdf", "m1-targets.pdf")]
+    names = ("bed-markers.pdf", "floor-markers.pdf", "m1-targets.pdf", "robot-marker.pdf")
+    paths = [out / n for n in names]
     make_bed_markers(paths[0])
     make_floor_markers(paths[1])
     make_m1_targets(paths[2], out / "m1-targets.json")
+    make_robot_marker(paths[3])
     return [*paths, out / "m1-targets.json"]
 
 
