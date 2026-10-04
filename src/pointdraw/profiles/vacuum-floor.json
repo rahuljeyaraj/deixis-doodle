@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "name": "vacuum-floor",
+  "frame": "floor",
+  "area_mm": [0, 0, 3000, 2500],
+  "view": "ground",
+  "viewer": {"right": [1, 0], "away": [0, 1]},
+  "pointer": {
+    "source": "feet",
+    "filter": {"min_cutoff": 0.5, "beta": 0.005, "d_cutoff": 1.0},
+    "hold": {
+      "speed_enter_mm_s": 120, "speed_exit_mm_s": 200, "min_duration_s": 0.6,
+      "speed_window_s": 0.3, "max_gap_s": 0.5, "require_pointing": true, "history_s": 120
+    },
+    "base_sigma_mm": 60,
+    "max_spread_mm": 150,
+    "same_place_mm": 300
+  },
+  "spans": null,
+  "timing": {
+    "before_s": 1.5, "after_s": 0.5, "no_word_before_s": 2.0, "time_sigma_s": 0.6,
+    "ambiguity_ratio": 2.0, "size_overlap": 0.5
+  },
+  "sizes": {
+    "default_mm": 1000,
+    "presets": {"small": 600, "medium": 1000, "big": 1500},
+    "synonyms": {"large": "big", "little": "small"},
+    "min_mm": 300,
+    "max_mm": 3000
+  },
+  "scene": {
+    "near_mm": 400, "ambiguous_mm": 150, "gap_mm": 200, "inside_fill": 0.7,
+    "empty_margin_mm": 100, "grid_mm": 25, "label_ties": "ask"
+  },
+  "adjust": {"step_mm": 250},
+  "outside": "keep",
+  "asks": {
+    "no_gesture": "Where? Stand on the spot and say here.",
+    "no_gesture.pointed": "Where should I clean? Stand on the spot and say here.",
+    "ambiguous": "Did you mean this spot or that one? Stand on it and say here.",
+    "unsteady": "I couldn't tell where you stood. Stand still a moment.",
+    "no_previous": "There's nothing to move right now."
+  },
+  "actions": [
+    {
+      "name": "clean",
+      "description": "Clean an area: 'clean here' (where the person stands) or 'clean from here ... to here' (two corners).",
+      "params": [
+        {"name": "place", "type": "place", "want": "box", "size_from": "default", "required": true}
+      ]
+    },
+    {"name": "dock", "description": "Go back to the dock."}
+  ]
+}
