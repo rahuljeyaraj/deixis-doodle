@@ -13,11 +13,11 @@ plotter's profile.
 
 from __future__ import annotations
 
-import copy
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError
 
+from deixis.actions import Call, CallError, inline_schema, short_errors
 from deixis.refs import (
     DEMONSTRATIVES,
     DeicticObject,
@@ -179,28 +179,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 }
 
 
-class ToolCall(BaseModel):
-    """One validated tool call. `args` is the tool's argument model."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    name: str
-    args: BaseModel
-
-    def args_dict(self) -> dict[str, Any]:
-        return self.args.model_dump(by_alias=True, exclude_none=True, mode="json")
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "args": self.args_dict()}
-
-    def __str__(self) -> str:  # compact, for logs
-        import json
-
-        return f"{self.name}({json.dumps(self.args_dict(), separators=(',', ':'))})"
-
-
-class ToolCallError(ValueError):
-    """A tool call the model got wrong; the message is written for the model to read."""
+#: One validated tool call (`name`, `args` model) and the error a model must fix: the core's.
+ToolCall = Call
+ToolCallError = CallError
 
 
 def parse_call(name: str, args: dict[str, Any] | str | None) -> ToolCall:
@@ -221,16 +202,8 @@ def parse_call(name: str, args: dict[str, Any] | str | None) -> ToolCall:
     try:
         model = TOOL_ARGS[name].model_validate(args, context=_CONTEXT)
     except ValidationError as e:
-        raise ToolCallError(f"{name}: {_short_errors(e)}") from e
+        raise ToolCallError(f"{name}: {short_errors(e)}") from e
     return ToolCall(name=name, args=model)
-
-
-def _short_errors(e: ValidationError) -> str:
-    parts = []
-    for err in e.errors()[:4]:
-        loc = ".".join(str(p) for p in err["loc"] if not str(p).startswith("function-"))
-        parts.append(f"{loc or 'args'}: {err['msg']}")
-    return "; ".join(parts)
 
 
 # ---------------------------------------------------------------- transcript checks
@@ -254,45 +227,6 @@ def check_against_transcript(
 
 
 # ---------------------------------------------------------------- tools JSON
-
-
-def _inline_refs(schema: dict[str, Any]) -> dict[str, Any]:
-    """Inline $defs/$ref and drop titles, so the schema reads cleanly in a prompt."""
-    defs = schema.get("$defs", {})
-
-    def walk(node: Any) -> Any:
-        if isinstance(node, dict):
-            if "$ref" in node:
-                target = walk(copy.deepcopy(defs[node["$ref"].split("/")[-1]]))
-                extra = {k: walk(v) for k, v in node.items() if k != "$ref"}
-                return {**target, **extra}
-            return {k: walk(v) for k, v in node.items() if k not in ("$defs", "title")}
-        if isinstance(node, list):
-            return [walk(x) for x in node]
-        return node
-
-    out = walk(schema)
-    # A nullable field is anyOf[X, null]; drop the null branch and keep it optional.
-    return _drop_null_branches(out)
-
-
-def _drop_null_branches(node: Any) -> Any:
-    if isinstance(node, dict):
-        node = {k: _drop_null_branches(v) for k, v in node.items()}
-        any_of = node.get("anyOf")
-        if isinstance(any_of, list) and any(b == {"type": "null"} for b in any_of):
-            rest = [b for b in any_of if b != {"type": "null"}]
-            node.pop("anyOf")
-            if node.get("default", "x") is None:
-                node.pop("default")
-            if len(rest) == 1:
-                node = {**rest[0], **node}
-            else:
-                node["anyOf"] = rest
-        return node
-    if isinstance(node, list):
-        return [_drop_null_branches(x) for x in node]
-    return node
 
 
 #: Reference shapes and fields the core accepts but the plotter's agent never needs. They are
@@ -328,7 +262,7 @@ def _lean(node: Any) -> Any:
 def tool_parameters(name: str) -> dict[str, Any]:
     """JSON Schema for one tool's arguments."""
     schema = TOOL_ARGS[name].model_json_schema(by_alias=True)
-    params = _lean(with_presets(_inline_refs(schema), list(PRESET_MM)))
+    params = _lean(with_presets(inline_schema(schema), list(PRESET_MM)))
     params.pop("description", None)
     params.setdefault("properties", {})
     params["type"] = "object"
