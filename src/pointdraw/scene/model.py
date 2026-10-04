@@ -6,24 +6,27 @@ Everything is in the **paper frame** (mm; +x to the user's right, +y away from t
 - **User marks** come from ink segmentation of the camera's paper image
   (`scene.ink.segment_ink`, with the robot's own strokes subtracted). A vision model
   (Cosmos, or a mock) gives them labels.
-- **Relations** (`next_to`, `left_of`, `right_of`, `above`, `below`, `between`,
-  `inside`, `on`), **named regions** ("top left corner") and **empty space** are computed
-  by geometry here, never by a language model (LR§3.2). Empty space is the centre of the
-  largest empty square in the occupancy map of every object's box.
+- **Relations** (`next_to`, `left_of`, `right_of`, `above`, `below`, `behind`,
+  `in_front_of`, `between`, `inside`, `on`), **named regions** ("top left corner") and
+  **empty space** are computed by geometry in the deixis core (`deixis.scene`), never by a
+  language model (LR§3.2). This model keeps the plotter's objects (polylines, ink marks,
+  ids) and hands the core a `Thing` for each.
 """
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-import cv2
-import numpy as np
-
+from deixis import scene as core
 from deixis.geometry import Box, Point, Polyline
-from pointdraw.scene.ink import UserMark, distance_to_box
+from deixis.profile import Profile, SceneSettings
+from deixis.scene import Thing, iou, union_box
+from pointdraw.profile import plotter_profile
+from pointdraw.scene.ink import UserMark
+
+__all__ = ["SceneModel", "SceneObject", "SceneParams", "iou", "union_box"]
 
 Source = Literal["robot", "user"]
 
@@ -58,28 +61,24 @@ class SceneParams:
     mark_match_iou: float = 0.3  # a new mark with this IoU against an old one keeps its id
 
 
-def iou(a: Box, b: Box) -> float:
-    ix = max(0.0, min(a.x2, b.x2) - max(a.x, b.x))
-    iy = max(0.0, min(a.y2, b.y2) - max(a.y, b.y))
-    inter = ix * iy
-    union = a.w * a.h + b.w * b.h - inter
-    return inter / union if union > 0 else 0.0
-
-
-def union_box(boxes: Sequence[Box]) -> Box:
-    x0 = min(b.x for b in boxes)
-    y0 = min(b.y for b in boxes)
-    x1 = max(b.x2 for b in boxes)
-    y1 = max(b.y2 for b in boxes)
-    return Box(x0, y0, x1 - x0, y1 - y0)
-
-
 class SceneModel:
     def __init__(self, drawable: Box, params: SceneParams | None = None) -> None:
         self.drawable = drawable  # paper frame
         self.params = params or SceneParams()
         self.objects: list[SceneObject] = []
         self._n: dict[str, int] = {}
+        self.profile = scene_profile(drawable, self.params)
+
+    # ------------------------------------------------------------------ the core's view
+
+    def things(self) -> list[Thing]:
+        """Every object as a core `Thing` (labels and arrows are not selectable)."""
+        return [thing(o) for o in self.objects]
+
+    def _obj(self, t: Thing | None) -> SceneObject | None:
+        if t is None:
+            return None
+        return next(o for o in self.objects if o.id == t.id)
 
     # ------------------------------------------------------------------ contents
 
@@ -143,64 +142,32 @@ class SceneModel:
 
     def last(self) -> SceneObject | None:
         """ "It": the most recent drawing (robot object or user mark), not labels or arrows."""
-        cands = [o for o in self.objects if o.kind in ("object", "mark")]
-        return max(cands, key=lambda o: o.t, default=None)
+        return self._obj(core.last(self.things()))
 
     def labels(self) -> list[str]:
         """Labels for the agent's context, oldest first, without repeats."""
-        out: list[str] = []
-        for o in sorted(self.objects, key=lambda o: o.t):
-            if o.kind in ("object", "mark") and o.label and o.label not in out:
-                out.append(o.label)
-        return out
+        return core.labels(self.things())
 
     def find(self, label: str) -> list[SceneObject]:
         """Objects with this label (or text), most recent first."""
-        want = _norm(label)
-        hits = [
-            o
-            for o in self.objects
-            if o.label
-            and (_norm(o.label) == want or _norm(o.label).rstrip("s") == want.rstrip("s"))
-            or (o.text and _norm(o.text) == want)
-        ]
-        return sorted(hits, key=lambda o: o.t, reverse=True)
+        return [self._obj(t) for t in core.find(self.things(), label)]  # type: ignore[misc]
 
     def near(self, p: Point, max_mm: float | None = None) -> list[tuple[SceneObject, float]]:
         """Objects near a point (0 = inside the box), nearest first. Labels and arrows skipped."""
-        lim = self.params.near_mm if max_mm is None else max_mm
-        out = [(o, distance_to_box(p, o.box)) for o in self.objects if o.kind in ("object", "mark")]
-        out = [(o, d) for o, d in out if d <= lim]
-        return sorted(out, key=lambda od: (od[1], od[0].box.w * od[0].box.h))
+        return [(self._obj(t), d) for t, d in core.near(self.things(), p, self.profile, max_mm)]  # type: ignore[misc]
 
     def object_at(self, p: Point) -> tuple[SceneObject | None, list[SceneObject]]:
         """The object pointed at, or (None, candidates) when it is ambiguous or empty."""
-        near = self.near(p)
-        if not near:
-            return None, []
-        best, d1 = near[0]
-        if len(near) >= 2:
-            other, d2 = near[1]
-            nested = d1 == 0 and d2 == 0  # inside both: the smaller (sorted first) wins
-            if not nested and d2 - d1 < self.params.ambiguous_mm:
-                return None, [best, other]
-        return best, [best]
+        best, cands = core.object_at(self.things(), p, self.profile)
+        return self._obj(best), [self._obj(c) for c in cands]  # type: ignore[misc]
 
     # ------------------------------------------------------------------ places
 
     def fits(self, c: Point, size: float) -> bool:
-        b = Box.from_center(c[0], c[1], size, size)
-        d = self.drawable
-        return d.x - 0.5 <= b.x and b.x2 <= d.x2 + 0.5 and d.y - 0.5 <= b.y and b.y2 <= d.y2 + 0.5
+        return core.fits(c, size, self.profile)
 
     def free(self, c: Point, size: float, ignore: Sequence[SceneObject] = ()) -> bool:
-        b = Box.from_center(c[0], c[1], size, size)
-        for o in self.objects:
-            if o in ignore:
-                continue
-            if iou(o.box, b) > 0 or _overlap(o.box, b):
-                return False
-        return True
+        return core.free(self.things(), c, size, [o.id for o in ignore])
 
     def relation(
         self,
@@ -214,94 +181,55 @@ class SceneModel:
 
         With `extent` (the drawing's real width and height) it sits `gap_mm` from the target;
         without, it is treated as a square of side `size`."""
-        t = target.box
-        g = self.params.gap_mm
-        hx, hy = (extent[0] / 2, extent[1] / 2) if extent else (size / 2, size / 2)
-        cx, cy = t.center
-        options = {
-            "left_of": (t.x - g - hx, cy),
-            "right_of": (t.x2 + g + hx, cy),
-            "above": (cx, t.y2 + g + hy),
-            "below": (cx, t.y - g - hy),
-        }
-        if rel in options:
-            return options[rel]
-        if rel == "next_to":
-            order = ["right_of", "left_of", "above", "below"]
-            for r in order:
-                c = options[r]
-                if self.fits(c, size) and self.free(c, size, [target]):
-                    return c
-            for r in order:
-                if self.fits(options[r], size):
-                    return options[r]
-            return options["right_of"]
-        if rel == "between":
-            assert target2 is not None
-            a, b = target.center, target2.center
-            return ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
-        if rel == "inside":
-            return (cx, cy)
-        if rel == "on":
-            return (cx, t.y2 + hy * 0.7)
-        raise ValueError(f"unknown relation {rel!r}")
+        spot = core.relation(
+            rel,
+            thing(target),
+            size,
+            self.profile,
+            self.things(),
+            thing(target2) if target2 is not None else None,
+            extent,
+        )
+        return spot.center
 
     def inside_size(self, target: SceneObject) -> float:
-        return self.params.inside_fill * min(target.box.w, target.box.h)
+        return core.inside_size(thing(target), self.profile)
 
     def named(self, name: str, size: float) -> Point | None:
         """A page region in words: middle, top, bottom left corner, left side, ..."""
-        words = set(_norm(name).replace("-", " ").split())
-        d = self.drawable
-        h = size / 2
-        x = {"left": d.x + h, "right": d.x2 - h}
-        y = {"bottom": d.y + h, "top": d.y2 - h}
-        words |= {"top" for w in list(words) if w == "upper"}
-        words |= {"bottom" for w in list(words) if w == "lower"}
-        cx, cy = d.center
-        hx = next((x[w] for w in ("left", "right") if w in words), None)
-        vy = next((y[w] for w in ("top", "bottom") if w in words), None)
-        if hx is None and vy is None:
-            if words & {"middle", "centre", "center"}:
-                return (cx, cy)
-            return None
-        return (hx if hx is not None else cx, vy if vy is not None else cy)
+        return core.named(name, size, self.profile)
 
     def empty_space(self, size: float, res_mm: float = 1.0) -> tuple[Point, float] | None:
         """Centre and side of the largest empty square (every object's box kept clear by a
         margin). The side returned is at most `size`; None if nothing is free at all."""
-        d = self.drawable
-        w, h = int(d.w / res_mm), int(d.h / res_mm)
-        free = np.ones((h, w), np.uint8)
-        m = self.params.empty_margin_mm
-        for o in self.objects:
-            b = o.box
-            x0 = int(math.floor((b.x - m - d.x) / res_mm))
-            x1 = int(math.ceil((b.x2 + m - d.x) / res_mm))
-            y0 = int(math.floor((b.y - m - d.y) / res_mm))
-            y1 = int(math.ceil((b.y2 + m - d.y) / res_mm))
-            free[max(0, y0) : max(0, y1), max(0, x0) : max(0, x1)] = 0
-        padded = np.pad(free, 1, constant_values=0)
-        dist = cv2.distanceTransform(padded, cv2.DIST_C, 3)[1:-1, 1:-1]
-        best = float(dist.max())
-        if best <= 0:
-            return None
-        ys, xs = np.nonzero(dist >= best - 0.5)
-        # Several equally good spots: the one nearest the middle of the sheet.
-        cx0, cy0 = w / 2, h / 2
-        k = int(np.argmin((xs - cx0) ** 2 + (ys - cy0) ** 2))
-        side = (2 * best - 1) * res_mm
-        center = (d.x + (xs[k] + 0.5) * res_mm, d.y + (ys[k] + 0.5) * res_mm)
-        return center, min(size, side)
+        return core.empty_space(self.things(), size, self.profile, res_mm)
 
 
-def _overlap(a: Box, b: Box) -> bool:
-    return a.x < b.x2 and b.x < a.x2 and a.y < b.y2 and b.y < a.y2
+def thing(o: SceneObject) -> Thing:
+    """The core's view of an object: written text is an attribute, so "the Cosmos label"
+    finds it; labels and arrows are not selectable (pointing and "it" skip them)."""
+    b = o.box
+    return Thing(
+        id=o.id,
+        label=o.label,
+        box_mm=(b.x, b.y, b.w, b.h),
+        kind=o.kind,
+        attrs={"text": o.text} if o.text else {},
+        t=o.t,
+        selectable=o.kind in ("object", "mark"),
+    )
 
 
-def _norm(s: str) -> str:
-    s = s.strip().lower()
-    for art in ("the ", "a ", "an ", "my ", "your "):
-        if s.startswith(art):
-            s = s[len(art) :]
-    return s.strip(" '\"")
+def scene_profile(drawable: Box, params: SceneParams) -> Profile:
+    """The plotter's profile with this drawable area and these scene settings."""
+    base = plotter_profile(drawable)
+    scene = SceneSettings(
+        near_mm=params.near_mm,
+        ambiguous_mm=params.ambiguous_mm,
+        gap_mm=params.gap_mm,
+        inside_fill=params.inside_fill,
+        empty_margin_mm=params.empty_margin_mm,
+        grid_mm=base.scene.grid_mm,
+        label_ties=base.scene.label_ties,
+    )
+    return base.model_copy(update={"scene": scene})
