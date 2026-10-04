@@ -1,323 +1,85 @@
-"""Typed tool-call arguments for the agent, and the OpenAI `tools` JSON built from them.
+"""Typed tool-call arguments for the plotter's agent, and the OpenAI `tools` JSON built from
+them.
 
 Invariant (plan 4.1, 4.5): the language model never emits coordinates or G-code. Every
 place, size and object is a *reference* (a spoken word index, a relation to a scene object,
-a named region, a preset), which the deixis resolver later turns into a `deixis.Where`.
+a named region, a preset), which the deixis core later turns into a `deixis.Where`.
 
-Reference shapes are told apart by their keys, so the model writes compact JSON:
-
-- PlaceRef:  {"deixis": "here", "word_index": 3} | {"relation": "left_of", "target": ObjectRef,
-  "target2": ObjectRef?} | {"named": "top left corner"} | {"empty_space": true}
-- SizeRef:   {"word_index": 5} | {"preset": "small"} | {"same_as": ObjectRef}
-- ObjectRef: {"deixis": "that", "word_index": 7} | {"label": "house"} | {"last": true}
-
-A few common slips (a bare "empty_space" string, a bare preset word, "large") are repaired
-before validation, so the runtime sees one clean shape.
+The reference types, their repairs and the transcript checks live in the core
+(`deixis.refs`) and are re-exported here; this module keeps the plotter's own tools
+(`place_drawing`, `draw_connector`, ...). Size presets and their synonyms come from the
+plotter's profile.
 """
 
 from __future__ import annotations
 
 import copy
-import re
-from typing import Annotated, Any, Literal, get_args
+from typing import Annotated, Any, Literal
 
-from pydantic import (
-    BaseModel,
-    BeforeValidator,
-    ConfigDict,
-    Discriminator,
-    Field,
-    Tag,
-    ValidationError,
-    model_validator,
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError
+
+from deixis.refs import (
+    DEMONSTRATIVES,
+    DeicticObject,
+    DeicticPlace,
+    DeicticSize,
+    Demonstrative,
+    EmptySpace,
+    LabelObject,
+    LastObject,
+    NamedPlace,
+    ObjectRef,
+    PlaceRef,
+    PointedPlace,
+    PresetSize,
+    Relation,
+    RelationPlace,
+    RelativeSize,
+    SizeRef,
+    TwoPlaces,
+    norm_word,
+    ref_context,
+    transcript_problems,
+    with_presets,
 )
+from pointdraw.profile import plotter_profile
 
-#: Words that can carry a pointing gesture ("so" as in "so big").
-DEMONSTRATIVES = ("here", "there", "this", "that", "these", "those", "so")
+__all__ = [
+    "DEMONSTRATIVES",
+    "PRESET_MM",
+    "DeicticObject",
+    "DeicticPlace",
+    "DeicticSize",
+    "Demonstrative",
+    "EmptySpace",
+    "LabelObject",
+    "LastObject",
+    "NamedPlace",
+    "ObjectRef",
+    "PlaceRef",
+    "PointedPlace",
+    "PresetSize",
+    "Relation",
+    "RelationPlace",
+    "RelativeSize",
+    "SizeRef",
+    "TwoPlaces",
+    "norm_word",
+]
 
-Demonstrative = Literal["here", "there", "this", "that", "these", "those", "so"]
-Relation = Literal["next_to", "left_of", "right_of", "above", "below", "between", "inside", "on"]
-SizePreset = Literal["tiny", "small", "medium", "big", "whole_page"]
 ConnectorKind = Literal["arrow", "line", "double_arrow"]
 
-#: Sizes in mm for each preset: the larger side of the object's box (plan 4.3).
-#: None means "fit the page"; the resolver computes it.
-PRESET_MM: dict[str, float | None] = {
-    "tiny": 20.0,
-    "small": 35.0,
-    "medium": 55.0,
-    "big": 80.0,
-    "whole_page": None,
-}
+#: Sizes in mm for each preset: the larger side of the object's box (plan 4.3), from the
+#: plotter's profile. None means "fit the page"; the resolver computes it.
+PRESET_MM: dict[str, float | None] = dict(plotter_profile().sizes.presets)
 
-_PRESET_SYNONYMS = {
-    "large": "big",
-    "huge": "big",
-    "giant": "big",
-    "little": "small",
-    "mini": "tiny",
-    "normal": "medium",
-    "regular": "medium",
-    "full_page": "whole_page",
-    "page": "whole_page",
-    "whole page": "whole_page",
-    "the whole page": "whole_page",
-}
-
-_RELATION_SYNONYMS = {
-    "next to": "next_to",
-    "beside": "next_to",
-    "near": "next_to",
-    "left of": "left_of",
-    "right of": "right_of",
-    "over": "above",
-    "under": "below",
-    "underneath": "below",
-    "beneath": "below",
-    "in": "inside",
-    "on_top_of": "on",
-    "on top of": "on",
-}
+#: Validation context: presets and their synonyms ("large" -> "big") from the profile.
+_CONTEXT = ref_context(plotter_profile())
 
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-
-# ---------------------------------------------------------------- object references
-
-
-class DeicticObject(_Strict):
-    """The scene object nearest where the person pointed while saying the word."""
-
-    deixis: Demonstrative = Field(description="The demonstrative word as spoken.")
-    word_index: int = Field(ge=0, description="Index of that word in the transcript.")
-
-
-class LabelObject(_Strict):
-    """A scene object by its label, e.g. "house" or "the circle I drew"."""
-
-    label: str = Field(min_length=1, description="Label of an object in the scene.")
-
-
-class LastObject(_Strict):
-    """The most recently drawn or previewed object ("it", "that one you just drew")."""
-
-    model_config = ConfigDict(json_schema_extra={"required": ["last"]})
-
-    last: Literal[True] = True
-
-
-def _object_tag(v: Any) -> str | None:
-    if isinstance(v, BaseModel):
-        return {DeicticObject: "deictic", LabelObject: "label", LastObject: "last"}.get(type(v))
-    if isinstance(v, dict):
-        for key, tag in (("deixis", "deictic"), ("label", "label"), ("last", "last")):
-            if key in v:
-                return tag
-    return None
-
-
-def _repair_object(v: Any) -> Any:
-    if isinstance(v, str):
-        s = v.strip().lower()
-        if s in ("last", "it", "that one", "the last one"):
-            return {"last": True}
-        return {"label": v.strip()}
-    if isinstance(v, dict) and "word_index" in v and "deixis" not in v:
-        return {"deixis": "that", **v}
-    if isinstance(v, dict) and isinstance(v.get("deixis"), str):
-        d = v["deixis"].strip().lower()
-        if d in ("it", "last"):
-            return {"last": True}
-        if d not in DEMONSTRATIVES:
-            return {"label": v["deixis"].strip()}  # {"deixis": "sun"} means the label "sun"
-    return v
-
-
-ObjectRef = Annotated[
-    Annotated[DeicticObject, Tag("deictic")]
-    | Annotated[LabelObject, Tag("label")]
-    | Annotated[LastObject, Tag("last")],
-    Discriminator(
-        _object_tag,
-        custom_error_type="object_ref",
-        custom_error_message='ObjectRef must have one of the keys "deixis", "label" or "last"',
-    ),
-    BeforeValidator(_repair_object),
-]
-
-# ---------------------------------------------------------------- place references
-
-
-class DeicticPlace(_Strict):
-    """Where the person pointed while saying a demonstrative ("here", "there")."""
-
-    deixis: Demonstrative = Field(description="The demonstrative word as spoken.")
-    word_index: int = Field(ge=0, description="Index of that word in the transcript.")
-
-
-class RelationPlace(_Strict):
-    """A place relative to scene objects, computed by geometry in the paper frame."""
-
-    relation: Relation
-    target: ObjectRef
-    target2: ObjectRef | None = Field(default=None, description="Only for 'between'.")
-
-    @model_validator(mode="after")
-    def _between_needs_two(self) -> RelationPlace:
-        if self.relation == "between" and self.target2 is None:
-            raise ValueError("relation 'between' needs target2")
-        if self.relation != "between" and self.target2 is not None:
-            raise ValueError("target2 is only used with relation 'between'")
-        return self
-
-
-class NamedPlace(_Strict):
-    """A place named in words: a page region ("top left corner", "middle") or a part of
-    a scene object that needs vision ("on the roof")."""
-
-    named: str = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def _not_a_bare_relation(self) -> NamedPlace:
-        # Live Nemotron sent {"named": "inside"}, then {"named": "inside that"}, for "put a
-        # hand inside that" (1 Oct, live Cosmos runs of S15). A relation word, alone or with
-        # a pointing word, names no place: send it back for the retry.
-        words = self.named.strip().lower().replace("_", " ").split()
-        pointing = ""
-        if len(words) > 1 and words[-1] in (*DEMONSTRATIVES, "it", "one"):
-            pointing = words.pop()
-            if words[-1:] == ["that"] or words[-1:] == ["this"]:  # "inside that one"
-                pointing = words.pop()
-        word = " ".join(words)
-        rel = _RELATION_SYNONYMS.get(word, word.replace(" ", "_"))
-        if rel in get_args(Relation):
-            target = (
-                f'{{"deixis": "{pointing}", "word_index": <its index>}}'
-                if pointing in DEMONSTRATIVES
-                else "<the object it refers to>"
-            )
-            raise ValueError(
-                f"'{self.named}' is a relation, not a place name: use "
-                f'{{"relation": "{rel}", "target": {target}}}'
-            )
-        return self
-
-
-class EmptySpace(_Strict):
-    """The largest empty area of the sheet."""
-
-    model_config = ConfigDict(json_schema_extra={"required": ["empty_space"]})
-
-    empty_space: Literal[True] = True
-
-
-def _place_tag(v: Any) -> str | None:
-    if isinstance(v, BaseModel):
-        return {
-            DeicticPlace: "deictic",
-            RelationPlace: "relation",
-            NamedPlace: "named",
-            EmptySpace: "empty",
-        }.get(type(v))
-    if isinstance(v, dict):
-        for key, tag in (
-            ("deixis", "deictic"),
-            ("relation", "relation"),
-            ("named", "named"),
-            ("empty_space", "empty"),
-        ):
-            if key in v:
-                return tag
-    return None
-
-
-def _repair_place(v: Any) -> Any:
-    if isinstance(v, str):
-        s = v.strip().lower().replace(" ", "_")
-        if s in ("empty_space", "empty", "anywhere", "somewhere"):
-            return {"empty_space": True}
-        return {"named": v.strip()}
-    if isinstance(v, dict) and "relation" in v and isinstance(v["relation"], str):
-        rel = v["relation"].strip().lower()
-        v = {**v, "relation": _RELATION_SYNONYMS.get(rel, rel.replace(" ", "_"))}
-    if isinstance(v, dict) and v.get("target2", "") is None:
-        v = {k: x for k, x in v.items() if k != "target2"}
-    return v
-
-
-PlaceRef = Annotated[
-    Annotated[DeicticPlace, Tag("deictic")]
-    | Annotated[RelationPlace, Tag("relation")]
-    | Annotated[NamedPlace, Tag("named")]
-    | Annotated[EmptySpace, Tag("empty")],
-    Discriminator(
-        _place_tag,
-        custom_error_type="place_ref",
-        custom_error_message=(
-            'PlaceRef must have one of the keys "deixis", "relation", "named" or "empty_space"'
-        ),
-    ),
-    BeforeValidator(_repair_place),
-]
-
-# ---------------------------------------------------------------- size references
-
-
-class DeicticSize(_Strict):
-    """A size shown with the hands while saying "this big" (index of "this")."""
-
-    word_index: int = Field(ge=0, description='Index of "this"/"that"/"so" in "this big".')
-    deixis: Demonstrative | None = None
-
-
-class PresetSize(_Strict):
-    """A spoken size word."""
-
-    preset: SizePreset
-
-
-class RelativeSize(_Strict):
-    """The same size as another scene object."""
-
-    same_as: ObjectRef
-
-
-def _size_tag(v: Any) -> str | None:
-    if isinstance(v, BaseModel):
-        return {DeicticSize: "deictic", PresetSize: "preset", RelativeSize: "relative"}.get(type(v))
-    if isinstance(v, dict):
-        for key, tag in (("preset", "preset"), ("same_as", "relative"), ("word_index", "deictic")):
-            if key in v:
-                return tag
-    return None
-
-
-def _norm_preset(s: str) -> str:
-    s = s.strip().lower()
-    return _PRESET_SYNONYMS.get(s, s.replace(" ", "_"))
-
-
-def _repair_size(v: Any) -> Any:
-    if isinstance(v, str):
-        return {"preset": _norm_preset(v)}
-    if isinstance(v, dict) and isinstance(v.get("preset"), str):
-        return {**v, "preset": _norm_preset(v["preset"])}
-    return v
-
-
-SizeRef = Annotated[
-    Annotated[DeicticSize, Tag("deictic")]
-    | Annotated[PresetSize, Tag("preset")]
-    | Annotated[RelativeSize, Tag("relative")],
-    Discriminator(
-        _size_tag,
-        custom_error_type="size_ref",
-        custom_error_message='SizeRef must have one of the keys "word_index", "preset", "same_as"',
-    ),
-    BeforeValidator(_repair_size),
-]
 
 # ---------------------------------------------------------------- tool arguments
 
@@ -457,7 +219,7 @@ def parse_call(name: str, args: dict[str, Any] | str | None) -> ToolCall:
     if not isinstance(args, dict):
         raise ToolCallError(f"{name}: arguments must be a JSON object")
     try:
-        model = TOOL_ARGS[name].model_validate(args)
+        model = TOOL_ARGS[name].model_validate(args, context=_CONTEXT)
     except ValidationError as e:
         raise ToolCallError(f"{name}: {_short_errors(e)}") from e
     return ToolCall(name=name, args=model)
@@ -473,67 +235,14 @@ def _short_errors(e: ValidationError) -> str:
 
 # ---------------------------------------------------------------- transcript checks
 
-_PUNCT = re.compile(r"[^\w']+")
-
-
-def norm_word(w: str) -> str:
-    """Lowercase and strip punctuation: 'Here.' -> 'here'."""
-    return _PUNCT.sub("", w.lower())
-
-
-def _word_refs(obj: Any, path: str = "") -> list[tuple[str, int, str | None]]:
-    """All (path, word_index, deixis) pairs inside a validated args model."""
-    out: list[tuple[str, int, str | None]] = []
-    if isinstance(obj, (DeicticPlace, DeicticObject, DeicticSize)):
-        out.append((path, obj.word_index, obj.deixis))
-    elif isinstance(obj, BaseModel):
-        for field in type(obj).model_fields:
-            out += _word_refs(getattr(obj, field), f"{path}.{field}" if path else field)
-    return out
-
-
-#: Words that are never an object's label (Lightning once sent {"label": "the"}, 30 Sep).
-_NOT_NAMES = {"the", "a", "an", "this", "that", "these", "those", "it", "one", "them", "to", ""}
-
-
-def _labels(obj: Any, path: str = "") -> list[tuple[str, str]]:
-    """All (path, label) pairs of LabelObject references inside a validated args model."""
-    out: list[tuple[str, str]] = []
-    if isinstance(obj, LabelObject):
-        out.append((path, obj.label))
-    elif isinstance(obj, BaseModel):
-        for field in type(obj).model_fields:
-            out += _labels(getattr(obj, field), f"{path}.{field}" if path else field)
-    return out
-
 
 def check_against_transcript(
     call: ToolCall, words: list[str], categories: list[str] | None = None
 ) -> list[str]:
     """Problems with a call given the transcript: word indices that don't point at a
-    demonstrative, and objects that aren't drawable. Empty list means fine."""
-    problems = []
-    normed = [norm_word(w) for w in words]
-    for path, idx, deixis in _word_refs(call.args):
-        if idx >= len(words):
-            problems.append(f"{call.name}.{path}: word_index {idx} is past the last word")
-        elif normed[idx] not in DEMONSTRATIVES:
-            hint = ""
-            if deixis and deixis in normed:
-                hint = f"; '{deixis}' is word {normed.index(deixis)}"
-            problems.append(
-                f"{call.name}.{path}: word {idx} is '{words[idx]}', not a demonstrative{hint}"
-            )
-        elif deixis and normed[idx] != deixis:
-            problems.append(
-                f"{call.name}.{path}: word {idx} is '{words[idx]}' but deixis says '{deixis}'"
-            )
-    for path, label in _labels(call.args):
-        if norm_word(label) in _NOT_NAMES:
-            problems.append(
-                f"{call.name}.{path}: '{label}' is not a name; use the object's label "
-                'from the Scene line, e.g. {"label": "house"}'
-            )
+    demonstrative, labels that aren't names (both from the core), and objects that aren't
+    drawable. Empty list means fine."""
+    problems = transcript_problems(call.name, call.args, words)
     if categories and call.name == "place_drawing":
         obj = call.args.object.strip().lower()  # type: ignore[attr-defined]
         if obj not in {c.lower() for c in categories}:
@@ -586,10 +295,40 @@ def _drop_null_branches(node: Any) -> Any:
     return node
 
 
+#: Reference shapes and fields the core accepts but the plotter's agent never needs. They are
+#: left out of the tools JSON so the prompt stays as short as before the core split (the
+#: tools JSON is sent with every request; longer prompts are slower).
+_UNUSED_SHAPES = ("pointed", "from")
+_UNUSED_OBJECT_FIELDS = ("label", "count")
+
+
+def _lean(node: Any) -> Any:
+    if isinstance(node, dict):
+        node = {k: _lean(v) for k, v in node.items()}
+        for key in ("oneOf", "anyOf"):
+            branches = node.get(key)
+            if isinstance(branches, list):
+                keep = [
+                    b
+                    for b in branches
+                    if not (
+                        isinstance(b, dict) and set(b.get("properties", {})) & set(_UNUSED_SHAPES)
+                    )
+                ]
+                node[key] = keep
+        props = node.get("properties")
+        if isinstance(props, dict) and "deixis" in props and "word_index" in props:
+            node["properties"] = {k: v for k, v in props.items() if k not in _UNUSED_OBJECT_FIELDS}
+        return node
+    if isinstance(node, list):
+        return [_lean(x) for x in node]
+    return node
+
+
 def tool_parameters(name: str) -> dict[str, Any]:
     """JSON Schema for one tool's arguments."""
     schema = TOOL_ARGS[name].model_json_schema(by_alias=True)
-    params = _inline_refs(schema)
+    params = _lean(with_presets(_inline_refs(schema), list(PRESET_MM)))
     params.pop("description", None)
     params.setdefault("properties", {})
     params["type"] = "object"
