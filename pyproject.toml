@@ -8,6 +8,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.11,<3.13"
 authors = [{ name = "Rahul Jeyaraj" }]
 dependencies = [
+    "deixis",
     "numpy>=1.26",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
@@ -65,11 +66,16 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/deixis", "src/pointdraw"]
+packages = ["src/pointdraw"]
 
 [tool.uv]
 # Use a uv-managed CPython, never the PlatformIO Python that is first on PATH.
 python-preference = "only-managed"
+
+[tool.uv.sources]
+# The robot-agnostic core lives in its own repo (C:\work\deixis, MIT). Until it is public,
+# use the local checkout next to this one; after that, a git tag (plan C20).
+deixis = { path = "../deixis", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
