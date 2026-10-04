@@ -87,6 +87,9 @@ class SceneModel:
         self._n[base] = self._n.get(base, 0) + 1
         return base if self._n[base] == 1 else f"{base}{self._n[base]}"
 
+    def get(self, id: str) -> SceneObject | None:
+        return next((o for o in self.objects if o.id == id), None)
+
     def add(self, obj: SceneObject) -> SceneObject:
         self.objects.append(obj)
         return obj

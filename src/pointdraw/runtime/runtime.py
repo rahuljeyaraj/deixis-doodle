@@ -479,6 +479,7 @@ class Runtime:
         )
 
     def _handle(self, call: ToolCall, refs: References, new: list[SceneObject], t: float) -> None:
+        refs.current = call
         name, a = call.name, call.args
         if name == "stop":
             self.do_stop(t, "tool call")
