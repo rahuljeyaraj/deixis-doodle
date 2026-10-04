@@ -1,0 +1,91 @@
+{
+  "version": "1.0",
+  "name": "plotter-a5",
+  "frame": "paper",
+  "area_mm": [0, 0, 220.5, 196],
+  "view": "page",
+  "viewer": {"right": [1, 0], "away": [0, 1]},
+  "pointer": {
+    "source": "finger",
+    "filter": {"min_cutoff": 1.0, "beta": 0.02, "d_cutoff": 1.0},
+    "hold": {
+      "speed_enter_mm_s": 20, "speed_exit_mm_s": 30, "min_duration_s": 0.15,
+      "speed_window_s": 0.10, "max_gap_s": 0.12, "require_pointing": true, "history_s": 120
+    },
+    "base_sigma_mm": 1.5,
+    "max_spread_mm": 6,
+    "same_place_mm": 10
+  },
+  "spans": {
+    "max_rate_mm_s": 25, "window_s": 0.10, "min_duration_s": 0.20, "min_span_mm": 8,
+    "max_gap_s": 0.12, "history_s": 30
+  },
+  "timing": {
+    "before_s": 1.5, "after_s": 0.5, "no_word_before_s": 2.0, "time_sigma_s": 0.6,
+    "ambiguity_ratio": 2.0, "size_overlap": 0.5
+  },
+  "sizes": {
+    "default_mm": 40,
+    "presets": {"tiny": 20, "small": 35, "medium": 55, "big": 80, "whole_page": null},
+    "synonyms": {
+      "large": "big", "huge": "big", "giant": "big", "little": "small", "mini": "tiny",
+      "normal": "medium", "regular": "medium", "full_page": "whole_page", "page": "whole_page",
+      "whole page": "whole_page", "the whole page": "whole_page"
+    },
+    "min_mm": 5,
+    "max_mm": 200
+  },
+  "scene": {
+    "near_mm": 20, "ambiguous_mm": 6, "gap_mm": 10, "inside_fill": 0.7,
+    "empty_margin_mm": 3, "grid_mm": 1, "label_ties": "most_recent"
+  },
+  "adjust": {"step_mm": 5},
+  "outside": "keep",
+  "asks": {
+    "no_gesture": "Where do you mean? Point at the paper.",
+    "no_gesture.pointed": "Where should it go? Point at the paper.",
+    "no_object": "I don't see anything there. Which one do you mean?",
+    "no_object.empty": "There's nothing drawn yet. What do you mean?",
+    "unknown_label": "I don't see a {label}. Which one do you mean?",
+    "ambiguous_object": "The {options}?",
+    "no_room": "The sheet is full. Shall I start a new page?",
+    "no_previous": "There's nothing to adjust right now."
+  },
+  "words": {"demonstratives": ["here", "there", "this", "that", "these", "those", "so"]},
+  "actions": [
+    {
+      "name": "place_drawing",
+      "description": "Draw one object from the drawable list at a place, at a size. Call once per object.",
+      "params": [
+        {"name": "object", "type": "text", "required": true, "description": "A drawable category, e.g. 'tree'."},
+        {"name": "place", "type": "place", "want": "point", "description": "Omit if no place was spoken: the last pointing is used."},
+        {"name": "size", "type": "size", "description": "Omit if no size was spoken."},
+        {"name": "style", "type": "choice", "choices": ["simple", "detailed"], "description": "Only if the person asked for a simple or a detailed drawing."}
+      ]
+    },
+    {
+      "name": "draw_connector",
+      "description": "Draw an arrow or line from one object or pointed spot to another.",
+      "params": [
+        {"name": "kind", "type": "choice", "choices": ["arrow", "line", "double_arrow"]},
+        {"name": "from", "type": "object", "allow_point": true, "required": true},
+        {"name": "to", "type": "object", "allow_point": true, "required": true}
+      ]
+    },
+    {
+      "name": "write_label",
+      "description": "Write text on the sheet. Copy the user's words for the text verbatim.",
+      "params": [
+        {"name": "text", "type": "text", "required": true, "description": "The words to write, copied verbatim."},
+        {"name": "place", "type": "place", "want": "point"},
+        {"name": "size", "type": "size"}
+      ]
+    },
+    {
+      "name": "look",
+      "description": "Ask the camera/vision model a question about the sheet (what is drawn, where).",
+      "params": [{"name": "query", "type": "text", "required": true}]
+    },
+    {"name": "new_sheet", "description": "The user wants a fresh sheet of paper; clears the scene."}
+  ]
+}

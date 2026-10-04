@@ -24,12 +24,13 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from deixis.filters import OneEuroFilter2D
+from deixis.filters import OneEuroFilter2D, OneEuroParams
 from deixis.geometry import Box, Point
 from deixis.holds import HoldDetector, HoldParams
 from deixis.resolver import SpanHold
 from deixis.spans import SpanHoldDetector, SpanParams
 from deixis.types import Hold
+from pointdraw.profile import plotter_profile
 from pointdraw.vision.hands import INDEX_TIP, THUMB_TIP, HandObservation, HandsFrame
 
 WRIST, INDEX_MCP, MIDDLE_MCP, MIDDLE_TIP = 0, 5, 9, 12
@@ -41,10 +42,19 @@ class GestureParams:
     enter_frames: int = 2  # frames over the paper before the interlock trips
     exit_frames: int = 3  # frames clear before it releases
     thumb_out_ratio: float = 0.3  # |thumb tip - middle fingertip| / |wrist - middle MCP|
-    # Kept 2 min, not 30 s: a "How big?" answered 40 s later still needs the request's point
-    # (live run, 1 Oct 2026). Old holds never match new words: assignment goes by word time.
-    holds: HoldParams = field(default_factory=lambda: HoldParams(history_s=120.0))
-    spans: SpanParams = field(default_factory=SpanParams)
+    # From the plotter's profile. Holds are kept 2 min, not 30 s: a "How big?" answered 40 s
+    # later still needs the request's point (live run, 1 Oct 2026). Old holds never match new
+    # words: assignment goes by word time.
+    holds: HoldParams = field(default_factory=lambda: plotter_profile().hold_params())
+    spans: SpanParams = field(default_factory=lambda: _spans(plotter_profile().span_params()))
+    smoothing: OneEuroParams | None = field(
+        default_factory=lambda: plotter_profile().filter_params()
+    )
+
+
+def _spans(p: SpanParams | None) -> SpanParams:
+    assert p is not None, "the plotter's profile must allow size gestures"
+    return p
 
 
 def thumb_out(obs: HandObservation, ratio: float = 0.3) -> bool:
@@ -84,7 +94,7 @@ class GestureTracker:
         self.params = params or GestureParams()
         self.holds = HoldDetector(self.params.holds)
         self.spans = SpanHoldDetector(self.params.spans)
-        self._filter = OneEuroFilter2D()
+        self._filter = OneEuroFilter2D(self.params.smoothing)
         self._over_run = 0
         self._clear_run = 0
         self.hands_clear = True

@@ -39,6 +39,7 @@ from pointdraw.agent.schema import (
     RelationPlace,
     RelativeSize,
 )
+from pointdraw.profile import plotter_profile
 from pointdraw.scene.model import SceneModel, SceneObject
 
 
@@ -124,7 +125,7 @@ class References:
         self.holds = holds
         self.spans = spans
         self.scene = scene
-        self.p = params or ResolverParams()
+        self.p = params or plotter_profile().resolver_params()
         self.default_size = default_size
         self.avoid = size_holds(holds, spans, self.p)
         self.picks: dict[int, Pick | Ask] = {}

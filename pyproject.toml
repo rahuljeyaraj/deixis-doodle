@@ -94,3 +94,7 @@ src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+# deixis moved to its own repo (C:\work\deixis); keep its imports grouped with ours.
+known-first-party = ["deixis", "pointdraw"]

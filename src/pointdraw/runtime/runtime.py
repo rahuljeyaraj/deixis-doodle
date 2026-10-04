@@ -53,6 +53,7 @@ from pointdraw.agent.schema import (
 )
 from pointdraw.controller.config import MachineConfig
 from pointdraw.drawing import Placed, optimize
+from pointdraw.profile import plotter_profile
 from pointdraw.runtime.events import EventLog
 from pointdraw.runtime.gestures import GestureTracker
 from pointdraw.runtime.planner import Planner
@@ -149,7 +150,7 @@ class RuntimeParams:
     size_wait_s: float = 6.0  # after "this big", how long to wait for the fingers to open
     auto_confirm: bool = True
     confirm_quiet_s: float = 1.5  # 2.0 until 2 Oct (scripts/start_latency.py)
-    resolver: ResolverParams = field(default_factory=ResolverParams)
+    resolver: ResolverParams = field(default_factory=lambda: plotter_profile().resolver_params())
 
 
 @dataclass
