@@ -40,7 +40,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from deixis.geometry import Box, Point
-from deixis.resolver import Ask, ResolverParams, pick_span
+from deixis.resolver import ResolverParams
 from deixis.types import Word
 from pointdraw.agent.nemotron import AgentResult
 from pointdraw.agent.prompts import AgentContext
@@ -53,6 +53,7 @@ from pointdraw.agent.schema import (
 )
 from pointdraw.controller.config import MachineConfig
 from pointdraw.drawing import Placed, optimize
+from pointdraw.profile import plotter_profile
 from pointdraw.runtime.events import EventLog
 from pointdraw.runtime.gestures import GestureTracker
 from pointdraw.runtime.planner import Planner
@@ -61,6 +62,7 @@ from pointdraw.runtime.references import (
     Question,
     References,
     Utterance,
+    adjust_offset,
     deictic_words,
 )
 from pointdraw.scene.ink import segment_ink
@@ -145,11 +147,10 @@ class RuntimeParams:
     cross_size_mm: float = 10.0
     label_cap_mm: float = 5.0  # label cap height when no size is given
     label_gap_mm: float = 3.0
-    step_mm: float = 5.0  # one "a bit" step for adjust
     size_wait_s: float = 6.0  # after "this big", how long to wait for the fingers to open
     auto_confirm: bool = True
     confirm_quiet_s: float = 1.5  # 2.0 until 2 Oct (scripts/start_latency.py)
-    resolver: ResolverParams = field(default_factory=ResolverParams)
+    resolver: ResolverParams = field(default_factory=lambda: plotter_profile().resolver_params())
 
 
 @dataclass
@@ -478,6 +479,7 @@ class Runtime:
         )
 
     def _handle(self, call: ToolCall, refs: References, new: list[SceneObject], t: float) -> None:
+        refs.current = call
         name, a = call.name, call.args
         if name == "stop":
             self.do_stop(t, "tool call")
@@ -771,9 +773,9 @@ class Runtime:
             self.say(t, "There's nothing to adjust right now.")
             return
         self._set_state(ADJUST, t)
-        step = self.params.step_mm
+        ox, oy = adjust_offset(self.scene, obj.box, dx, dy, scale)  # the step is the core's
         p = Placed(obj.id, obj.kind, obj.polylines, obj.box, obj.label)
-        p = self.planner.shift(p, dx * step, dy * step, scale)
+        p = self.planner.shift(p, ox, oy, scale)
         self.log.add(t, "adjust", id=obj.id, dx=dx, dy=dy, scale=scale)
         if target is not None:  # not previewed yet: just change it
             p, _ = self.planner.clip_inside(p)
@@ -1065,12 +1067,12 @@ class Runtime:
 
     def _answer_span(self, utt: Utterance) -> Any:
         """The size gesture (a SpanHold) shown with an answer like "this big", if any."""
-        spans = self.tracker.spans.holds()
-        for w in utt.words:
+        refs = self._refs(utt)
+        for i, w in enumerate(utt.words):
             if norm_word(w.text) in SIZE_WORDS:
-                pick = pick_span(w, spans, self.params.resolver)
-                if not isinstance(pick, Ask):
-                    return pick.hold
+                span = refs.measure(i)
+                if span is not None:
+                    return span
         return None
 
     def _size_answer(self, oq: OpenQuestion, span: Any, t: float) -> None:

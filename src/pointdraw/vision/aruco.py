@@ -15,6 +15,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from deixis.frames import apply_matrix
 from pointdraw import layout
 from pointdraw.vision.lens import LensModel
 
@@ -66,9 +67,8 @@ def detect_markers(
 
 
 def apply_homography(H: np.ndarray, pts: np.ndarray) -> np.ndarray:
-    """Map (N, 2) points through a 3x3 homography."""
-    pts = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
-    return cv2.perspectiveTransform(pts.reshape(-1, 1, 2), H).reshape(-1, 2)
+    """Map (N, 2) points through a 3x3 homography (the deixis core's `apply_matrix`)."""
+    return apply_matrix(H, pts)
 
 
 # --- calibration file ------------------------------------------------------------------------

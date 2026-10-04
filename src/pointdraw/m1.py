@@ -11,7 +11,6 @@ Positions are bed-frame mm (= machine XY), which is what the bed calibration pro
 from __future__ import annotations
 
 import json
-import math
 import statistics
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -22,6 +21,7 @@ import numpy as np
 from deixis.filters import OneEuroFilter2D
 from deixis.geometry import Box, Point
 from deixis.holds import HoldDetector, HoldParams
+from deixis.scene import nearest
 from deixis.types import Hold
 from pointdraw.controller.api import PlotterController
 from pointdraw.controller.safety import SafetyError
@@ -79,10 +79,10 @@ def over_bed(landmarks_mm, bed: Box, margin_mm: float = 20.0) -> bool:
 
 
 def nearest_target(p: Point, targets: list[Target]) -> tuple[Target, float] | None:
-    if not targets:
+    hit = nearest(p, [(t.x, t.y) for t in targets])
+    if hit is None:
         return None
-    best = min(targets, key=lambda t: math.hypot(t.x - p[0], t.y - p[1]))
-    return best, math.hypot(best.x - p[0], best.y - p[1])
+    return targets[hit[0]], hit[1]
 
 
 @dataclass
