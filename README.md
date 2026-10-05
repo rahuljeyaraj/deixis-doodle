@@ -6,9 +6,6 @@ Point and Draw lets you tell a robot where by doing what people do with each oth
 
 Entry for the Nebius x NVIDIA Global AI Hackathon, Physical AI track. **Work in progress.**
 
-- Build plan (source of truth): [docs/point-and-draw-plan.md](docs/point-and-draw-plan.md)
-- Research: [docs/robot-deixis-literature-review.md](docs/robot-deixis-literature-review.md)
-
 ## Development
 
 ```
