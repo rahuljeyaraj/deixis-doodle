@@ -57,6 +57,10 @@ class PlotterController(Protocol):
     def preview_box(self, box: Box) -> None:
         """Trace the box outline with the pen up, so the user sees the intended place."""
 
+    def preview_circle(self, center: Point, size: float) -> None:
+        """Trace the circle of diameter `size` mm round `center` with the pen up: the place and size
+        a drawing was asked for."""
+
     def draw_polylines(self, polylines: list[Polyline], speed: Speed = "normal") -> None:
         """Validate and draw. Rejects any point outside the drawable area. Non-blocking."""
 

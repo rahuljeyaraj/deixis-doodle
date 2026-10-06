@@ -1,7 +1,10 @@
-"""Fit drawings into millimetre boxes: scale, centre, smooth, keep inside the paper.
+"""Fit drawings into millimetre circles and boxes: scale, centre, smooth, keep inside the paper.
 
-Plan section 4.3: a requested size sets the **larger** dimension of the object's bounding
-box, the aspect ratio is kept, and the drawing is centred on the requested point.
+A requested size is the **diameter of a circle** round the requested point (rahul, 6 Oct 2026:
+"this big" is shown across, from one side to the other, and the plotter traces that circle
+in the air before it draws). The drawing's box is centred on the point, the aspect ratio is
+kept, and the drawing grows until its farthest line touches the circle. A square's corners
+touch it; a circle fills it. (Until 6 Oct the size set the larger side of the box.)
 """
 
 from __future__ import annotations
@@ -103,23 +106,35 @@ def smooth(
     return [chaikin(pl, iterations, corner_deg) for pl in polylines]
 
 
+def reach(polylines: Sequence[Sequence[Point]], center: Point) -> float:
+    """How far the farthest point is from `center` (0 if there are none). Lines are straight
+    between points, so the farthest point of the drawing is always one of them."""
+    return max((math.dist(center, p) for pl in polylines for p in pl), default=0.0)
+
+
+def circle_size(polylines: Sequence[Sequence[Point]]) -> float:
+    """The diameter of the circle round the drawing's box centre that its farthest line touches:
+    the size `fit` gave it."""
+    return 2 * reach(polylines, bbox(polylines).center)
+
+
 def fit(
     polylines: Sequence[Sequence[Point]],
     center: Point,
     size: float,
     smooth_iterations: int = 2,
 ) -> list[Polyline]:
-    """Scale so the larger bbox dimension equals `size` (mm) and centre the bbox on `center`.
+    """Centre the bbox on `center` and scale until the farthest line touches the circle of
+    diameter `size` (mm) round it.
 
     Smoothing runs before scaling, so the result's size is exact.
     """
     if size <= 0:
         raise ValueError("size must be positive")
     src = smooth(polylines, smooth_iterations)
-    b = bbox(src)
-    longest = max(b.w, b.h)
-    s = size / longest if longest > 0 else 1.0
-    cx, cy = b.center
+    cx, cy = bbox(src).center
+    r = reach(src, (cx, cy))
+    s = size / 2 / r if r > 0 else 1.0
     return transform(src, s, center[0] - cx * s, center[1] - cy * s)
 
 

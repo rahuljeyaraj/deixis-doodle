@@ -7,6 +7,7 @@ import pytest
 
 from deixis.geometry import Box
 from pointdraw.drawing import Library, compose, place_object, plan
+from pointdraw.drawing.place import circle_size
 from pointdraw.drawing.render import A5, render, render_cell
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,8 +21,10 @@ def lib() -> Library:
 def test_place_object_size_and_centre(lib):
     p = place_object("ear", (60, 70), 40, lib, variant=0)
     assert p.category == "ear" and p.key_id
-    assert max(p.box.w, p.box.h) == pytest.approx(40)
+    assert circle_size(p.polylines) == pytest.approx(40)  # its farthest line on the circle
+    assert max(p.box.w, p.box.h) <= 40
     assert p.box.center == pytest.approx((60, 70))
+    assert p.size_circle == ((60, 70), 40)
 
 
 @pytest.mark.parametrize("scene", ["hero-senses.json", "garden.json"])

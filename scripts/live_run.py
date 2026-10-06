@@ -63,6 +63,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "4")
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
+from deixis.geometry import Box  # noqa: E402
 from pointdraw import clock  # noqa: E402
 from pointdraw.config import get_settings  # noqa: E402
 from pointdraw.controller.config import (  # noqa: E402
@@ -72,6 +73,7 @@ from pointdraw.controller.config import (  # noqa: E402
 )
 from pointdraw.controller.controller import Controller  # noqa: E402
 from pointdraw.controller.serial_link import SerialLink  # noqa: E402
+from pointdraw.controller.shapes import circle_points  # noqa: E402
 from pointdraw.controller.shapes import frame as frame_outline  # noqa: E402
 from pointdraw.controller.simulator import SimulatedPlotter  # noqa: E402
 from pointdraw.controller.transport import LinkError, Transport  # noqa: E402
@@ -367,8 +369,9 @@ def draw_overlay(
     holds=(),
 ) -> None:
     """The paper, the robot's ink, the hands, your holds (filled amber) and the robot's guess
-    (dashed blue), on `vis` (the camera image times `scale`). `guesses` are bed boxes,
-    `holds` bed points (claim 39q: one look on every robot)."""
+    (dashed blue), on `vis` (the camera image times `scale`). `guesses` are bed boxes or
+    closed outlines (a drawing's circle), `holds` bed points (claim 39q: one look on every
+    robot)."""
     corners = np.array(
         [(paper.x, paper.y), (paper.x2, paper.y), (paper.x2, paper.y2), (paper.x, paper.y2)]
     )
@@ -379,8 +382,11 @@ def draw_overlay(
         px = (view.to_px(np.array(ink).reshape(-1, 2)) * scale).astype(np.int32).reshape(-1, 2, 2)
         cv2.polylines(vis, list(px), False, RED, 1, cv2.LINE_AA)
     for b in guesses:
-        box = np.array([(b.x, b.y), (b.x2, b.y), (b.x2, b.y2), (b.x, b.y2)])
-        look.dashed(vis, view.to_px(box) * scale)
+        if isinstance(b, Box):
+            outline = np.array([(b.x, b.y), (b.x2, b.y), (b.x2, b.y2), (b.x, b.y2)])
+        else:
+            outline = np.array(b[:-1])  # closed: the last point is the first
+        look.dashed(vis, view.to_px(outline) * scale)
     for p in holds:
         look.dot(vis, view.to_px(np.array([p]))[0] * scale, 5)
     for h in hf.hands:
@@ -427,11 +433,17 @@ def render_window(
 
 
 def window_marks(rt: Runtime, t: float, last_said=None, holds_s: float = 6.0) -> dict:
-    """What the window marks: the guess's boxes and your holds of the last `holds_s`, in bed
-    mm, and the robot's last words while something waits on you."""
-    guesses = []
-    if rt.proposal is not None:
-        guesses = [rt._box_to_bed(o.box) for o in rt.proposal.items]
+    """What the window marks: the guess (a drawing's circle, the plotter traces the same;
+    else the box of the words or the arrow) and your holds of the last `holds_s`, in bed mm,
+    and the robot's last words while something waits on you."""
+    guesses: list = []
+    area = rt._box_to_bed(rt.planner.drawable) if rt.planner.drawable is not None else None
+    for o in rt.proposal.items if rt.proposal is not None else []:
+        if o.size_circle is not None:
+            c, d = o.size_circle
+            guesses.append(circle_points(rt._to_bed(c), d, area, tol=0.5))
+        else:
+            guesses.append(rt._box_to_bed(o.box))
     holds = [rt._to_bed(h.mean) for h in rt.tracker.recent_holds(t - holds_s)]
     said = None
     if last_said and rt.state in ("PREVIEW", "ADJUST", "CLARIFY") and t - last_said[0] < 60:

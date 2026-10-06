@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from pointdraw.live.logs import TimelineWriter
 from pointdraw.vision.camera import CameraUnavailable
@@ -171,11 +172,14 @@ def test_parked_photos_one_per_rest_with_the_paper_clear(tmp_path):
     assert ph.offer(img, 11.0, False, False, park) == "photos/11000.png"
 
 
-def test_window_shows_the_guess_dashed_blue_and_holds_amber():
-    """Claim 39q: the robot's guess is a dashed blue box; your holds are filled amber."""
+@pytest.mark.parametrize("guess", ["box", "circle"])
+def test_window_shows_the_guess_dashed_blue_and_holds_amber(guess):
+    """Claim 39q: the robot's guess is dashed blue (a drawing's circle since 6 Oct, else the
+    box of words or an arrow); your holds are filled amber."""
     import numpy as np
 
     from deixis.geometry import Box
+    from pointdraw.controller.shapes import circle_points
     from pointdraw.live import look
     from pointdraw.live.view import BedView
     from pointdraw.vision.aruco import BedHomography
@@ -199,7 +203,7 @@ def test_window_shows_the_guess_dashed_blue_and_holds_amber():
         [],
         [],
         ("Say yes to draw it, or change it", None),
-        guesses=[Box(80, 80, 40, 40)],
+        guesses=[Box(80, 80, 40, 40) if guess == "box" else circle_points((100, 100), 40)],
         holds=[(100.0, 100.0)],
         said="A kite, about four centimetres?",
     )

@@ -138,6 +138,10 @@ class Controller:
         lines = gcode.preview_box_gcode(clamped, self.config, start=self._end)
         self._submit("preview", lines, "previewing", tag)
 
+    def preview_circle(self, center: Point, size: float, tag: Any = None) -> None:
+        lines = gcode.preview_circle_gcode(center, size, self.config, start=self._end)
+        self._submit("preview", lines, "previewing", tag)
+
     def draw_polylines(
         self, polylines: list[Polyline], speed: Speed = "normal", tag: Any = None
     ) -> None:
