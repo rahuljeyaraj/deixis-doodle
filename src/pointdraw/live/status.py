@@ -32,7 +32,7 @@ APP = {
     "CLARIFY": "Ready: answer the question",
     "PREVIEW": "Say yes to draw it, or change it",
     "ADJUST": "Say yes to draw it, or change it",
-    "WAIT_HANDS_CLEAR": "Waiting: take your hand away to draw",
+    "WAIT_HANDS_CLEAR": "Waiting: hands off the paper to draw",
 }
 
 
