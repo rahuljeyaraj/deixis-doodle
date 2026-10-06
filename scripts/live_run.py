@@ -76,6 +76,7 @@ from pointdraw.controller.shapes import frame as frame_outline  # noqa: E402
 from pointdraw.controller.simulator import SimulatedPlotter  # noqa: E402
 from pointdraw.controller.transport import LinkError, Transport  # noqa: E402
 from pointdraw.drawing import Library  # noqa: E402
+from pointdraw.live import look  # noqa: E402
 from pointdraw.live.agent import BackgroundAgent  # noqa: E402
 from pointdraw.live.frames import SavedFrames, frame_paths  # noqa: E402
 from pointdraw.live.logs import JsonlWriter, TimelineWriter  # noqa: E402
@@ -96,13 +97,14 @@ from pointdraw.vision.camera import Camera, CameraSettings, CameraUnavailable  #
 from pointdraw.vision.hands import HAND_CONNECTIONS, INDEX_TIP, HandTracker  # noqa: E402
 from pointdraw.vision.lens import DEFAULT_LENS_PATH, LensModel  # noqa: E402
 
-GREEN, YELLOW, RED, CYAN, WHITE, BLUE = (
+GREEN, YELLOW, RED, CYAN, WHITE, BLUE, GREY = (
     (60, 220, 60),
     (0, 220, 255),
     (60, 60, 255),
     (255, 200, 0),
     (255, 255, 255),
     (255, 120, 40),
+    (170, 170, 170),
 )
 SHOWN = ("utterance", "tool_calls", "say", "state", "preview", "confirm", "drawn", "stop")
 
@@ -354,48 +356,87 @@ class Laps:
         return out
 
 
-def draw_overlay(vis, hf, view: BedView, paper, plotter: LivePlotter, scale: float = 1.0) -> None:
-    """The paper, the robot's ink and the hands, on `vis` (the camera image times `scale`)."""
+def draw_overlay(
+    vis,
+    hf,
+    view: BedView,
+    paper,
+    plotter: LivePlotter,
+    scale: float = 1.0,
+    guesses=(),
+    holds=(),
+) -> None:
+    """The paper, the robot's ink, the hands, your holds (filled amber) and the robot's guess
+    (dashed blue), on `vis` (the camera image times `scale`). `guesses` are bed boxes,
+    `holds` bed points (claim 39q: one look on every robot)."""
     corners = np.array(
         [(paper.x, paper.y), (paper.x2, paper.y), (paper.x2, paper.y2), (paper.x, paper.y2)]
     )
     quad = (view.to_px(corners) * scale).astype(np.int32)
-    cv2.polylines(vis, [quad], True, BLUE, 2, cv2.LINE_AA)
+    cv2.polylines(vis, [quad], True, GREY, 1, cv2.LINE_AA)
     ink = plotter.ink_polylines()[-2000:]
     if ink:
         px = (view.to_px(np.array(ink).reshape(-1, 2)) * scale).astype(np.int32).reshape(-1, 2, 2)
         cv2.polylines(vis, list(px), False, RED, 1, cv2.LINE_AA)
+    for b in guesses:
+        box = np.array([(b.x, b.y), (b.x2, b.y), (b.x2, b.y2), (b.x, b.y2)])
+        look.dashed(vis, view.to_px(box) * scale)
+    for p in holds:
+        look.dot(vis, view.to_px(np.array([p]))[0] * scale, 5)
     for h in hf.hands:
-        col = GREEN if h.pointing else CYAN
         lm = (h.landmarks_px * scale).astype(np.int32)
         for a, b in HAND_CONNECTIONS:
-            cv2.line(vis, tuple(lm[a]), tuple(lm[b]), col, 2, cv2.LINE_AA)
-        cv2.circle(vis, tuple(lm[INDEX_TIP]), 7, col, 2)
+            cv2.line(vis, tuple(lm[a]), tuple(lm[b]), GREY, 1, cv2.LINE_AA)
+        if h.pointing:
+            look.dot(vis, lm[INDEX_TIP], 9)
+        else:
+            cv2.circle(vis, tuple(lm[INDEX_TIP]), 7, look.AMBER, 2, cv2.LINE_AA)
 
 
 def render_window(
-    img, hf, view: BedView, paper, plotter: LivePlotter, top, lines, banner=None
+    img,
+    hf,
+    view: BedView,
+    paper,
+    plotter: LivePlotter,
+    top,
+    lines,
+    banner=None,
+    *,
+    guesses=(),
+    holds=(),
+    said: str | None = None,
 ) -> np.ndarray:
     """The window's picture: shrunk first (drawing on the full 1080p frame took ~7 ms), the
     overlay, turned 180 degrees as the user sees the bed, then the `banner` (text, colour) in
-    big letters on a bar, `top` [(text, colour)] under it and the last few `lines` at the
-    bottom."""
+    large plain words on a dark bar with the robot's last words (`said`) under it, `top`
+    [(text, colour)] under that and the last few `lines` at the bottom."""
     scale = min(1.0, WINDOW_W / img.shape[1])
     vis = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-    draw_overlay(vis, hf, view, paper, plotter, scale)
+    draw_overlay(vis, hf, view, paper, plotter, scale, guesses, holds)
     vis = cv2.rotate(vis, cv2.ROTATE_180)
     y0 = 32
     if banner is not None:
         text, colour = banner
-        cv2.rectangle(vis, (0, 0), (vis.shape[1], 64), colour, -1)
-        cv2.putText(vis, text, (16, 46), cv2.FONT_HERSHEY_DUPLEX, 1.25, (0, 0, 0), 7, cv2.LINE_AA)
-        cv2.putText(vis, text, (16, 46), cv2.FONT_HERSHEY_DUPLEX, 1.25, WHITE, 2, cv2.LINE_AA)
-        y0 = 96
+        y0 = look.status(vis, text, colour, said) + 32
     for i, (text, colour) in enumerate(top):
         put(vis, text, (14, y0 + 30 * i), colour)
     for i, s in enumerate(lines):
-        put(vis, s, (14, vis.shape[0] - 20 - 30 * (len(lines) - 1 - i)))
+        put(vis, s, (14, vis.shape[0] - 20 - 30 * (len(lines) - 1 - i)), scale=0.5)
     return vis
+
+
+def window_marks(rt: Runtime, t: float, last_said=None, holds_s: float = 6.0) -> dict:
+    """What the window marks: the guess's boxes and your holds of the last `holds_s`, in bed
+    mm, and the robot's last words while something waits on you."""
+    guesses = []
+    if rt.proposal is not None:
+        guesses = [rt._box_to_bed(o.box) for o in rt.proposal.items]
+    holds = [rt._to_bed(h.mean) for h in rt.tracker.recent_holds(t - holds_s)]
+    said = None
+    if last_said and rt.state in ("PREVIEW", "ADJUST", "CLARIFY") and t - last_said[0] < 60:
+        said = last_said[1]  # (t, text) of the last "say"
+    return {"guesses": guesses, "holds": holds, "said": said}
 
 
 def problems(plotter_state: str, plotter_problem: str | None, mic_problem: str | None):
@@ -562,6 +603,7 @@ def run(args: argparse.Namespace) -> int:
     shown = 0
     frames = 0
     lines: list[str] = []
+    last_said = None
     print("ready: homing Y and parking once no hand is over the paper")
     rt.start(clock.now())
     try:
@@ -610,8 +652,10 @@ def run(args: argparse.Namespace) -> int:
             laps.lap("picture")
             rt.tick(t)
             for e in log.events[shown:]:
-                if e["kind"] == "say" and speaker is not None:
-                    speaker.say(e["text"])
+                if e["kind"] == "say":
+                    last_said = (e["t"], e["text"])
+                    if speaker is not None:
+                        speaker.say(e["text"])
                 text = describe(e)
                 if text:
                     print(f"[{e['t'] - first.t:7.2f}] {text}")
@@ -633,9 +677,19 @@ def run(args: argparse.Namespace) -> int:
                 log.add(t, "banner", text=said_banner)
             shoot = args.shots and frames % args.shots == 0
             if not args.headless or shoot:
-                top = [(f"plotter {st.state}, app {rt.state}", YELLOW)]
+                top = [(f"plotter {st.state}, app {rt.state}", YELLOW)] if args.verbose else []
                 top += [(text, RED) for text in problems(st.state, rt.plotter_problem, mic_problem)]
-                vis = render_window(img, hf, view, paper, plotter, top, lines, words_now)
+                vis = render_window(
+                    img,
+                    hf,
+                    view,
+                    paper,
+                    plotter,
+                    top,
+                    lines,
+                    words_now,
+                    **window_marks(rt, t, last_said),
+                )
                 if shoot:
                     slug = "".join(c if c.isalnum() else "-" for c in words_now[0].lower())
                     cv2.imwrite(str(out / "window" / f"{frames:06d}-{slug[:24]}.png"), vis)

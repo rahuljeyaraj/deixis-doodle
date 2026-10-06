@@ -164,7 +164,7 @@ def _run(
         planner,
         camera=camera,
         vision=vision,
-        params=params,
+        params=params or RuntimeParams(auto_confirm=True),  # scenes rarely say "yes"
         log=log,
         on_new_sheet=on_new_sheet,
     )

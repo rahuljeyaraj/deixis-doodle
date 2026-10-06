@@ -30,8 +30,8 @@ RED, ORANGE, GREEN, BLUE, GREY = (
 APP = {
     "UNDERSTAND": "Ready: thinking about what you said",
     "CLARIFY": "Ready: answer the question",
-    "PREVIEW": "Ready: say yes, or wait, to draw it",
-    "ADJUST": "Ready: say yes, or wait, to draw it",
+    "PREVIEW": "Say yes to draw it, or change it",
+    "ADJUST": "Say yes to draw it, or change it",
     "WAIT_HANDS_CLEAR": "Waiting: take your hand away to draw",
 }
 
