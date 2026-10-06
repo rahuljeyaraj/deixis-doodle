@@ -87,6 +87,10 @@ class MachineConfig(_Model):
     # Pen-up height for any move that starts or ends outside the drawable area: the paper's
     # clips stand taller than pen_up_z (the travel from home hit a front clip, 2 Oct 2026).
     clear_z: float = 15.0
+    # The height the preview trace runs at once it is inside the drawable area. A preview
+    # starts from park, which is outside, so without this the whole trace stayed at clear_z:
+    # 15 mm over the paper, which rahul could not read (6 Oct). None: use pen_up_z.
+    preview_z: float | None = None
 
     feed: Feedrates = Feedrates()
     limits: MotionLimits = MotionLimits()
@@ -134,6 +138,11 @@ class MachineConfig(_Model):
         return self.paper_box.inset(self.margin_mm)
 
     @property
+    def preview_height(self) -> float:
+        """The height a preview trace runs at inside the drawable area."""
+        return self.pen_up_z if self.preview_z is None else self.preview_z
+
+    @property
     def pen_threshold_z(self) -> float:
         """Z below which the pen counts as down."""
         return (self.pen_up_z + self.pen_down_z) / 2
@@ -157,6 +166,8 @@ class MachineConfig(_Model):
             raise ValueError("pen_up_z must be above pen_down_z")
         if not self.pen_up_z <= self.clear_z <= self.z_max:
             raise ValueError("clear_z must lie within pen_up_z..z_max")
+        if self.preview_z is not None and not self.pen_down_z < self.preview_z <= self.clear_z:
+            raise ValueError("preview_z must lie above pen_down_z and no higher than clear_z")
         for name in ("pen_up_z", "pen_down_z"):
             if not self.z_min <= getattr(self, name) <= self.z_max:
                 raise ValueError(f"{name} must lie within z_min..z_max")

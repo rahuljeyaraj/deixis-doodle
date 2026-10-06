@@ -96,6 +96,16 @@ class _Emitter:
             self.pen_is_down = False
             self.clear = True
 
+    def preview_low(self) -> None:
+        """Come down to the preview height, once inside the drawable area. A preview starts
+        from park, which is outside, so the emitter has lifted to clear_z: without this the
+        whole trace ran 15 mm over the paper and read as drawn in the air (rahul, 6 Oct)."""
+        if not self._inside(self.pos):
+            return
+        self.lines.append(f"G0 Z{fmt(self.c.preview_height)} F{fmt(self.c.feed.z)}")
+        self.pen_is_down = None  # neither up nor down: a later up() lifts to pen_up_z
+        self.clear = False
+
     def down(self) -> None:
         if self.pen_is_down is not True:
             self.lines.append(pen_down(self.c))
@@ -154,9 +164,11 @@ def preview_box_gcode(
     if c.preview_path == "diagonal":
         corners = [(box.x, box.y), (box.x2, box.y2)]
     e.move(corners[0], c.feed.travel, draw=False)
+    e.preview_low()
     for _ in range(loops):
         for p in corners[1:]:
             e.move(p, c.feed.preview, draw=False)
+    e.up()
     return e.lines
 
 
@@ -170,8 +182,10 @@ def preview_circle_gcode(
     e.up()
     pts = circle_points(center, size, c.drawable, start=start)
     e.move(pts[0], c.feed.travel, draw=False)
+    e.preview_low()
     for p in pts[1:]:
         e.move(p, c.feed.preview, draw=False)
+    e.up()
     return e.lines
 
 

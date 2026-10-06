@@ -24,7 +24,8 @@ Confirmation: a request is previewed (the pen traces its box, pen up) and the gu
 2026: `auto_confirm` is off). With `auto_confirm` on (the virtual world and replays) it is
 also drawn after `confirm_quiet_s` of quiet once the trace is done. Corrections
 ("bigger", "a bit left", "no, there") during the preview change it and trace it again.
-A new, different request during a preview confirms the preview first.
+A new, different request during a preview drops that guess; it is never drawn (with
+`auto_confirm` on it confirms it instead, since nothing is waiting on a person).
 
 "Stop" is spotted in the transcript before the agent is called, so it doesn't wait for a
 model reply.
@@ -517,10 +518,26 @@ class Runtime:
 
     # ------------------------------------------------------------------ drawing requests
 
-    def _commit_preview_for(self, t: float) -> None:
-        """A different request arrived during a preview: confirm the preview first."""
-        if self.proposal is not None:
+    def _drop_preview_for(self, t: float) -> None:
+        """A different request arrived during a preview: drop that guess, never draw it.
+
+        Until 6 Oct this *confirmed* the waiting guess, so one misheard word turned into ink:
+        in rahul's run that day "Beaker" drew the car he was still being asked about, and the
+        next request drew the label. Asking for something else means he changed his mind, not
+        that he said yes. "Yes" and "cancel" are the only ways a guess becomes ink (claim 16).
+        """
+        prop = self.proposal
+        if prop is None:
+            return
+        if self.params.auto_confirm:
+            # Nothing is waiting on a person here: the guess was going to be drawn anyway once
+            # the quiet ran out, so a new request does not take it back (the virtual world).
             self.confirm(t, reason="new request")
+            return
+        for obj in prop.items:
+            self.scene.remove(obj)
+        self.proposal = None
+        self.log.add(t, "dropped", items=[o.id for o in prop.items], why="new request")
 
     def _place_drawing(self, call: ToolCall, refs: References, new: list, t: float) -> None:
         a = call.args
@@ -558,7 +575,7 @@ class Runtime:
             self._replace(prev, again, t, where)
             return
         if prev is not None or (self.proposal is not None and not new):
-            self._commit_preview_for(t)
+            self._drop_preview_for(t)
         default = self.params.cross_size_mm if cat == "cross" else None
         size = refs.size(a.size, default)  # type: ignore[attr-defined]
         pl = refs.place(a.place, size)  # type: ignore[attr-defined]
@@ -585,7 +602,7 @@ class Runtime:
         a = call.args
         text: str = a.text  # type: ignore[attr-defined]
         if self._previewed_item() is not None and not new:
-            self._commit_preview_for(t)
+            self._drop_preview_for(t)
         cap = self.params.label_cap_mm
         if a.size is not None:  # type: ignore[attr-defined]
             s = refs.size(a.size)  # type: ignore[attr-defined]
@@ -636,7 +653,7 @@ class Runtime:
     def _connector(self, call: ToolCall, refs: References, new: list, t: float) -> None:
         a = call.args
         if self._previewed_item() is not None and not new:
-            self._commit_preview_for(t)
+            self._drop_preview_for(t)
         ends = []
         for ref in (a.from_, a.to):  # type: ignore[attr-defined]
             if isinstance(ref, DeicticObject):

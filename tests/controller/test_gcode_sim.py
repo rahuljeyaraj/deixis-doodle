@@ -100,7 +100,8 @@ def test_preview_is_pen_up_only():
     sim = run(lines)
     assert sim.strokes == []
     assert sim.position[:2] == (60, 50)  # round the box and back to its corner
-    assert all(ln.endswith(f"F{gcode.fmt(CFG.feed.preview)}") for ln in lines[2:])
+    xy = [ln for ln in lines[2:] if "X" in ln or "Y" in ln]  # the Z drop and lift run at feed.z
+    assert all(ln.endswith(f"F{gcode.fmt(CFG.feed.preview)}") for ln in xy)
 
 
 def test_diagonal_preview_goes_corner_to_corner_pen_up():
