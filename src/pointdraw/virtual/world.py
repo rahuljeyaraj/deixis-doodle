@@ -164,7 +164,9 @@ def _run(
         planner,
         camera=camera,
         vision=vision,
-        params=params or RuntimeParams(auto_confirm=True),  # scenes rarely say "yes"
+        # scenes rarely say "yes"; they were composed around a 40 mm default and overlap
+        # at the shipped 80 mm (6 Oct), so they keep the size they were written for
+        params=params or RuntimeParams(auto_confirm=True, default_size_mm=40.0),
         log=log,
         on_new_sheet=on_new_sheet,
     )

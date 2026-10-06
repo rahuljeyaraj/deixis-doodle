@@ -78,7 +78,7 @@ def test_the_guess_is_said_and_nothing_is_drawn_without_yes():
     assert rt.proposal is not None and rt.proposal.preview_done is not None
     assert rt.state == PREVIEW and not rt.log.of("confirm")
     said = [e["text"] for e in rt.log.of("say")]
-    assert "A circle, about four centimetres?" in said
+    assert "A circle, about eight centimetres?" in said
     say(rt, "yes", 40.0)
     run_until(rt, plotter, 41.0, 42.0)
     assert [e["reason"] for e in rt.log.of("confirm")] == ["confirm"]

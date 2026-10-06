@@ -155,7 +155,8 @@ NOT_UNDERSTOOD = "Sorry, I didn't catch that. Could you say it again?"
 
 @dataclass
 class RuntimeParams:
-    default_size_mm: float = 40.0  # when no size is spoken or shown
+    # when no size is spoken or shown; 40 until the film timings on 6 Oct
+    default_size_mm: float = 80.0
     cross_size_mm: float = 10.0
     label_cap_mm: float = 5.0  # label cap height when no size is given
     label_gap_mm: float = 3.0

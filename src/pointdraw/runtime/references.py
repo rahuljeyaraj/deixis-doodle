@@ -131,7 +131,7 @@ class References:
         spans: list[SpanHold],
         scene: SceneModel,
         params: ResolverParams | None = None,  # unused: the core takes them from the profile
-        default_size: float = 40.0,
+        default_size: float = 80.0,
         overrides: dict[int, Hold] | None = None,
         size_overrides: dict[int, SpanHold] | None = None,
         client: DeixisClient | None = None,

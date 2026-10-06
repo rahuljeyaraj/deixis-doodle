@@ -180,7 +180,8 @@ def test_a_bit_bigger_keeps_here_and_grows_the_circle():
     item = rt.proposal.items[0]
     (c0, d0) = item.size_circle
     rt.adjust(0, 0, 1.25, 3.0)
-    run(rt, plotter, 3.0, 12.0)  # the first trace ends, then the new circle is traced
+    # the first trace ends, then the new circle is traced; longer since the 80 mm default
+    run(rt, plotter, 3.0, 25.0)
     c1, d1 = item.size_circle
     assert d1 == pytest.approx(d0 * 1.25)
     assert c1 == pytest.approx(c0, abs=0.01)
