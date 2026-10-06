@@ -32,6 +32,7 @@ import cv2
 import numpy as np
 
 from pointdraw.config import get_settings
+from pointdraw.controller import gcode
 from pointdraw.controller.config import DEFAULT_CONFIG_PATH, MachineConfig, load_config
 from pointdraw.controller.controller import Controller
 from pointdraw.controller.serial_link import SerialLink
@@ -84,9 +85,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     plot.add_argument("--dry-run", action="store_true", help="simulated plotter, print G-code")
     ap.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="machine config JSON")
     ap.add_argument(
-        "--no-home-y",
+        "--no-home",
         action="store_true",
-        help="skip homing the bed (Y) at start; a bed pushed by hand is then off by that much",
+        help="skip homing X, Y and Z at start (not advised: the head's place is then a guess)",
     )
 
     ap.add_argument("--trigger", choices=["hold", "key"], default="hold")
@@ -187,10 +188,11 @@ def run(args: argparse.Namespace) -> int:
         hands_tracker.close()
         print(f"could not connect to the plotter: {e}")
         return 1
-    if not args.no_home_y:
-        # The bed is the axis a hand can push (the motors hold it only weakly), and the camera
-        # calibration assumes it parked exactly where it was then. Homing Y alone takes ~15 s.
-        ctl.run_lines(["G28 Y"], label="home Y")
+    if not args.no_home:
+        # Never trust the head's place after power-up (6 Oct: X was off and the head hit the east
+        # end; Z was off and the pen drew in the air). The bed is also pushed by hand easily, and
+        # the camera calibration assumes it parked exactly where it was then.
+        ctl.run_lines(gcode.home_gcode(cfg), label="home")
     ctl.park()  # runs once hands are clear; pointing happens with the bed parked
 
     targets = load_targets(args.targets, cfg.paper_box) if args.targets else []

@@ -14,9 +14,10 @@ hands, `GestureTracker` (holds, sizes, the hands-clear interlock), the microphon
 ASR (or `--type`), the agent (Nemotron, or `--ai mock`: recorded replies and the rule
 parser), and the real controller behind `LivePlotter`. Cosmos is off unless `--cosmos live`.
 
-At start it homes Y (the bed slips if pushed), draws the frame (the drawing area's outline,
-rahul 2 Oct: everything inside it is seen by the parked camera and reached by the pen; every
-drawing stays inside it, cut at its edge) and parks, once no hand is over the paper.
+At start it homes X, Y and Z (never trust the head after power-up), draws the frame (the
+drawing area's outline, rahul 2 Oct: everything inside it is seen by the parked camera and
+reached by the pen; every drawing stays inside it, cut at its edge) and parks, once no hand
+is over the paper.
 `--no-frame` skips the frame (the sheet already has one, in the same place).
 The plotter moves only when no hand has been over the paper (plus 10 mm) for half a second,
 and pauses when one comes back. If the camera stops, so does the plotter.
@@ -66,6 +67,7 @@ import numpy as np  # noqa: E402
 from deixis.geometry import Box  # noqa: E402
 from pointdraw import clock  # noqa: E402
 from pointdraw.config import get_settings  # noqa: E402
+from pointdraw.controller import gcode  # noqa: E402
 from pointdraw.controller.config import (  # noqa: E402
     DEFAULT_CONFIG_PATH,
     MachineConfig,
@@ -137,7 +139,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     plot.add_argument("--port", help="plotter serial port (default: Settings.serial_port)")
     plot.add_argument("--dry-run", action="store_true", help="simulated plotter, print G-code")
     ap.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="machine config JSON")
-    ap.add_argument("--no-home-y", action="store_true", help="skip homing the bed (Y) at start")
+    ap.add_argument(
+        "--no-home", action="store_true", help="skip homing X, Y and Z at start (not advised)"
+    )
     ap.add_argument("--no-frame", action="store_true", help="don't draw the frame at start")
 
     ap.add_argument("--ai", choices=["live", "mock"], default="live")
@@ -367,9 +371,11 @@ def draw_overlay(
     scale: float = 1.0,
     guesses=(),
     holds=(),
+    centres=(),
 ) -> None:
     """The paper, the robot's ink, the hands, your holds (filled amber) and the robot's guess
-    (dashed blue), on `vis` (the camera image times `scale`). `guesses` are bed boxes or
+    (dashed blue, with a cross on each `centres` point), on `vis` (the camera image times
+    `scale`). `guesses` are bed boxes or
     closed outlines (a drawing's circle), `holds` bed points (claim 39q: one look on every
     robot)."""
     corners = np.array(
@@ -387,6 +393,8 @@ def draw_overlay(
         else:
             outline = np.array(b[:-1])  # closed: the last point is the first
         look.dashed(vis, view.to_px(outline) * scale)
+    for p in centres:
+        look.cross(vis, view.to_px(np.array([p]))[0] * scale)
     for p in holds:
         look.dot(vis, view.to_px(np.array([p]))[0] * scale, 5)
     for h in hf.hands:
@@ -411,6 +419,7 @@ def render_window(
     *,
     guesses=(),
     holds=(),
+    centres=(),
     said: str | None = None,
 ) -> np.ndarray:
     """The window's picture: shrunk first (drawing on the full 1080p frame took ~7 ms), the
@@ -419,7 +428,7 @@ def render_window(
     [(text, colour)] under that and the last few `lines` at the bottom."""
     scale = min(1.0, WINDOW_W / img.shape[1])
     vis = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-    draw_overlay(vis, hf, view, paper, plotter, scale, guesses, holds)
+    draw_overlay(vis, hf, view, paper, plotter, scale, guesses, holds, centres)
     vis = cv2.rotate(vis, cv2.ROTATE_180)
     y0 = 32
     if banner is not None:
@@ -434,21 +443,24 @@ def render_window(
 
 def window_marks(rt: Runtime, t: float, last_said=None, holds_s: float = 6.0) -> dict:
     """What the window marks: the guess (a drawing's circle, the plotter traces the same;
-    else the box of the words or the arrow) and your holds of the last `holds_s`, in bed mm,
-    and the robot's last words while something waits on you."""
+    else the box of the words or the arrow), each circle's centre, the holds of the last
+    `holds_s`, in bed mm, and the robot's last words while something waits on you."""
     guesses: list = []
+    centres: list = []
     area = rt._box_to_bed(rt.planner.drawable) if rt.planner.drawable is not None else None
     for o in rt.proposal.items if rt.proposal is not None else []:
         if o.size_circle is not None:
             c, d = o.size_circle
-            guesses.append(circle_points(rt._to_bed(c), d, area, tol=0.5))
+            mid = rt._to_bed(c)
+            guesses.append(circle_points(mid, d, area, tol=0.5))
+            centres.append(mid)  # the spot he pointed at, marked even where the circle is cut
         else:
             guesses.append(rt._box_to_bed(o.box))
     holds = [rt._to_bed(h.mean) for h in rt.tracker.recent_holds(t - holds_s)]
     said = None
     if last_said and rt.state in ("PREVIEW", "ADJUST", "CLARIFY") and t - last_said[0] < 60:
         said = last_said[1]  # (t, text) of the last "say"
-    return {"guesses": guesses, "holds": holds, "said": said}
+    return {"guesses": guesses, "centres": centres, "holds": holds, "said": said}
 
 
 def problems(plotter_state: str, plotter_problem: str | None, mic_problem: str | None):
@@ -558,9 +570,10 @@ def run(args: argparse.Namespace) -> int:
         hands.close()
         print(f"could not connect to the plotter: {e}")
         return 1
-    if not args.no_home_y:
-        # The bed slips if pushed, and the camera fit assumes it parked where it was then.
-        plotter.ctl.run_lines(["G28 Y"], label="home Y", tag="start")
+    if not args.no_home:
+        # Never trust the head's place after power-up (6 Oct: X was off and the head hit the
+        # east end), and the bed slips if pushed: home all three axes, then lift over the clips.
+        plotter.ctl.run_lines(gcode.home_gcode(cfg), label="home", tag="start")
     if not args.no_frame:
         plotter.draw_polylines([frame_outline(cfg.drawable)], tag="frame")
     plotter.park(tag="start")
@@ -616,7 +629,7 @@ def run(args: argparse.Namespace) -> int:
     frames = 0
     lines: list[str] = []
     last_said = None
-    print("ready: homing Y and parking once no hand is over the paper")
+    print("ready: homing X, Y and Z and parking once no hand is over the paper")
     rt.start(clock.now())
     try:
         frame = first
