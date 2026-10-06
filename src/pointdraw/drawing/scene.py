@@ -44,6 +44,9 @@ class Placed:
     box: Box
     category: str | None = None
     key_id: str | None = None
+    #: objects: the circle they were fitted into, (centre, diameter) in mm. It stays when part
+    #: of the drawing is cut off the page, so the preview and a resize keep the same "here".
+    size_circle: tuple[Point, float] | None = None
 
 
 def place_object(
@@ -56,12 +59,14 @@ def place_object(
     id: str | None = None,
     style: str | None = None,
 ) -> Placed:
-    """A library drawing whose larger bbox side is `size` mm, centred on `center`.
-    `style`: "simple" or "detailed" where the category has both (SANA drawings)."""
+    """A library drawing that fills the circle of diameter `size` mm round `center` (its farthest
+    line touches it). `style`: "simple" or "detailed" where the category has both (SANA
+    drawings)."""
     lib = library or Library.load()
     d = lib.get(name, variant, style=style)
     pls = fit(d.strokes, center, size, smooth_iterations)
-    return Placed(id or d.category, "object", pls, bbox(pls), d.category, d.key_id)
+    circle = ((float(center[0]), float(center[1])), float(size))
+    return Placed(id or d.category, "object", pls, bbox(pls), d.category, d.key_id, circle)
 
 
 def place_label(s: str, center: Point, cap_height: float = 5.0, id: str | None = None) -> Placed:

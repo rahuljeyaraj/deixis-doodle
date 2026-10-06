@@ -62,7 +62,7 @@ class DrawnExpect(_M):
     text: str | None = None  # for labels
     center: tuple[float, float] | None = None
     tol_mm: float = 5.0
-    size: float | None = None  # larger side of the ink box
+    size: float | None = None  # the ink's circle: twice its farthest point from the box centre
     size_tol: float = 0.2  # relative
     below: str | None = None  # a label's object: its label, e.g. "brain"
     inside: str | None = None  # the drawing must lie inside the object/mark with this label

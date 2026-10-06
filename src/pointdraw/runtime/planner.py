@@ -17,11 +17,11 @@ from deixis.geometry import Box, Point
 from pointdraw.controller.shapes import cross
 from pointdraw.drawing import Library, Placed, place_label, place_object
 from pointdraw.drawing import primitives as prim
-from pointdraw.drawing.place import bbox, clip_inside, transform
+from pointdraw.drawing.place import bbox, clip_inside, fit, transform
 
 
 def _triangle(c: Point, size: float) -> list[list[Point]]:
-    """Equilateral, point up; its width (the larger side) is `size`."""
+    """Equilateral, point up, `size` wide (`Planner.object` then fits it to its circle)."""
     h = size * math.sqrt(3) / 2
     pts = [(c[0] - size / 2, c[1] - h / 2), (c[0] + size / 2, c[1] - h / 2), (c[0], c[1] + h / 2)]
     return [[*pts, pts[0]]]
@@ -86,8 +86,10 @@ class Planner:
         """`variant`: a key_id re-places that same drawing (a preview moved or resized, or a
         second placement at the exact gap); None takes the next one."""
         if category in PRIMITIVES:
-            pls = PRIMITIVES[category](center, size)
-            return Placed(id or category, "object", pls, bbox(pls), category)
+            # the same circle rule as the library: a square's corners touch it (6 Oct)
+            pls = fit(PRIMITIVES[category](center, size), center, size, smooth_iterations=0)
+            circle = ((float(center[0]), float(center[1])), float(size))
+            return Placed(id or category, "object", pls, bbox(pls), category, None, circle)
         return place_object(category, center, size, self.library, variant, id=id, style=style)
 
     def label(self, text: str, center: Point, cap_mm: float, id: str | None = None) -> Placed:
@@ -127,11 +129,15 @@ class Planner:
         else:
             d, (cx, cy) = self.drawable, p.box.center
             box = Box(min(max(cx, d.x), d.x2), min(max(cy, d.y), d.y2), 0.0, 0.0)
-        return Placed(p.id, p.kind, pls, box, p.category, p.key_id), True
+        return Placed(p.id, p.kind, pls, box, p.category, p.key_id, p.size_circle), True
 
     @staticmethod
     def shift(p: Placed, dx: float, dy: float, scale: float = 1.0) -> Placed:
         """Move by (dx, dy) mm and scale about the drawing's own centre."""
         cx, cy = p.box.center
         pls = transform(p.polylines, scale, cx - cx * scale + dx, cy - cy * scale + dy)
-        return Placed(p.id, p.kind, pls, bbox(pls), p.category, p.key_id)
+        circle = None
+        if p.size_circle is not None:
+            (ox, oy), d = p.size_circle
+            circle = ((cx + (ox - cx) * scale + dx, cy + (oy - cy) * scale + dy), d * scale)
+        return Placed(p.id, p.kind, pls, bbox(pls), p.category, p.key_id, circle)

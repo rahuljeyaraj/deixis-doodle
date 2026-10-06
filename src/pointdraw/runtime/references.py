@@ -329,8 +329,11 @@ class References:
             )
             return span.span_mm
         k, arg = self._find(ref)
-        s = self._arg(self._resolve_call(k), k, arg)
-        return Size.model_validate(s).mm
+        size = Size.model_validate(self._arg(self._resolve_call(k), k, arg))
+        same = self.scene.get(size.evidence.get("same_as") or "")
+        if same is not None and same.size_circle is not None:
+            return same.size  # "the same size as that": its circle, not its box (6 Oct)
+        return size.mm
 
     # ------------------------------------------------------------------ places
 

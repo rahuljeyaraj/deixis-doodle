@@ -159,7 +159,7 @@ def test_find_ink_box_ignores_specks_and_far_marks():
     cv2.circle(mask, px(92, 97), int(8 / s), 1, 2)
     mask[px(55, 70)[1], px(55, 70)[0]] = 1  # a speck just outside
     cv2.line(mask, px(150, 150), px(170, 150), 1, 2)  # a mark far away
-    box, n = m2.find_ink(mask, [60, 75, 40, 30], s, 30)
+    box, n, _ = m2.find_ink(mask, [60, 75, 40, 30], s, 30)
     assert box[0] == pytest.approx(60, abs=0.5)
     assert box[1] == pytest.approx(75, abs=0.5)
     assert box[0] + box[2] == pytest.approx(100, abs=0.5)

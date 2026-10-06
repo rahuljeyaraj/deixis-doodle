@@ -1,11 +1,12 @@
-"""Placement maths: size sets the larger dimension, centring, smoothing, keeping inside."""
+"""Placement maths: size is the diameter of the circle the drawing touches (6 Oct), centring,
+smoothing, keeping inside."""
 
 import math
 
 import pytest
 
 from deixis.geometry import Box
-from pointdraw.drawing.place import bbox, chaikin, fit, fit_in_box, keep_inside, smooth
+from pointdraw.drawing.place import bbox, chaikin, fit, fit_in_box, keep_inside, reach, smooth
 
 WIDE = [[(0, 0), (100, 0), (100, 40)], [(10, 10), (50, 30)]]  # 100 x 40
 TALL = [[(0, 0), (0, 200), (50, 200)]]  # 50 x 200
@@ -13,10 +14,10 @@ TALL = [[(0, 0), (0, 200), (50, 200)]]  # 50 x 200
 
 @pytest.mark.parametrize("strokes", [WIDE, TALL])
 @pytest.mark.parametrize("smooth_iterations", [0, 2])
-def test_fit_sets_larger_dimension_and_centre(strokes, smooth_iterations):
+def test_fit_touches_the_circle_and_centres(strokes, smooth_iterations):
     out = fit(strokes, center=(80, 60), size=40, smooth_iterations=smooth_iterations)
     b = bbox(out)
-    assert max(b.w, b.h) == pytest.approx(40)
+    assert reach(out, (80, 60)) == pytest.approx(20)
     assert b.center[0] == pytest.approx(80)
     assert b.center[1] == pytest.approx(60)
 

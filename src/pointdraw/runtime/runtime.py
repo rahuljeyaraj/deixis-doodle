@@ -54,6 +54,7 @@ from pointdraw.agent.schema import (
 )
 from pointdraw.controller.config import MachineConfig
 from pointdraw.drawing import Placed, optimize
+from pointdraw.drawing.place import circle_size
 from pointdraw.profile import plotter_profile
 from pointdraw.runtime.events import EventLog
 from pointdraw.runtime.gestures import GestureTracker
@@ -136,6 +137,7 @@ class PlotterPort(Protocol):
     busy: bool
 
     def preview_box(self, box: Box, tag: Any = None) -> None: ...
+    def preview_circle(self, center: Point, size: float, tag: Any = None) -> None: ...
     def draw_polylines(self, polylines: list, speed: str = "normal", tag: Any = None) -> None: ...
     def park(self, tag: Any = None) -> None: ...
     def stop(self) -> None: ...
@@ -544,14 +546,14 @@ class Runtime:
             cat = prev.label or cat
         if prev is not None and prev.label == cat and not new:
             # "no, there" / "about this big" / "put it here": change the preview in place.
-            size = refs.size(a.size, max(prev.box.w, prev.box.h)) if a.size else None  # type: ignore[attr-defined]
+            size = refs.size(a.size, prev.size) if a.size else None  # type: ignore[attr-defined]
             if a.place is not None:  # type: ignore[attr-defined]
-                s = size or max(prev.box.w, prev.box.h)
+                s = size or prev.size
                 pl = refs.place(a.place, s)  # type: ignore[attr-defined]
                 center, where = pl.center, pl.where.model_dump(mode="json")
                 s = pl.size or s
             else:
-                center, where, s = prev.center, None, size or max(prev.box.w, prev.box.h)
+                center, where, s = prev.aim, None, size or prev.size
             again = self.planner.object(cat, center, s, id=prev.id, variant=prev.key_id)
             self._replace(prev, again, t, where)
             return
@@ -692,6 +694,7 @@ class Runtime:
             pending=True,
             anchor=anchor or (target.id if target else None),
             key_id=placed.key_id,
+            size_circle=placed.size_circle,
         )
         self.scene.add(obj)
         new.append(obj)
@@ -704,6 +707,7 @@ class Runtime:
             text=text,
             box=_box(obj.box),
             center=_pt(obj.center),
+            circle=_circle(obj.size_circle),
             where=where,
             cut=cut,
         )
@@ -716,6 +720,7 @@ class Runtime:
     def _replace(self, old: SceneObject, placed: Placed, t: float, where: dict | None) -> None:
         placed, cut = self.planner.clip_inside(placed)
         old.polylines, old.box, old.key_id = placed.polylines, placed.box, placed.key_id
+        old.size_circle = placed.size_circle
         self.log.add(
             t,
             "item",
@@ -725,6 +730,7 @@ class Runtime:
             text=old.text,
             box=_box(old.box),
             center=_pt(old.center),
+            circle=_circle(old.size_circle),
             where=where,
             cut=cut,
             replaced=True,
@@ -767,6 +773,7 @@ class Runtime:
             "preview",
             items=[o.id for o in prop.items],
             box=_box(union_box([o.box for o in prop.items])),
+            circles=[_circle(o.size_circle) for o in prop.items if o.size_circle],
         )
         self._set_state(PREVIEW, t)
         self.say(t, self._guess(prop))
@@ -776,14 +783,20 @@ class Runtime:
         parts = []
         for o in prop.items:
             rel, target = self._rel.get(o.id, (None, None))
-            parts.append(item_guess(o.kind, o.label, o.text, max(o.box.w, o.box.h), rel, target))
+            parts.append(item_guess(o.kind, o.label, o.text, o.size, rel, target))
         return guess_line(parts)
 
     def _trace(self, prop: Proposal) -> None:
+        """Show each item with the pen up: a drawing's circle (the "here" and "this big" it
+        was asked for; rahul, 6 Oct), else the box of the words or the arrow."""
         prop.dirty = False
         for obj in prop.items:
             tag = self._tag("preview")
-            self.plotter.preview_box(self._box_to_bed(obj.box), tag=tag)
+            if obj.size_circle is not None:
+                c, d = obj.size_circle
+                self.plotter.preview_circle(self._to_bed(c), d, tag=tag)
+            else:
+                self.plotter.preview_box(self._box_to_bed(obj.box), tag=tag)
             prop.previews.add(tag)
 
     def adjust(
@@ -795,12 +808,20 @@ class Runtime:
             return
         self._set_state(ADJUST, t)
         ox, oy = adjust_offset(self.scene, obj.box, dx, dy, scale)  # the step is the core's
-        p = Placed(obj.id, obj.kind, obj.polylines, obj.box, obj.label)
-        p = self.planner.shift(p, ox, oy, scale)
+        if obj.kind == "object" and obj.size_circle is not None:
+            # placed again from its circle, so a part cut off the page comes back when it
+            # shrinks, and "here" stays put
+            (cx, cy), d = obj.size_circle
+            p = self.planner.object(
+                obj.label or obj.kind, (cx + ox, cy + oy), d * scale, id=obj.id, variant=obj.key_id
+            )
+        else:
+            p = Placed(obj.id, obj.kind, obj.polylines, obj.box, obj.label)
+            p = self.planner.shift(p, ox, oy, scale)
         self.log.add(t, "adjust", id=obj.id, dx=dx, dy=dy, scale=scale)
         if target is not None:  # not previewed yet: just change it
             p, _ = self.planner.clip_inside(p)
-            obj.polylines, obj.box = p.polylines, p.box
+            obj.polylines, obj.box, obj.size_circle = p.polylines, p.box, p.size_circle
             self.log.add(
                 t,
                 "item",
@@ -810,6 +831,7 @@ class Runtime:
                 text=obj.text,
                 box=_box(obj.box),
                 center=_pt(obj.center),
+                circle=_circle(obj.size_circle),
                 where=None,
                 cut=False,
                 replaced=True,
@@ -977,6 +999,7 @@ class Runtime:
             planned_box=_box(obj.box),
             ink_box=_box(box) if box else None,
             ink_center=_pt(box.center) if box else None,
+            ink_size=round(circle_size([pts]), 3) if pts else None,  # its circle's diameter
         )
 
     def _next(self, t: float) -> None:
@@ -1081,7 +1104,7 @@ class Runtime:
             size=round(span.span_mm, 1),
         )
         again = self.planner.object(
-            prev.label or prev.kind, prev.center, span.span_mm, id=prev.id, variant=prev.key_id
+            prev.label or prev.kind, prev.aim, span.span_mm, id=prev.id, variant=prev.key_id
         )
         self._replace(prev, again, t, None)
         return True
@@ -1363,6 +1386,11 @@ def _box(b: Box | None) -> list[float] | None:
     if b is None:
         return None
     return [round(b.x, 2), round(b.y, 2), round(b.w, 2), round(b.h, 2)]
+
+
+def _circle(c: tuple[Point, float] | None) -> list[float] | None:
+    """A size circle for the log: [x, y, diameter], mm."""
+    return None if c is None else [round(c[0][0], 2), round(c[0][1], 2), round(c[1], 2)]
 
 
 def _pt(p: Point) -> list[float]:

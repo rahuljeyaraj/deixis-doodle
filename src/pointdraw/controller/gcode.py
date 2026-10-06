@@ -15,6 +15,7 @@ from collections.abc import Iterable, Sequence
 from deixis.geometry import Box, Point
 from pointdraw.controller.config import MachineConfig
 from pointdraw.controller.safety import parse_line
+from pointdraw.controller.shapes import circle_points
 
 _SAME_POINT_MM = 0.01
 
@@ -156,6 +157,21 @@ def preview_box_gcode(
     for _ in range(loops):
         for p in corners[1:]:
             e.move(p, c.feed.preview, draw=False)
+    return e.lines
+
+
+def preview_circle_gcode(
+    center: Point, size: float, c: MachineConfig, *, start: Point | None = None
+) -> list[str]:
+    """Trace the circle of diameter `size` mm round `center` pen-up at the preview feedrate, once
+    round from the point nearest the head. A part off the drawable area runs along its edge,
+    where the drawing will be cut (rahul, 6 Oct: "this big" is the circle's diameter)."""
+    e = _Emitter(c, start)
+    e.up()
+    pts = circle_points(center, size, c.drawable, start=start)
+    e.move(pts[0], c.feed.travel, draw=False)
+    for p in pts[1:]:
+        e.move(p, c.feed.preview, draw=False)
     return e.lines
 
 

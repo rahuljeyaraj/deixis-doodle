@@ -69,8 +69,9 @@ __all__ = [
 
 ConnectorKind = Literal["arrow", "line", "double_arrow"]
 
-#: Sizes in mm for each preset: the larger side of the object's box (plan 4.3), from the
-#: plotter's profile. None means "fit the page"; the resolver computes it.
+#: Sizes in mm for each preset: the diameter of the circle the drawing fills (6 Oct; the larger
+#: side of its box until then), from the plotter's profile. None means "fit the page"; the
+#: resolver computes it.
 PRESET_MM: dict[str, float | None] = dict(plotter_profile().sizes.presets)
 
 #: Validation context: presets and their synonyms ("large" -> "big") from the profile.

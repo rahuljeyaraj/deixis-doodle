@@ -9,12 +9,14 @@ within ±20 %, median time from the end of speech to the preview 3 s or less, no
 For each drawing in the run's `timeline.jsonl` (a `drawn` event):
 - **Shown place:** the pointing hold the app used (the item's `where`, paper mm).
 - **Shown size:** the size the app measured (`resolve` with `size`: a pinch, two hands or a
-  spoken preset). Drawings keep their aspect, longest side = size, centred on the point
-  (`drawing/place.py`).
+  spoken preset). It is the diameter of a circle round the point; drawings keep their aspect
+  and grow until their farthest line touches it (`drawing/place.py`, since 6 Oct; the
+  longest side until then).
 - **Real drawing:** the ink that appeared between a parked photo before the preview and one
   after the drawing, warped top-down with the fixed calibration, light normalised, and
   subtracted (as `docs/evidence/m1-2026-10-02/tools/ink.py` did for M1). Only ink near the
-  planned box counts. Centre = the centre of the ink's box; size = its longest side.
+  planned box counts. Centre = the centre of the ink's box; size = twice the distance from
+  there to the farthest ink (a circle's diameter; the longest side for runs before 6 Oct).
 - **Latency:** end of the last word said before the preview, to the preview starting
   (the plotter's `job_start` for it; the runtime's `preview` event in older runs).
 
@@ -300,9 +302,11 @@ def ink_mask(before: np.ndarray, after: np.ndarray, small: bool = False) -> np.n
 
 def find_ink(
     mask: np.ndarray, box: list[float], s: float, min_px: int
-) -> tuple[list[float], int] | None:
+) -> tuple[list[float], int, float] | None:
     """The ink near a planned box (paper mm): the box of the blobs that touch the box grown
-    by a fifth (and 4 mm). Row 0 is the far edge. Returns (x, y, w, h) in paper mm."""
+    by a fifth (and 4 mm). Row 0 is the far edge. Returns (x, y, w, h) in paper mm, the
+    pixel count, and the ink's circle size: twice the distance from the box centre to the
+    farthest ink pixel's far side (a circle's diameter, as its box's side is)."""
     H, W = mask.shape
     x, y, w, h = box
     g = 0.2 * max(w, h) + 4.0
@@ -324,7 +328,9 @@ def find_ink(
         return None
     left, right = cols.min() * s, (cols.max() + 1) * s
     top, bottom = H - rows.min(), H - rows.max() - 1  # in rows from the near edge
-    return [left, bottom * s, right - left, (top - bottom) * s], int(len(cols))
+    cc, cr = (cols.min() + cols.max()) / 2, (rows.min() + rows.max()) / 2
+    reach = float(np.hypot(cols - cc, rows - cr).max() + 0.5) * s
+    return [left, bottom * s, right - left, (top - bottom) * s], int(len(cols)), 2 * reach
 
 
 # ---------------------------------------------------------------- scoring
@@ -362,6 +368,8 @@ def score(run: Path, size: tuple[int, int] = (1920, 1080), view=None, paper: Box
     s = MM_PER_PX * (4 if photos.small else 1)
     min_px = 6 if photos.small else 30
     previews = sorted(x["t"] for x in events if x["kind"] == "preview")
+    # runs since 6 Oct log each drawing's circle; older ones were sized by the longest side
+    circles = any("circle" in x for x in events if x["kind"] == "item")
     warped: dict[Path, np.ndarray] = {}
 
     def top_down(p: Path) -> np.ndarray:
@@ -382,10 +390,10 @@ def score(run: Path, size: tuple[int, int] = (1920, 1080), view=None, paper: Box
         found = find_ink(ink_mask(A, B, photos.small), c.planned_box, s, min_px)
         if found is None:
             continue
-        box, n = found
+        box, n, circle = found
         c.ink_box = [round(v, 2) for v in box]
         c.ink_xy = [round(box[0] + box[2] / 2, 2), round(box[1] + box[3] / 2, 2)]
-        c.ink_size = round(max(box[2], box[3]), 2)
+        c.ink_size = round(circle if circles else max(box[2], box[3]), 2)
         c.ink_px = n
         pics.append(_crop(B, c, s))
     return cmds, pics

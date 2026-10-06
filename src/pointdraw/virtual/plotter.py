@@ -101,6 +101,10 @@ class VirtualPlotter:
         lines = gcode.preview_box_gcode(Box(x0, y0, x1 - x0, y1 - y0), self.config, start=self._end)
         self._submit("preview", lines, "previewing", tag)
 
+    def preview_circle(self, center: Point, size: float, tag: Any = None) -> None:
+        lines = gcode.preview_circle_gcode(center, size, self.config, start=self._end)
+        self._submit("preview", lines, "previewing", tag)
+
     def draw_polylines(self, polylines: list[Polyline], speed: Speed = "normal", tag: Any = None):
         clean = validate_polylines(polylines, self.config)
         feed = self.config.feed_for(speed)

@@ -24,7 +24,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from deixis.geometry import Box, Polyline
+from deixis.geometry import Box, Point, Polyline
 from pointdraw.controller.api import ControllerStatus, InkSegment, PlotEvent, Speed
 from pointdraw.controller.controller import Controller
 from pointdraw.controller.safety import parse_line
@@ -71,6 +71,9 @@ class LivePlotter:
 
     def preview_box(self, box: Box, tag: Any = None) -> None:
         self._submit("preview", tag, self.ctl.preview_box, box, tag=tag)
+
+    def preview_circle(self, center: Point, size: float, tag: Any = None) -> None:
+        self._submit("preview", tag, self.ctl.preview_circle, center, size, tag=tag)
 
     def draw_polylines(self, polylines: list[Polyline], speed: Speed = "normal", tag: Any = None):
         self._submit("draw", tag, self.ctl.draw_polylines, polylines, speed, tag=tag)

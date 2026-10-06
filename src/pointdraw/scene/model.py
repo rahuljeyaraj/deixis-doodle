@@ -46,10 +46,23 @@ class SceneObject:
     anchor: str | None = None  # for labels and arrows: the object(s) they belong to
     key_id: str | None = None  # robot objects: which library drawing (to re-place the same one)
     attrs: dict[str, str] = field(default_factory=dict)  # e.g. Cosmos's other labels, "also"
+    #: robot objects: the circle the drawing was fitted into, (centre, diameter) in mm; it is
+    #: what "this big" showed and what the preview traces, even when a part was cut off
+    size_circle: tuple[Point, float] | None = None
 
     @property
     def center(self) -> Point:
         return self.box.center
+
+    @property
+    def size(self) -> float:
+        """The size it was asked for (its circle's diameter), else its box's larger side."""
+        return self.size_circle[1] if self.size_circle else max(self.box.w, self.box.h)
+
+    @property
+    def aim(self) -> Point:
+        """Where it was asked for (its circle's centre), else its box centre."""
+        return self.size_circle[0] if self.size_circle else self.box.center
 
 
 @dataclass(frozen=True)

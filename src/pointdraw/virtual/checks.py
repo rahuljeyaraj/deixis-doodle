@@ -247,7 +247,8 @@ def _score_drawn(
             limit=tol,
         )
     if want.size is not None:
-        size = max(box.w, box.h)
+        # the ink's circle: twice its farthest point from the ink box centre (6 Oct)
+        size = got.get("ink_size") or max(box.w, box.h)
         rel = abs(size - want.size) / want.size
         _check(
             checks,
