@@ -1,6 +1,7 @@
 """How fast does a stop act on the real machine? (M1 exit test: 0.5 s or less, 2 Oct 2026)
 
     uv run python scripts/stop_time.py --port COM9 --trials 5
+    uv run python scripts/stop_time.py --rescore out/stop_time/stop_time.json   # no hardware
 
 The pen carriage (the orange holder) travels pen up along X, from one side of the bed to the
 other. Once the camera sees it moving, the script waits a random 0.1 to 0.5 s and calls
@@ -13,7 +14,8 @@ so the time measured is an upper bound (the real stop is a little sooner). The f
 about 33 ms apart, so each number is good to about one frame.
 
 After a stop the controller homes before its next move (Marlin may have lost steps), so each
-trial takes about 20 s. Keep hands off the bed. Writes `<out>/stop_time.json`.
+trial takes about 20 s. Keep hands off the bed. Writes `<out>/stop_time.json` and
+`<out>/summary.json` (M08: median and worst stop over the trials that were moving).
 """
 
 from __future__ import annotations
@@ -41,6 +43,11 @@ ROWS = (700, 860)  # image rows the holder moves along at park Y (1920x1080, 2 O
 COLS = (550, 1680)  # image columns the holder can reach (x 0 is near 1416, x 250 near 650);
 # outside them the wooden desk reads as orange (2 Oct afternoon: it was taken for the holder)
 SETTLED_PX = 3.0  # within this of where it ends counts as still (about 1 mm; camera jitter 2 px)
+MEDIAN_FRAMES = 9  # about 0.3 s; 6 Oct: on the 2 Oct tracks, 3 of 5 frames in a row read 5 px
+# off now and then, and a 5-frame median took those for a late move (1.67 s instead of 0.08 s)
+MOVING_PX_S = 50.0  # a trial counts only if the holder moved at least this fast before the
+# stop (2 Oct: two trials stopped a holder that had not left home, at 13 and 19 px/s)
+LIMIT_S = 1.0  # measure list M08: over 1 s, "Stop stops it" stays only for the pen lifting
 
 
 def holder_x(img: np.ndarray) -> float | None:
@@ -57,9 +64,10 @@ def holder_x(img: np.ndarray) -> float | None:
 def settled(ts: np.ndarray, xs: np.ndarray, t_stop: float) -> float:
     """When the holder came to rest for good: after it, every frame is within SETTLED_PX of
     where it ended. Also catches a restart: the end is then where the late move stopped."""
-    if len(xs) >= 5:  # a 5-frame median: single frames jump about 5 px (2 Oct, 2.1.2.8 run)
-        pad = np.pad(xs, 2, mode="edge")
-        xs = np.median(np.lib.stride_tricks.sliding_window_view(pad, 5), axis=1)
+    k = MEDIAN_FRAMES
+    if len(xs) >= k:  # a running median: frames jump about 5 px, a few in a row (2 Oct)
+        pad = np.pad(xs, k // 2, mode="edge")
+        xs = np.median(np.lib.stride_tricks.sliding_window_view(pad, k), axis=1)
     end = float(np.median(xs[-5:]))
     off = np.abs(xs - end) > SETTLED_PX
     last = int(np.nonzero(off)[0][-1]) + 1 if off.any() else 0
@@ -68,13 +76,21 @@ def settled(ts: np.ndarray, xs: np.ndarray, t_stop: float) -> float:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--port", required=True)
+    ap.add_argument("--port", help="the plotter's serial port, e.g. COM9")
+    ap.add_argument("--rescore", type=Path, help="score a saved stop_time.json again (no hardware)")
     ap.add_argument("--trials", type=int, default=5)
     ap.add_argument("--x", type=float, nargs=2, default=(10.0, 210.0), help="travel from, to")
     ap.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
-    ap.add_argument("--out", type=Path, default=Path("out/stop_time"))
+    ap.add_argument("--out", type=Path, default=None, help="default: out/stop_time/<time>")
     ap.add_argument("-v", action="store_true", help="log every serial line, with the clock")
     a = ap.parse_args(argv)
+    if a.rescore:
+        print(rescore(a.rescore)["line"])
+        return 0
+    if not a.port:
+        ap.error("--port is needed (or --rescore FILE)")
+    if a.out is None:
+        a.out = Path("out/stop_time") / time.strftime("%Y%m%d-%H%M%S")
     if a.v:
         logging.basicConfig(
             level=logging.DEBUG, format="%(t).3f %(name)s %(message)s", stream=sys.stdout
@@ -165,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
                 travel_px = float(abs(after[-1] - after[0])) if len(after) else 0.0
                 r = {
                     "trial": k + 1,
+                    "counted": bool(speed >= MOVING_PX_S),
                     "stop_s": round(float(t_end - t_stop), 3),
                     "stop_call_s": round(t_call, 4),
                     "speed_px_s": round(speed, 1),
@@ -184,10 +201,44 @@ def main(argv: list[str] | None = None) -> int:
             ctl.close()
     a.out.mkdir(parents=True, exist_ok=True)
     (a.out / "stop_time.json").write_text(json.dumps(results, indent=1), encoding="utf-8")
-    if results:
-        s = [r["stop_s"] for r in results]
-        print(f"stop: median {np.median(s):.3f} s, max {max(s):.3f} s (M1 limit 0.5 s)")
+    summary = summarise(results)
+    (a.out / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
+    print(summary["line"])
     return 0
+
+
+def summarise(results: list[dict]) -> dict:
+    """M08: the median and worst stop over the trials that were moving at the stop."""
+    s = [r["stop_s"] for r in results if r.get("counted", True)]
+    n_all = len(results)
+    if not s:
+        return {"counted": 0, "trials": n_all, "line": "stop: no trial was moving at the stop"}
+    med, worst = float(np.median(s)), float(max(s))
+    ok = worst <= LIMIT_S
+    line = (
+        f"M08 stop: median {med:.3f} s, worst {worst:.3f} s over {len(s)} of {n_all} trials "
+        f"({'PASS' if ok else 'OVER'}: limit {LIMIT_S:.1f} s each)"
+    )
+    return {"counted": len(s), "trials": n_all, "median_s": med, "max_s": worst, "pass": ok,
+            "line": line}  # fmt: skip
+
+
+def rescore(path: Path) -> dict:
+    """Score a saved stop_time.json again with today's rules (no hardware)."""
+    results = json.loads(path.read_text(encoding="utf-8"))
+    for r in results:
+        tr = np.array(r["track"], dtype=float)
+        ts, xs = tr[:, 0], tr[:, 1]
+        r["stop_s"] = round(settled(ts, xs, 0.0), 3)
+        before = (ts < 0) & (ts > -0.3)
+        v = np.abs(np.diff(xs))
+        speed = (
+            float(np.median(v[before[1:]]) / np.median(np.diff(ts)))
+            if before[1:].sum() > 1
+            else 0.0
+        )
+        r["counted"] = bool(speed >= MOVING_PX_S)
+    return summarise(results)
 
 
 if __name__ == "__main__":
