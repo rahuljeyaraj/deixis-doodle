@@ -1,8 +1,9 @@
 """What the vacuum app shows: the camera's picture with the floor drawn on it.
 
-A faint 50 cm grid over the markers' patch (so a bad floor fit shows at once), the person's
-spot, the box being asked about (yellow; green once "yes" is said; blue once sent) and a
-banner in big words saying what the app is doing.
+A faint 50 cm grid over the markers' patch (so a bad floor fit shows at once), and the one
+look of every robot (claim 39q, `live/look.py`): where you stand is a filled amber dot, the
+robot's guess a dashed blue box (a thin solid blue line once sent), and the status in large
+plain words with the robot's last words under it.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from pointdraw.live import look
 from pointdraw.vacuum.app import CLEANING, PREVIEW, WAIT_CLEAR, VacuumApp
 from pointdraw.vacuum.feet import FeetSeen
 from pointdraw.vacuum.floor import FloorLayout, FloorView
@@ -60,7 +62,7 @@ def draw(
 ) -> np.ndarray:
     vis = image.copy()
     if view is None:
-        _banner(vis, "Can't see the 4 floor markers", RED)
+        look.status(vis, "Can't see the 4 floor markers", RED)
         return vis
     x, y, w, h = layout.area_mm
     for gx in np.arange(x, x + w + 1, 500.0):
@@ -71,27 +73,22 @@ def draw(
     if not view.fresh:
         cv2.putText(vis, "floor fit kept (markers hidden)", (20, vis.shape[0] - 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, GREY, 2)  # fmt: skip
-    if sent_box is not None:
-        cv2.polylines(vis, [_poly(view, box_corners(sent_box))], True, BLUE, 3)
+    if sent_box is not None:  # sent to the robot: a thin solid line
+        cv2.polylines(vis, [_poly(view, box_corners(sent_box))], True, look.GUESS, 2, cv2.LINE_AA)
     prev = app.preview
-    if prev is not None and prev.where.box_mm is not None:
-        colour = GREEN if app.state == WAIT_CLEAR else YELLOW
-        pts = _poly(view, box_corners(prev.where.box_mm))
-        overlay = vis.copy()
-        cv2.fillPoly(overlay, [pts], colour)
-        vis = cv2.addWeighted(overlay, 0.25, vis, 0.75, 0)
-        cv2.polylines(vis, [pts], True, colour, 3)
-    if feet is not None:
+    if prev is not None and prev.where.box_mm is not None:  # the robot's guess: dashed blue
+        look.dashed(vis, _poly(view, box_corners(prev.where.box_mm)), thick=4)
+    if feet is not None:  # you: filled amber
         for f in feet.feet_px:
-            cv2.circle(vis, (int(f[0]), int(f[1])), 6, WHITE, -1)
+            look.dot(vis, f, 5, WHITE)
         if feet.spot_px is not None:
-            colour = GREEN if feet.standing else YELLOW
-            cv2.circle(vis, (int(feet.spot_px[0]), int(feet.spot_px[1])), 14, colour, 3)
-    colour = {PREVIEW: YELLOW, WAIT_CLEAR: GREEN, CLEANING: BLUE}.get(app.state, WHITE)
-    _banner(vis, app.banner(), colour)
+            look.dot(vis, feet.spot_px, 14 if feet.standing else 9)
+    said = _last_said(app) if app.state in (PREVIEW, WAIT_CLEAR) or app.question else None
+    accent = {PREVIEW: look.GUESS, WAIT_CLEAR: look.AMBER, CLEANING: GREEN}.get(app.state)
+    look.status(vis, app.banner(), accent, said)
     return vis
 
 
-def _banner(vis: np.ndarray, text: str, colour: tuple[int, int, int]) -> None:
-    cv2.rectangle(vis, (0, 0), (vis.shape[1], 70), (30, 30, 30), -1)
-    cv2.putText(vis, text, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.4, colour, 3)
+def _last_said(app: VacuumApp) -> str | None:
+    says = app.log.of("say")
+    return says[-1]["text"] if says else None

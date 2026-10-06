@@ -11,13 +11,12 @@ import numpy as np
 import pytest
 
 from deixis.mcp import DeixisClient
-from deixis.types import Sample, Word
 from pointdraw.vacuum.agent import RuleAgent
 from pointdraw.vacuum.app import CLEANING, LISTEN, PREVIEW, WAIT_CLEAR, Spoken, VacuumApp
 from pointdraw.vacuum.calibrate import FloorToMap
+from pointdraw.vacuum.pretend import Person, play
 from pointdraw.vacuum.profile import vacuum_profile
 
-FPS = 30
 PROFILE = vacuum_profile((0.0, 0.0, 3000.0, 2500.0))
 TURN = math.radians(30)
 
@@ -52,48 +51,6 @@ class Link:
         return {"ok": True}
 
 
-class Person:
-    """Feet on the floor, one sample per frame, with seeded noise; and timed words."""
-
-    def __init__(self, at, t=0.0, seed=0, jitter=15.0):
-        self.rng = np.random.default_rng(seed)
-        self.at, self.t, self.jitter = at, t, jitter
-        self.samples: list[Sample] = []
-        self.lines: list[tuple[list[Word], float]] = []
-
-    def _frame(self, p):
-        n = self.rng.normal(0, self.jitter, 2) if p is not None else (0, 0)
-        pt = None if p is None else (p[0] + n[0], p[1] + n[1])
-        self.samples.append(Sample(round(self.t, 4), pt, pt is not None))
-        self.t += 1 / FPS
-
-    def walk(self, to, speed=1000.0):
-        n = max(1, round(math.dist(self.at, to) / speed * FPS))
-        a = self.at
-        for k in range(n):
-            f = k / n
-            self._frame((a[0] + (to[0] - a[0]) * f, a[1] + (to[1] - a[1]) * f))
-        self.at = to
-        return self
-
-    def stand(self, s):
-        for _ in range(round(s * FPS)):
-            self._frame(self.at)
-        return self
-
-    def gone(self, s):
-        for _ in range(round(s * FPS)):
-            self._frame(None)
-        return self
-
-    def say(self, text, lag=0.4, step=0.3):
-        """Say it now (while the next frames run): words from now, heard `lag` after."""
-        ws = text.split()
-        words = [Word(w, self.t + i * step, self.t + (i + 1) * step) for i, w in enumerate(ws)]
-        self.lines.append((words, words[-1].t1 + lag))
-        return self
-
-
 def run(person, link=None, f2m="fit", core=None, app_kw=None):
     core = core or DeixisClient(PROFILE, mode="direct")
     if f2m == "fit":
@@ -101,16 +58,7 @@ def run(person, link=None, f2m="fit", core=None, app_kw=None):
         f2m = FloorToMap.fit([(p, to_map(p)) for p in floor], core)
     spoken = Spoken()
     app = VacuumApp(RuleAgent(PROFILE), core, link, f2m, PROFILE, say=spoken, **(app_kw or {}))
-    lines = sorted(person.lines, key=lambda x: x[1])
-    states = []
-    for s in person.samples:
-        app.on_sample(s)
-        while lines and lines[0][1] <= s.t:
-            words, t = lines.pop(0)
-            app.on_utterance(words, t)
-        app.tick(s.t)
-        states.append(app.state)
-    return app, spoken, states
+    return app, spoken, play(app, person)
 
 
 def sent_box(link):
@@ -125,7 +73,7 @@ def test_clean_here_yes_and_step_out():
     link = Link()
     app, spoken, states = run(p, link)
     assert spoken.lines[:2] == ["Clean about one metre square here?",
-                                "OK. Please step out of the box."]  # fmt: skip
+                                "OK. Step out, and I'll clean it."]  # fmt: skip
     assert spoken.lines[-1] == "Cleaning there now." and app.state == CLEANING
     assert PREVIEW in states and WAIT_CLEAR in states
     w = sent_box(link)
@@ -143,12 +91,45 @@ def test_clean_here_yes_and_step_out():
 def test_clean_from_here_to_here():
     a, b = (2200.0, 1600.0), (900.0, 700.0)
     p = Person((3000, 2400)).walk(a).stand(0.5).say("clean from here").stand(1.2)
-    p.walk(b).stand(0.4).say("to here").stand(1.5).say("yes").stand(0.5).walk((0, 0)).stand(2)
+    p.walk(b).stand(0.4).say("to here").stand(1.5).say("yes").stand(1.5).walk((0, 0)).stand(2)
     link = Link()
     app, spoken, _ = run(p, link)
-    assert spoken.lines[0] == "Clean about 1.3 by 0.9 metres here?"
+    assert spoken.lines[:2] == ["Clean from there to here?", "OK. Step out, and I'll clean it."]
     floor_box = app.log.of("clean_area")[0]["floor_box"]
     assert floor_box == pytest.approx([900, 700, 1300, 900], abs=40)
+
+
+def narrow_strip(answer):
+    a, b = (2200.0, 1300.0), (900.0, 1000.0)  # 1.3 m long, 0.3 m across
+    p = Person((3000, 2400)).walk(a).stand(0.5).say("clean from here").stand(1.2)
+    p.walk(b).stand(0.4).say("to here").stand(1.5).say(answer).stand(1.5)
+    p.walk((0, 0)).stand(2)
+    link = Link()
+    app, spoken, _ = run(p, link)
+    return app, spoken, link
+
+
+def test_a_narrow_strip_asks_and_yes_widens_it():
+    app, spoken, link = narrow_strip("yes")
+    assert spoken.lines[0] == "That's a narrow strip. Clean half a metre wide?"
+    assert spoken.lines[1] == "OK. Step out, and I'll clean it."
+    x, y, w, h = app.log.of("clean_area")[0]["floor_box"]
+    assert w == pytest.approx(1300, abs=40) and h == pytest.approx(500, abs=1)
+    assert y + h / 2 == pytest.approx(1150, abs=30)  # widened about the strip's middle
+    assert app.state == CLEANING
+
+
+def test_no_reminder_while_already_stepping_out():
+    a, b = (2200.0, 1600.0), (900.0, 700.0)
+    p = Person((3000, 2400)).walk(a).stand(0.5).say("clean from here").stand(1.2)
+    p.walk(b).stand(0.4).say("to here").stand(1.5).say("yes").stand(0.5).walk((0, 0)).stand(2)
+    app, spoken, _ = run(p, Link())
+    assert spoken.lines == ["Clean from there to here?", "Cleaning there now."]
+
+
+def test_a_narrow_strip_no_cancels():
+    app, spoken, link = narrow_strip("no")
+    assert spoken.lines[-1] == "OK, cancelled." and link.calls == []
 
 
 def test_walking_through_asks_then_here_answers():
@@ -259,3 +240,22 @@ def test_over_mcp_to_the_pretend_robot():
     finally:
         core.close()
         link.close()
+
+
+def test_the_window_shows_the_guess_dashed_blue_and_you_amber():
+    """Claim 39q: the same look as the plotter's window."""
+    from pointdraw.live import look
+    from pointdraw.vacuum.feet import FeetSeen
+    from pointdraw.vacuum.floor import FloorLayout, FloorView
+    from pointdraw.vacuum.view import draw
+
+    spot = (1500.0, 1000.0)
+    p = Person((0, 0)).walk(spot).stand(0.6).say("clean here").stand(2.0)
+    app, _, _ = run(p, Link())
+    assert app.state == PREVIEW
+    view = FloorView(np.diag([4.0, 4.0, 1.0]), (10, 11, 12, 13), True)  # 4 mm a pixel
+    img = np.full((720, 1000, 3), 120, np.uint8)
+    feet = FeetSeen(0.0, (np.array([370.0, 250.0]),), np.array([375.0, 250.0]), spot, True)
+    vis = draw(img, view, FloorLayout.rectangle(3000, 2500), app, feet, 0.0)
+    colours = {tuple(c) for c in vis.reshape(-1, 3)[::3]}
+    assert look.GUESS in colours and look.AMBER in colours
