@@ -169,3 +169,39 @@ def test_parked_photos_one_per_rest_with_the_paper_clear(tmp_path):
     assert ph.offer(img, 9.0, False, True, park) is None  # drawing, then parking
     assert ph.offer(img, 10.0, False, False, park) is None
     assert ph.offer(img, 11.0, False, False, park) == "photos/11000.png"
+
+
+def test_window_shows_the_guess_dashed_blue_and_holds_amber():
+    """Claim 39q: the robot's guess is a dashed blue box; your holds are filled amber."""
+    import numpy as np
+
+    from deixis.geometry import Box
+    from pointdraw.live import look
+    from pointdraw.live.view import BedView
+    from pointdraw.vision.aruco import BedHomography
+    from pointdraw.vision.hands import HandsFrame
+
+    live_run = load_script("live_run")
+
+    class _P:
+        def ink_polylines(self):
+            return []
+
+    h = np.array([[0.2, 0.0, 0.0], [0.0, -0.2, 220.0], [0.0, 0.0, 1.0]])
+    view = BedView(BedHomography(h, (), 0.0, 0.0, float("nan")), 220.0, lambda: None)
+    img = np.full((1080, 1920, 3), 255, np.uint8)
+    vis = live_run.render_window(
+        img,
+        HandsFrame(0.0, [], (1920, 1080)),
+        view,
+        Box(30, 40, 150, 120),
+        _P(),
+        [],
+        [],
+        ("Say yes to draw it, or change it", None),
+        guesses=[Box(80, 80, 40, 40)],
+        holds=[(100.0, 100.0)],
+        said="A kite, about four centimetres?",
+    )
+    colours = {tuple(c) for c in vis.reshape(-1, 3)[::7]}
+    assert look.GUESS in colours and look.AMBER in colours

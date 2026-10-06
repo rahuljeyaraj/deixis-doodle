@@ -64,7 +64,7 @@ def test_banner_says_why(events, state, busy, clear, problem, want):
 
 def test_banner_names_what_the_app_waits_for():
     b = Banner()
-    assert b.text("idle", False, True, "PREVIEW")[0] == "Ready: say yes, or wait, to draw it"
+    assert b.text("idle", False, True, "PREVIEW")[0] == "Say yes to draw it, or change it"
     assert b.text("idle", False, True, "CLARIFY")[0] == "Ready: answer the question"
 
 

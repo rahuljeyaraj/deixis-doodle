@@ -33,7 +33,7 @@ from pointdraw.controller.config import MachineConfig
 from pointdraw.live.logs import PLOTTER
 from pointdraw.runtime.events import EventLog
 from pointdraw.runtime.planner import Planner
-from pointdraw.runtime.runtime import Runtime
+from pointdraw.runtime.runtime import Runtime, RuntimeParams
 from pointdraw.virtual.plotter import VirtualPlotter
 from pointdraw.vision.hands import HandObservation, HandsFrame, classify_pointing
 
@@ -120,7 +120,9 @@ def replay(
     planner = Planner()
     agent = RecordedAgent(session.events, planner.categories)
     plotter = VirtualPlotter(machine)
-    rt = Runtime(agent, plotter, machine, planner, log=EventLog())
+    rt = Runtime(
+        agent, plotter, machine, planner, params=RuntimeParams(auto_confirm=True), log=EventLog()
+    )
     heard = sorted(
         (e for e in session.events if e["kind"] in ("speech_start", "utterance")),
         key=lambda e: e["t"],

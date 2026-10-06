@@ -19,9 +19,10 @@ applies the reply when it arrives.
 Places, sizes and objects are resolved here by the deixis resolver and the scene model; the
 language model never produces coordinates or G-code (plan 4.1).
 
-Confirmation: a request is previewed (the pen traces its box, pen up), then drawn when the
-person says "yes", or on its own after `confirm_quiet_s` of quiet once the trace is done
-(so "an ear here ... an eye next to it" flows without a "yes" each time). Corrections
+Confirmation: a request is previewed (the pen traces its box, pen up) and the guess is said
+("A kite, about four centimetres?"), then drawn only when the person says "yes" (6 Oct
+2026: `auto_confirm` is off). With `auto_confirm` on (the virtual world and replays) it is
+also drawn after `confirm_quiet_s` of quiet once the trace is done. Corrections
 ("bigger", "a bit left", "no, there") during the preview change it and trace it again.
 A new, different request during a preview confirms the preview first.
 
@@ -56,6 +57,7 @@ from pointdraw.drawing import Placed, optimize
 from pointdraw.profile import plotter_profile
 from pointdraw.runtime.events import EventLog
 from pointdraw.runtime.gestures import GestureTracker
+from pointdraw.runtime.guess import guess_line, item_guess
 from pointdraw.runtime.planner import Planner
 from pointdraw.runtime.references import (
     NeedAsk,
@@ -148,8 +150,8 @@ class RuntimeParams:
     label_cap_mm: float = 5.0  # label cap height when no size is given
     label_gap_mm: float = 3.0
     size_wait_s: float = 6.0  # after "this big", how long to wait for the fingers to open
-    auto_confirm: bool = True
-    confirm_quiet_s: float = 1.5  # 2.0 until 2 Oct (scripts/start_latency.py)
+    auto_confirm: bool = False  # off (6 Oct): it draws only on "yes"; the virtual world turns it on
+    confirm_quiet_s: float = 1.5  # 2.0 until 2 Oct (scripts/start_latency.py); with auto_confirm
     resolver: ResolverParams = field(default_factory=lambda: plotter_profile().resolver_params())
 
 
@@ -229,6 +231,7 @@ class Runtime:
         self._clear: bool | None = None
         self.backlog: list[Utterance] = []  # heard while an earlier one was being understood
         self.asked: ToolCall | None = None  # the call of a question just left unanswered
+        self._rel: dict[str, tuple[str, str]] = {}  # item id -> (relation, target's label)
         self.size_wait: tuple[float, float] | None = None  # "this big" said at, wait until
         self.plotter_problem: str | None = None  # the plotter's link failed (until plotter_back)
         self._tags = 0
@@ -563,9 +566,12 @@ class Runtime:
             ext = (placed.box.w, placed.box.h)
             c = self.scene.relation(rel, pl.target, size, extent=ext)
             placed = self.planner.object(cat, c, size, id=placed.id, variant=placed.key_id)
-        self._add_item(
+        obj = self._add_item(
             placed, "object", cat, None, pl.where.model_dump(mode="json"), new, t, target=pl.target
         )
+        if rel in ("next_to", "left_of", "right_of", "above", "below", "on") and pl.target:
+            if pl.target.label:
+                self._rel[obj.id] = (rel, pl.target.label)
 
     def _write_label(self, call: ToolCall, refs: References, new: list, t: float) -> None:
         a = call.args
@@ -757,6 +763,15 @@ class Runtime:
             box=_box(union_box([o.box for o in prop.items])),
         )
         self._set_state(PREVIEW, t)
+        self.say(t, self._guess(prop))
+
+    def _guess(self, prop: Proposal) -> str:
+        """The guess in plain words, "A kite, about four centimetres?" (claim 16)."""
+        parts = []
+        for o in prop.items:
+            rel, target = self._rel.get(o.id, (None, None))
+            parts.append(item_guess(o.kind, o.label, o.text, max(o.box.w, o.box.h), rel, target))
+        return guess_line(parts)
 
     def _trace(self, prop: Proposal) -> None:
         prop.dirty = False
