@@ -1,7 +1,7 @@
 """One look for every robot's window (claim 39q; the same as the web demo and the film).
 
 - What **you** did is **filled amber**: your fingertip dot, your holds, your standing spot.
-- The **robot's guess** is a **dashed blue outline**.
+- The **robot's guess** is a **dashed blue outline**, with a blue cross on a circle's centre.
 - Both have a thin dark edge, so they read on white paper, a wood floor or a yellow arm.
 - The status is **large plain text** on a dark bar; the robot's last words sit under it.
 
@@ -35,7 +35,7 @@ def dashed(
     pts: np.ndarray,
     closed: bool = True,
     colour=GUESS,
-    thick: int = 3,
+    thick: int = 2,
     dash: float = 14.0,
     gap: float = 9.0,
 ) -> None:
@@ -62,6 +62,18 @@ def dashed(
         cv2.line(vis, _i(a), _i(b), EDGE, thick + 2, cv2.LINE_AA)
     for a, b in segs:
         cv2.line(vis, _i(a), _i(b), colour, thick, cv2.LINE_AA)
+
+
+def cross(vis: np.ndarray, pt: Sequence[float], r: int = 16, colour=GUESS, thick: int = 2) -> None:
+    """A cross with a dark edge: the centre of a guess. It is open in the middle and wider than
+    the fingertip dot, so the amber dot under it still shows (rahul 6 Oct: a filled mark would
+    hide where he pointed)."""
+    x, y = int(round(pt[0])), int(round(pt[1]))
+    arms = (((x - r, y), (x + r, y)), ((x, y - r), (x, y + r)))
+    for a, b in arms:
+        cv2.line(vis, a, b, EDGE, thick + 2, cv2.LINE_AA)
+    for a, b in arms:
+        cv2.line(vis, a, b, colour, thick, cv2.LINE_AA)
 
 
 def fill(vis: np.ndarray, pts: np.ndarray, colour=AMBER, alpha: float = 0.35) -> np.ndarray:
