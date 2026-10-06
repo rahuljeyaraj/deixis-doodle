@@ -19,10 +19,12 @@ vacuum's tool calls; the deixis core (`deixis-mcp`, over MCP; `DEIXIS_MODE=direc
 in-process) finds the box. On "yes", once you've stepped out of the box, the box goes onto the
 robot's map and to the robot's server (`deixis-vacuum-mcp`, in ../deixis-vacuum).
 
-The window shows the camera with the floor's 50 cm grid, your spot, the box (yellow: asking;
-green: waiting for you to step out; blue: sent) and what the app is doing. The run is logged
-in `out/vacuum/<time>/`: `timeline.jsonl` (what was heard, the calls, the boxes) and
-`feet.jsonl` (the spot in every frame).
+The window shows the camera with the floor's 50 cm grid, your spot (filled amber), the
+robot's guess (a dashed blue box; a thin solid line once sent) and, in large words, what the
+app is doing, with its last words under it. The run is logged in `out/vacuum/<time>/`:
+`timeline.jsonl` (what was heard, the calls, the boxes, when each reply was spoken, and the
+robot's own reported positions) and `feet.jsonl` (the spot in every frame).
+`scripts/measure_vacuum.py` reads it for M24 and M25.
 
 Keys: Q or Esc quit, Space stop the robot, S save a snapshot.
 """
@@ -52,6 +54,7 @@ from pointdraw.vacuum.floor import DEFAULT_LAYOUT_PATH, FloorCamera, FloorLayout
 from pointdraw.vacuum.link import LinkError, VacuumLink  # noqa: E402
 from pointdraw.vacuum.profile import vacuum_profile  # noqa: E402
 from pointdraw.vacuum.view import draw  # noqa: E402
+from pointdraw.vacuum.watch import RobotWatch  # noqa: E402
 from pointdraw.vision.aruco import detect_markers  # noqa: E402
 from pointdraw.vision.camera import Camera, CameraSettings, CameraUnavailable  # noqa: E402
 
@@ -163,6 +166,8 @@ def run(args: argparse.Namespace) -> int:
     except (CameraUnavailable, ValueError) as e:
         print(f"No camera: {e}. Try --camera 1 or --backend dshow.")
         return 1
+    watch = RobotWatch(link).start() if link is not None else None
+    n_spoken = 0
     window = "deixis vacuum"
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
     print(f"logging to {run_dir}. Q quits, Space stops the robot.")
@@ -189,6 +194,12 @@ def run(args: argparse.Namespace) -> int:
                 elif ev[0] == "error":
                     print(f"microphone: {ev[1]}")
             app.tick(t)
+            for ev in watch.drain() if watch is not None else []:  # the robot's positions (M24)
+                log.add(ev.pop("t"), ev.pop("kind"), **ev)
+            if speaker is not None and len(speaker.spoken) > n_spoken:  # when it spoke (M25)
+                for text, t0, t1 in speaker.spoken[n_spoken:]:
+                    log.add(t0, "spoken", text=text, t1=round(t1, 3))
+                n_spoken = len(speaker.spoken)
             timeline.write_new(log.events)
             sent = log.of("clean_area")
             vis = draw(frame.image, view, layout, app, feet, t,
@@ -210,6 +221,10 @@ def run(args: argparse.Namespace) -> int:
         tracker.close()
         words.close()
         agent.close()
+        if watch is not None:
+            watch.close()
+            for ev in watch.drain():
+                log.add(ev.pop("t"), ev.pop("kind"), **ev)
         timeline.write_new(log.events)
         timeline.close()
         feet_log.close()

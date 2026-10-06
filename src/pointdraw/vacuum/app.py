@@ -16,6 +16,11 @@ the box, then maps the box onto the robot's own map (the calibration, `FloorToMa
 by the core) and sends it to the robot (`VacuumLink.clean_area`). The robot cleans exactly
 that box or says why not; nothing here moves a box to make it fit.
 
+"Clean from here ... to here" is echoed as "Clean from there to here?" (no size said). If
+that box is narrower than half a metre, it asks "That's a narrow strip. Clean half a metre
+wide?" and "yes" widens it about its centre (the robot's server refuses under 200 mm). After
+"yes", one line: "OK. Step out, and I'll clean it."
+
 Everything it does goes in `log` (an `EventLog`); everything it says goes to `say`.
 """
 
@@ -50,6 +55,7 @@ class VacuumParams:
     gone_s: float = 3.0  # or have left the camera's view (last seen outside) this long
     remind_s: float = 8.0  # ask again to step out after this
     join_s: float = 8.0  # "clean from here" waits this long for "... to here" (a walk apart)
+    narrow_mm: float = 500.0  # a two-spot box narrower than this: "Clean half a metre wide?"
 
 
 @dataclass
@@ -79,6 +85,7 @@ class Preview:
     confirmed_t: float | None = None
     reminded_t: float | None = None
     out_since: float | None = None  # the person has stood outside the box since then
+    narrow: bool = False  # asked "Clean half a metre wide?"; "yes" widens it first
 
 
 @dataclass
@@ -107,6 +114,25 @@ def area_text(where: Where) -> str:
             return "about one metre square"
         return f"about {w:.1f} metres square"
     return f"about {w:.1f} by {h:.1f} metres"
+
+
+def two_spot(where: Where) -> bool:
+    """A box from "clean from here ... to here" (its two corners), not a box around one spot."""
+    return where.kind == "box" and "corners" in where.evidence
+
+
+def widened(where: Where, side_mm: float) -> Where:
+    """The box with each side under `side_mm` widened to it, about the same centre."""
+    assert where.box_mm is not None
+    x, y, w, h = where.box_mm
+    if w < side_mm:
+        x, w = x - (side_mm - w) / 2, side_mm
+    if h < side_mm:
+        y, h = y - (side_mm - h) / 2, side_mm
+    ev = {**where.evidence, "widened_to_mm": side_mm}
+    return where.model_copy(
+        update={"box_mm": (x, y, w, h), "mean_mm": (x + w / 2, y + h / 2), "evidence": ev}
+    )
 
 
 def inside(p: tuple[float, float], box: Sequence[float], margin: float = 0.0) -> bool:
@@ -270,13 +296,24 @@ class VacuumApp:
         self._show(Preview(where, utt, calls[k], t), t)
 
     def _show(self, prev: Preview, t: float) -> None:
+        """Show the box and say the guess. A two-spot box is echoed ("Clean from there to
+        here?"), not sized; under `narrow_mm` across, it asks to widen it first (claim 30a)."""
         self.preview = prev
         self.state = PREVIEW
         w = prev.where
+        two = two_spot(w)
+        assert w.box_mm is not None
+        prev.narrow = two and min(w.box_mm[2], w.box_mm[3]) < self.p.narrow_mm
         self.log.add(t, "preview", box=[round(v) for v in w.box_mm or ()], mean=w.mean_mm,
-                     source=w.source, outside=bool(w.evidence.get("outside")))  # fmt: skip
-        if w.evidence.get("outside"):
-            self.say(t, f"That's past the edge of what I can see. Clean {area_text(w)} there?")
+                     source=w.source, outside=bool(w.evidence.get("outside")),
+                     two_spot=two, narrow=prev.narrow)  # fmt: skip
+        if prev.narrow:
+            self.say(t, "That's a narrow strip. Clean half a metre wide?")
+        elif w.evidence.get("outside"):
+            what = "from there to here" if two else f"{area_text(w)} there"
+            self.say(t, f"That's past the edge of what I can see. Clean {what}?")
+        elif two:
+            self.say(t, "Clean from there to here?")
         else:
             self.say(t, f"Clean {area_text(w)} here?")
 
@@ -332,10 +369,14 @@ class VacuumApp:
             self.say(t, "There's nothing to start.")
             return
         prev.confirmed_t = t
+        if prev.narrow:  # "Clean half a metre wide?" ... "yes"
+            prev.where = widened(prev.where, self.p.narrow_mm)
+            prev.narrow = False
+            self.log.add(t, "widened", box=[round(v) for v in prev.where.box_mm or ()])
         self.state = WAIT_CLEAR
         self.log.add(t, "confirm", box=[round(v) for v in prev.where.box_mm or ()])
         if self._person_in_box(t):
-            self.say(t, "OK. Please step out of the box.")
+            self.say(t, "OK. Step out, and I'll clean it.")  # one line (claim 30)
             prev.reminded_t = t
         self._wait_clear(t)
 
@@ -395,10 +436,12 @@ class VacuumApp:
         assert prev is not None and prev.where.box_mm is not None
         s = self._last_seen(t)
         box = prev.where.box_mm
+        in_box = False  # seen inside the box now (a reminder is said only then)
         if s is None:
             clear = True  # nobody seen at all
         elif t - s.t >= self.p.gone_s:  # left the view: fine if last seen outside the box
             clear = not inside(s.point, box, 0.0)  # type: ignore[arg-type]
+            in_box = not clear
         else:
             out = not inside(s.point, box, self.p.clear_margin_mm)  # type: ignore[arg-type]
             if not out:
@@ -406,9 +449,10 @@ class VacuumApp:
             elif prev.out_since is None:
                 prev.out_since = s.t
             clear = prev.out_since is not None and t - prev.out_since >= self.p.clear_s
+            in_box = not out
         if clear:
             self._send(t)
-        elif prev.reminded_t is None or t - prev.reminded_t >= self.p.remind_s:
+        elif in_box and (prev.reminded_t is None or t - prev.reminded_t >= self.p.remind_s):
             prev.reminded_t = t
             self.log.add(t, "waiting", why="person in the box")
             self.say(t, "Please step out of the box so I can start.")
