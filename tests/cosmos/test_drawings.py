@@ -133,3 +133,26 @@ def test_script_scores_a_job_folder(tmp_path, capsys):
     assert rep["objects"]["hand"]["label_hits"] == 1  # 'palm' via library/index.json
     out = capsys.readouterr().out
     assert "ear: top label 1/2" in out and "wrote" in out
+
+
+def test_script_carries_on_after_a_cut_and_counts_kept(tmp_path, capsys):
+    """A run cut short is carried on (no picture asked twice); kept drawings are counted."""
+    job = tmp_path / "job"
+    entries = []
+    for i, r in enumerate((40, 70, 100)):
+        f = f"ear/ear_icon_s{1000 + i}.png"
+        _png(job / f, r)
+        entries.append({"file": f, "object": "ear", "seed": 1000 + i})
+    (job / "manifest.json").write_text(json.dumps({"model": "fake", "images": entries}))
+    done = {"file": str(job / entries[0]["file"]), "object": "ear", "label": "ear",
+            "alternatives": [], "match": "label", "score": 1.0, "latency_s": 1.0}  # fmt: skip
+    (job / "cosmos_scores.json.partial.jsonl").write_text(json.dumps(done) + "\n")
+    client, fake = _client({70: '{"label": "ear", "alternatives": []}',
+                            100: '{"label": "cup", "alternatives": ["ear"]}'})  # fmt: skip
+    mod = _load_script()
+    mod.kept_keys = lambda: {"ear_icon_s1000", "ear_icon_s1002"}
+    assert mod.main(["--job", str(job), "--workers", "2"], client=client) == 0
+    assert len(fake.calls) == 2  # the first picture was not asked again
+    rep = json.loads((job / "cosmos_scores.json").read_text())
+    assert rep["kept"] == {"n": 2, "label_hits": 1, "any_hits": 2, "errors": 0}
+    assert "M19 kept drawings: Cosmos named 1 of 2" in capsys.readouterr().out

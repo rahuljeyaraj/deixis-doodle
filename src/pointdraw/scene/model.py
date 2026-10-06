@@ -45,6 +45,7 @@ class SceneObject:
     pending: bool = False  # proposed (being previewed), not yet confirmed
     anchor: str | None = None  # for labels and arrows: the object(s) they belong to
     key_id: str | None = None  # robot objects: which library drawing (to re-place the same one)
+    attrs: dict[str, str] = field(default_factory=dict)  # e.g. Cosmos's other labels, "also"
 
     @property
     def center(self) -> Point:
@@ -113,11 +114,15 @@ class SceneModel:
     def set_user_marks(
         self,
         marks: Sequence[UserMark],
-        labeler: Callable[[UserMark], str | None] | None = None,
+        labeler: Callable[[UserMark], Labelled] | None = None,
         t: float = 0.0,
     ) -> list[SceneObject]:
         """Replace the user marks with a fresh segmentation. A mark that overlaps an old one
-        keeps its id and label (so Cosmos is only asked about new marks). Returns new ones."""
+        keeps its id and label (so Cosmos is only asked about new marks). Returns new ones.
+
+        The labeler gives a label, or (label, other labels): the others are kept as the
+        attribute "also", so the core's loose match finds the mark by any of them ("the
+        house" finds a sketch Cosmos called "building", "also: house home"), no core change."""
         old = self.marks
         keep = [o for o in self.objects if o.source != "user"]
         fresh: list[SceneObject] = []
@@ -128,7 +133,7 @@ class SceneModel:
                 match.box, match.mark_id = m.box_mm, m.id
                 fresh.append(match)
                 continue
-            label = labeler(m) if labeler else None
+            label, also = split_label(labeler(m) if labeler else None)
             obj = SceneObject(
                 self.new_id(f"mark_{label or 'ink'}"),
                 "user",
@@ -137,6 +142,7 @@ class SceneModel:
                 "mark",
                 t=t,
                 mark_id=m.id,
+                attrs={"also": " ".join(also)} if also else {},
             )
             fresh.append(obj)
             added.append(obj)
@@ -208,6 +214,22 @@ class SceneModel:
         return core.empty_space(self.things(), size, self.profile, res_mm)
 
 
+Labelled = str | tuple[str | None, Sequence[str]] | None
+
+
+def split_label(x: Labelled) -> tuple[str | None, list[str]]:
+    """A labeler's answer as (label, other labels, without the label itself or repeats)."""
+    if x is None or isinstance(x, str):
+        return x or None, []
+    label, alts = x
+    out: list[str] = []
+    for a in alts:
+        a = str(a).strip().lower()
+        if a and a != (label or "").lower() and a not in out:
+            out.append(a)
+    return label or None, out
+
+
 def thing(o: SceneObject) -> Thing:
     """The core's view of an object: written text is an attribute, so "the Cosmos label"
     finds it; labels and arrows are not selectable (pointing and "it" skip them)."""
@@ -217,7 +239,7 @@ def thing(o: SceneObject) -> Thing:
         label=o.label,
         box_mm=(b.x, b.y, b.w, b.h),
         kind=o.kind,
-        attrs={"text": o.text} if o.text else {},
+        attrs={**o.attrs, **({"text": o.text} if o.text else {})},
         t=o.t,
         selectable=o.kind in ("object", "mark"),
     )

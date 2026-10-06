@@ -46,6 +46,14 @@ PROFILE="${COSMOS_PROFILE:-nano}"
 # ---------------------------------------------------------------------------------------------
 # Profiles. The "nano" defaults are exactly the 22 Sep settings that worked.
 # ---------------------------------------------------------------------------------------------
+# Session times for the measure list (M21: cold start, and the idle share of billed time with
+# the per-call log out/cosmos/calls.jsonl that CosmosClient writes): one line per event.
+stamp() {
+  mkdir -p "$REPO_DIR/out/cosmos"
+  printf '{"utc": "%s", "event": "%s", "endpoint": "%s", "profile": "%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$NAME" "$PROFILE" >> "$REPO_DIR/out/cosmos/sessions.jsonl"
+}
+
 case "$PROFILE" in
   nano)
     D_NAME=cosmos3-nano-reasoner
@@ -55,6 +63,17 @@ case "$PROFILE" in
     D_PRESET=1gpu-24vcpu-218gb
     D_DISK=500Gi
     D_ARGS_EXTRA="--tensor-parallel-size 1 --mm-encoder-tp-mode data --async-scheduling"
+    ;;
+  nano-video)
+    # nano, plus video allowed explicitly: use it only if the Week 1 video check
+    # (scripts/cosmos_video_check.py ask) is refused on "nano". Not yet tried (6 Oct).
+    D_NAME=cosmos3-nano-reasoner
+    D_MODEL=nvidia/Cosmos3-Nano
+    D_IMAGE=vllm/vllm-openai:v0.29.0
+    D_PLATFORM=gpu-rtx6000-a
+    D_PRESET=1gpu-24vcpu-218gb
+    D_DISK=500Gi
+    D_ARGS_EXTRA="--tensor-parallel-size 1 --mm-encoder-tp-mode data --async-scheduling --limit-mm-per-prompt.image 2 --limit-mm-per-prompt.video 1"
     ;;
   reason2)
     D_NAME=cosmos-reason2-8b
@@ -75,7 +94,7 @@ case "$PROFILE" in
     D_ARGS_EXTRA="--tensor-parallel-size 1 --max-model-len 32768"
     ;;
   *)
-    echo "unknown COSMOS_PROFILE '$PROFILE' (use nano, reason2 or edge)" >&2
+    echo "unknown COSMOS_PROFILE '$PROFILE' (use nano, nano-video, reason2 or edge)" >&2
     exit 2
     ;;
 esac
@@ -225,6 +244,7 @@ case "${1:-}" in
     ;;
   create)
     create
+    stamp created
     echo
     echo "Created (async). Next: bash scripts/nebius/cosmos_endpoint.sh wait 40"
     warn_delete
@@ -252,6 +272,7 @@ case "${1:-}" in
       fi
       echo "$(date +%H:%M:%S) state=${STATE:-?} http=$CODE url=${URL:-none}"
       if [ "$CODE" = 200 ]; then
+        stamp ready
         echo "READY"
         echo "Put this in .env:  COSMOS_BASE_URL=$URL"
         warn_delete
@@ -283,6 +304,7 @@ case "${1:-}" in
     id="$(endpoint_id)"
     [ -z "$id" ] && { echo "no endpoint named $NAME (already deleted)"; exit 0; }
     "$NB" ai endpoint delete --id "$id" 2>&1 | redact
+    stamp deleted
     echo "deleted $id. Double-check: $NB ai endpoint list; $NB compute disk list"
     ;;
   watchdog)

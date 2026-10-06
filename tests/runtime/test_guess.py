@@ -91,3 +91,25 @@ def test_auto_confirm_still_works_when_turned_on():
     say(rt, "draw a circle", 0.0)
     run_until(rt, plotter, 1.0, 40.0)
     assert [e["reason"] for e in rt.log.of("confirm")] == ["quiet"]
+
+
+def test_a_tree_next_to_the_house_cosmos_called_a_building():
+    """Command 2 of the film: the guess repeats the person's word, and the core finds the
+    sketch through Cosmos's other labels (claims 16, 26c)."""
+    from deixis.geometry import Box
+    from pointdraw.scene.ink import UserMark
+
+    tree = parse_call(
+        "place_drawing",
+        {"object": "tree", "place": {"relation": "next_to", "target": {"label": "house"}}},
+    )
+    plotter = VirtualPlotter(CFG)
+    rt = Runtime(Script([tree]), plotter, CFG, Planner())
+    rt.start(0.0)
+    m = UserMark(1, Box(40, 60, 50, 45), 400.0, (65, 82), (0, 0, 1, 1))
+    rt.scene.set_user_marks([m], lambda _: ("building", ["house", "home"]))
+    say(rt, "draw a tree next to the house", 0.0)
+    run_until(rt, plotter, 1.0, 3.0)
+    assert rt.proposal is not None and rt.proposal.items[0].label == "tree"
+    assert rt.proposal.items[0].box.x >= 90  # beside the sketch, not on it
+    assert "A tree, next to the house?" in [e["text"] for e in rt.log.of("say")]
