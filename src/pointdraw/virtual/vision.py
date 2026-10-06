@@ -136,13 +136,16 @@ class LiveVision:
         self.latencies: list[float] = []
         self.replies: list[dict[str, Any]] = []  # raw replies, for the live-run report
 
-    def label(self, image: Any, mark: UserMark, mm_per_px: float) -> str | None:
+    def label(self, image: Any, mark: UserMark, mm_per_px: float) -> tuple[str | None, list[str]]:
+        """Cosmos's label for the mark, and its other labels (kept as the mark's `attrs`)."""
         crop = crop_for_mark(image, mark, mm_per_px)
         res = self.client.label_crop(crop.image)
         self.calls += 1
         self.latencies.append(res.reply.latency_s)
-        self.replies.append({"task": "label", "label": res.label, "raw": res.reply.raw})
-        return res.label or None
+        self.replies.append(
+            {"task": "label", "label": res.label, "also": res.alternatives, "raw": res.reply.raw}
+        )
+        return res.label or None, list(res.alternatives)
 
     def look(self, query: str, image: Any, mm_per_px: float, scene: SceneModel) -> str:
         from pointdraw.cosmos.parse import strip_reasoning

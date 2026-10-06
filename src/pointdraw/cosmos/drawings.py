@@ -36,17 +36,25 @@ def score_images(
     items: Iterable[tuple[str | Path, str]],
     synonyms: Mapping[str, Iterable[str]] | None = None,
     progress: Callable[[dict], None] | None = None,
+    *,
+    workers: int = 1,
+    done: Mapping[str, dict] | None = None,
 ) -> dict:
     """Label every (image, object) pair with `client.label_crop` and score the match.
 
     Returns {"model", "prompt_version", "created", "images": [...], "objects": {...}}, where
     `objects[obj]["ranked"]` lists that object's files best first (score, then input order).
     A failed call is recorded with its error and scores 0, so one bad reply doesn't lose a run.
+    `workers` calls run at once (the endpoint batches them: less billed GPU time); `done`
+    holds rows from an earlier, cut-short run, by file, and those images aren't asked again.
     """
     synonyms = synonyms or {}
-    rows: list[dict] = []
-    for n, (path, obj) in enumerate(items):
+    done = done or {}
+
+    def one(n: int, path: str | Path, obj: str) -> dict:
         row: dict[str, Any] = {"file": str(path), "object": obj, "order": n}
+        if str(path) in done and done[str(path)].get("match") != "error":
+            return {**done[str(path)], "order": n}
         try:
             r = client.label_crop(Path(path))
             match = judge(r.label, r.alternatives, obj, synonyms.get(obj, ()))
@@ -60,9 +68,18 @@ def score_images(
             )
         except Exception as e:  # noqa: BLE001 - one failed call must not end the run
             row.update(label="", alternatives=[], match="error", score=0.0, error=repr(e))
-        rows.append(row)
         if progress:
             progress(row)
+        return row
+
+    jobs = list(enumerate(items))
+    if workers <= 1:
+        rows = [one(n, p, o) for n, (p, o) in jobs]
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(workers) as pool:
+            rows = list(pool.map(lambda j: one(j[0], *j[1]), jobs))
 
     objects: dict[str, dict] = {}
     for obj in dict.fromkeys(r["object"] for r in rows):

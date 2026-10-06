@@ -33,6 +33,7 @@ from pointdraw.cosmos.parse import (
 log = logging.getLogger("pointdraw.cosmos")
 
 ImageLike = np.ndarray | bytes | str | Path
+CALL_LOG = Path(os.environ.get("COSMOS_CALL_LOG", "out/cosmos/calls.jsonl"))
 
 
 @dataclass
@@ -142,6 +143,8 @@ class CosmosClient:
             if not key:
                 raise ValueError("COSMOS_API_KEY (or COSMOS_ENDPOINT_TOKEN) is not set")
             openai_client = OpenAI(base_url=url, api_key=key, timeout=timeout_s, max_retries=1)
+        # every call to a real endpoint goes in out/cosmos/calls.jsonl (busy time, M21)
+        self.call_log = None if openai_client is not None else CALL_LOG
         self._client = openai_client
 
     # -- low level -------------------------------------------------------------------------
@@ -184,6 +187,7 @@ class CosmosClient:
                 "prompt_tokens": int(getattr(resp.usage, "prompt_tokens", 0) or 0),
                 "completion_tokens": int(getattr(resp.usage, "completion_tokens", 0) or 0),
             }
+        self._log_call(t0, latency, usage)
         log.info(
             "cosmos %s %.2fs in=%s out=%s",
             self.model,
@@ -192,6 +196,23 @@ class CosmosClient:
             usage.get("completion_tokens"),
         )
         return CosmosReply(raw=raw, latency_s=latency, model=self.model, usage=usage), w, h
+
+    def _log_call(self, t0: float, latency: float, usage: dict[str, int]) -> None:
+        """One line per call: when it started (UTC), how long, the tokens. No image, no text."""
+        if self.call_log is None:
+            return
+        import json
+        from datetime import UTC, datetime, timedelta
+
+        start = datetime.now(UTC) - timedelta(seconds=time.perf_counter() - t0)
+        row = {"utc": start.isoformat(timespec="milliseconds"), "s": round(latency, 3),
+               "model": self.model, **usage}  # fmt: skip
+        try:
+            self.call_log.parent.mkdir(parents=True, exist_ok=True)
+            with self.call_log.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(row) + "\n")
+        except OSError:
+            log.warning("could not write %s", self.call_log)
 
     # -- the three R1 tasks ----------------------------------------------------------------
 

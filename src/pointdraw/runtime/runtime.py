@@ -124,7 +124,7 @@ class CameraPort(Protocol):
 
 
 class VisionPort(Protocol):
-    def label(self, image: Any, mark: Any, mm_per_px: float) -> str | None: ...
+    def label(self, image: Any, mark: Any, mm_per_px: float) -> Any: ...  # str, or (str, also)
 
     def look(self, query: str, image: Any, mm_per_px: float, scene: SceneModel) -> str: ...
 
@@ -407,7 +407,7 @@ class Runtime:
         robot = [[self._to_paper(p) for p in pl] for pl in self.plotter.ink_polylines()]
         marks = segment_ink(img, mmpp, robot)
 
-        def labeler(m: Any) -> str | None:
+        def labeler(m: Any) -> Any:
             return self.vision.label(img, m, mmpp) if self.vision else None
 
         added = self.scene.set_user_marks(marks, labeler, t)
@@ -415,7 +415,10 @@ class Runtime:
             t,
             "scene",
             marks=len(self.scene.marks),
-            new=[{"id": o.id, "label": o.label, "box": _box(o.box)} for o in added],
+            new=[
+                {"id": o.id, "label": o.label, "also": o.attrs.get("also"), "box": _box(o.box)}
+                for o in added
+            ],
         )
 
     # ------------------------------------------------------------------ agent results
@@ -570,8 +573,11 @@ class Runtime:
             placed, "object", cat, None, pl.where.model_dump(mode="json"), new, t, target=pl.target
         )
         if rel in ("next_to", "left_of", "right_of", "above", "below", "on") and pl.target:
-            if pl.target.label:
-                self._rel[obj.id] = (rel, pl.target.label)
+            # the word the person used ("the house"), else the thing's own label
+            said = getattr(getattr(a.place, "target", None), "label", None)  # type: ignore[attr-defined]
+            name = said or pl.target.label
+            if name:
+                self._rel[obj.id] = (rel, str(name).lower().removeprefix("the "))
 
     def _write_label(self, call: ToolCall, refs: References, new: list, t: float) -> None:
         a = call.args
