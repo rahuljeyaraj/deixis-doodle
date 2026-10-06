@@ -18,7 +18,7 @@ from pointdraw.agent.schema import parse_call
 from pointdraw.controller import gcode
 from pointdraw.controller.config import MachineConfig
 from pointdraw.runtime.planner import Planner
-from pointdraw.runtime.runtime import Runtime, RuntimeParams
+from pointdraw.runtime.runtime import NOT_UNDERSTOOD, Runtime, RuntimeParams
 from pointdraw.virtual.plotter import VirtualPlotter
 from pointdraw.vision.hands import HandsFrame
 
@@ -82,6 +82,42 @@ def test_with_auto_confirm_a_new_request_still_confirms_the_guess():
 
     assert [e["reason"] for e in rt.log.of("confirm")] == ["new request"]
     assert rt.log.of("dropped") == []
+
+
+def test_a_mangled_correction_is_not_turned_into_a_place_nobody_said():
+    """rahul, 6 Oct: "a bit bigger" reached the app as "Well we went". The model answered
+    place_drawing of the crown already showing, at the "top left corner" — neither the object
+    nor the place was said — and the crown jumped there while the guess read the same size."""
+    plotter = VirtualPlotter(CFG)
+    moved = parse_call("place_drawing", {"object": "cat", "place": {"named": "top left corner"}})
+    rt = Runtime(Script([CAT], [moved]), plotter, CFG, Planner())
+    rt.start(0.0)
+    say(rt, "draw a cat here", 0.0)
+    run(rt, plotter, 1.0, 4.0)
+    where = rt.proposal.items[0].center
+    said = len(rt.log.of("say"))
+
+    say(rt, "Well we went", 5.0)
+    run(rt, plotter, 6.0, 12.0)
+
+    assert rt.proposal.items[0].center == where  # it did not jump
+    assert [e["text"] for e in rt.log.of("say")[said:]] == [NOT_UNDERSTOOD]
+
+
+def test_a_correction_that_was_said_still_moves_the_preview():
+    """The guard must not block the real thing: "no, there" names no object either."""
+    plotter = VirtualPlotter(CFG)
+    moved = parse_call("place_drawing", {"object": "cat", "place": {"named": "top left corner"}})
+    rt = Runtime(Script([CAT], [moved]), plotter, CFG, Planner())
+    rt.start(0.0)
+    say(rt, "draw a cat here", 0.0)
+    run(rt, plotter, 1.0, 4.0)
+    where = rt.proposal.items[0].center
+
+    say(rt, "no, over there", 5.0)
+    run(rt, plotter, 6.0, 12.0)
+
+    assert rt.proposal.items[0].center != where  # the move was asked for, so it happened
 
 
 def test_the_preview_traces_at_the_preview_height_not_over_the_clips():

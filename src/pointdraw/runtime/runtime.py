@@ -109,6 +109,10 @@ RELATION_WORDS |= {"underneath", "beneath", "below", "between", "inside", "in", 
 RELATION_WORDS |= {"by", "around", "behind", "front", "it", "them"}
 PRESET_WORDS = {"tiny", "little", "small", "smaller", "medium", "big", "bigger", "large"}
 PRESET_WORDS |= {"larger", "huge", "giant", "whole", "page", "full", "half"}
+DEICTIC_WORDS = {"here", "there", "this", "that", "these", "those", "no"}
+# A call may name the object on preview without saying it ("no, there", "a bit bigger"), but
+# only if the utterance carries the correction itself.
+CORRECTION_WORDS = DEICTIC_WORDS | ADJUST_WORDS | RELATION_WORDS | PRESET_WORDS | REPEAT_WORDS
 
 
 class AgentPort(Protocol):
@@ -144,6 +148,9 @@ class PlotterPort(Protocol):
     def stop(self) -> None: ...
     def set_hands_clear(self, clear: bool) -> None: ...
     def ink_polylines(self, tag: Any = None) -> list: ...
+
+
+NOT_UNDERSTOOD = "Sorry, I didn't catch that. Could you say it again?"
 
 
 @dataclass
@@ -428,7 +435,7 @@ class Runtime:
 
     def _apply(self, utt: Utterance, res: AgentResult, t: float) -> None:
         if not res.calls:
-            self.say(t, res.speech or "Sorry, I didn't catch that. Could you say it again?")
+            self.say(t, res.speech or NOT_UNDERSTOOD)
             return
         calls = split_shared_labels(res.calls)
         if calls != res.calls:
@@ -439,7 +446,7 @@ class Runtime:
             self.log.add(t, "guard", said=utt.text, why="place_drawing of an object not said")
             calls = named
             if not calls:
-                self.say(t, "Sorry, I didn't catch that. Could you say it again?")
+                self.say(t, NOT_UNDERSTOOD)
                 return
         if any(c.name == "adjust" for c in calls):
             if self._resize_to_gesture(utt, t):
@@ -1200,14 +1207,18 @@ class Runtime:
         obj = getattr(call.args, "object", "")
         target = self.planner.resolve(obj) or norm_word(obj)
         previewed = [o.label for p in [self.proposal, *self.queue] if p for o in p.items]
-        if target in previewed:  # "no, there": move the preview
-            return False
+        toks = [norm_word(w.text) for w in utt.words]
+        if target in previewed:
+            # "no, there" / "a bit bigger" name no object but mean the one on preview. The
+            # utterance must still carry the correction: on 6 Oct a mangled "a bit bigger"
+            # ("Well we went") came back as place_drawing of the crown at the "top left
+            # corner" and the crown jumped there, though neither word was said.
+            return not set(toks) & CORRECTION_WORDS
         q = self.question
         call0 = q.call if q is not None else self.asked
         asked = getattr(call0.args, "object", None) if call0 is not None else None
         if asked and (self.planner.resolve(asked) or norm_word(asked)) == target:
             return False  # "How big?" ... "this big"
-        toks = [norm_word(w.text) for w in utt.words]
         if any(w in REPEAT_WORDS for w in toks):
             return False
         grams = toks + [f"{a} {b}" for a, b in zip(toks, toks[1:], strict=False)]
