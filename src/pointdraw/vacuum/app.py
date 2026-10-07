@@ -56,6 +56,7 @@ class VacuumParams:
     remind_s: float = 8.0  # ask again to step out after this
     join_s: float = 8.0  # "clean from here" waits this long for "... to here" (a walk apart)
     narrow_mm: float = 500.0  # a two-spot box narrower than this: "Clean half a metre wide?"
+    send_inset_mm: float = 40.0  # shrink the box sent to the robot by this on every side
     min_clean_s: float = 6.0  # the robot gets this long to start before it is believed
     clean_settle_s: float = 3.0  # ... and must say it has stopped for this long to count
 
@@ -105,6 +106,24 @@ def _opens(utt: Utterance) -> bool:
         return False
     after = ws[ws.index("from") + 1 :]
     return any(w in ("here", "there") for w in after) and "to" not in after
+
+
+def inset(where: Where, by_mm: float) -> Where:
+    """A box shrunk on every side, for the robot rather than for the person.
+
+    The N50 hugs the line it is given and rides a little past it: measured 7 Oct, it was
+    2 mm outside at the 75th percentile, 40 mm at the 95th. Sending a box shrunk by that
+    much puts its overshoot on the line the person actually asked for. Nothing is lost at
+    the edges -- the robot is 350 mm wide, so its body still sweeps well past its own path.
+
+    Never shrinks a box to less than a third of a side, so a narrow strip stays a strip.
+    """
+    if not by_mm or where.box_mm is None:
+        return where
+    x, y, w, h = where.box_mm
+    take = min(by_mm, w / 3, h / 3)
+    box = (x + take, y + take, w - 2 * take, h - 2 * take)
+    return where.model_copy(update={"box_mm": box, "mean_mm": (x + w / 2, y + h / 2)})
 
 
 def area_text(where: Where) -> str:
@@ -519,10 +538,11 @@ class VacuumApp:
             self.log.add(t, "error", where="apply_transform", error=str(e))
             self.say(t, "Sorry, I couldn't place that on the robot's map.")
             return
+        on_map = inset(on_map, self.p.send_inset_mm)
         box = [round(v) for v in on_map.box_mm or ()]
         reply = self._robot("clean_area", t, on_map)
         self.log.add(t, "clean_area", floor_box=[round(v) for v in prev.where.box_mm or ()],
-                     map_box=box, reply=reply)  # fmt: skip
+                     map_box=box, inset_mm=self.p.send_inset_mm, reply=reply)  # fmt: skip
         self.sent.append({"t": t, "where": on_map, "reply": reply})
         if reply is None:
             self.say(t, "Dry run: the robot would clean there now.")
