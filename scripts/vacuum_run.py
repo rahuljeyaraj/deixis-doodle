@@ -87,6 +87,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--model", default=None, help="Nemotron model (default: the code default)")
     ap.add_argument("--type", action="store_true", help="type lines instead of speaking")
     ap.add_argument("--mic", default=None, help="input device index or name")
+    ap.add_argument("--list-mics", action="store_true", help="print the microphones and stop")
     ap.add_argument("--asr", default=None, help="ASR model (default: the code default)")
     ap.add_argument("--vad", default="silero", choices=["silero", "energy"])
     ap.add_argument("--speak", action="store_true", help="say the replies aloud")
@@ -111,6 +112,14 @@ def make_words(args: argparse.Namespace, muted=None):
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.list_mics:
+        from pointdraw.audio.capture import default_input_device, list_input_devices
+
+        default = default_input_device()
+        for d in list_input_devices():
+            mark = " <- the default" if d["index"] == default else ""
+            print(f"  {d['index']:>2}  {d['name']}  ({d['hostapi']}){mark}")
+        return 0
     fixed = None if args.markers else FixedFloor.load_or_none(args.fixed)
     if fixed is not None:
         floor_source: FixedFloor | FloorCamera = fixed
