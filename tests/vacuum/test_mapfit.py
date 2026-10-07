@@ -55,8 +55,8 @@ def _path(n: int = 60) -> list[tuple[np.ndarray, float]]:
     for i in range(n):
         u = i / (n - 1)
         x = 400.0 + 2000.0 * u
-        y = 300.0 + 1500.0 * u + 400.0 * math.sin(u * 6.0)
-        heading = math.atan2(1500.0 + 2400.0 * math.cos(u * 6.0), 2000.0)
+        y = 300.0 + 1500.0 * u + 700.0 * math.sin(u * 6.0)  # a cleaning sweep, not a line
+        heading = math.atan2(1500.0 + 4200.0 * math.cos(u * 6.0), 2000.0)
         out.append((np.array([x, y]), heading))
     return out
 
@@ -190,3 +190,38 @@ def test_a_fitted_floor_saves_and_comes_back(tmp_path):
     assert view.fresh and view.t == 1.5
     assert np.allclose(view.H, H)
     assert FixedFloor.load_or_none(tmp_path / "nothing.json") is None
+
+
+def test_the_drive_works_out_the_marker_offset_itself():
+    """rahul will not measure how far the marker sits ahead, so the data says it."""
+    from pointdraw.vacuum.mapfit import best_offset
+
+    seen = _sightings()
+    track = [(float(i), s.corners_px) for i, s in enumerate(seen)]
+    reports = [(float(i), s.map_mm) for i, s in enumerate(seen)]
+    got = best_offset(track, reports, lags=[0.0])
+    assert got is not None
+    offset, _, _, _, rms = got
+    assert offset == pytest.approx(OFFSET_MM, abs=15.0)  # true 90 mm, scanned in 10 mm steps
+    assert rms < 5.0
+
+
+def test_a_thin_or_straight_drive_is_not_ready():
+    """7 Oct, live: 23 positions fitted at 26 mm rms and the bar went green. A homography
+    has 8 free numbers, so that number meant nothing."""
+    from pointdraw.vacuum.mapfit import readiness
+
+    seen = _sightings()
+    ok, why = readiness(seen[:23], 26.0)
+    assert not ok and "23 of 40" in why
+
+    straight = [
+        Sighting(s.corners_px, (float(400 + 40 * i), 500.0)) for i, s in enumerate(_sightings())
+    ]
+    ok, why = readiness(straight, 10.0)
+    assert not ok and "straight" in why.lower()
+
+    ok, why = readiness(seen, 10.0)
+    assert ok, why
+    ok, why = readiness(seen, 120.0)
+    assert not ok and "loose" in why

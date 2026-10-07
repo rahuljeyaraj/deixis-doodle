@@ -232,3 +232,81 @@ def best_lag(
         if best is None or rms < best[3]:
             best = (float(lag), seen, H, rms)
     return best
+
+
+def best_offset(
+    track: Sequence[tuple[float, np.ndarray]],
+    reports: Sequence[tuple[float, tuple[float, float]]],
+    offsets: Sequence[float] | None = None,
+    lags: Sequence[float] | None = None,
+    min_pairs: int = 8,
+    max_gap_s: float = 0.25,
+) -> tuple[float, float, list[Sighting], np.ndarray, float] | None:
+    """Let the drive say how far ahead the marker sits: the offset that fits tightest.
+
+    A wrong offset puts the marker's map point out by that much, in whichever way the robot
+    was facing, so the rms rises on both sides of the right answer. Returns
+    (offset, lag, sightings, pixels -> map, rms mm).
+    """
+    def scan(
+        try_offsets: Sequence[float], try_lags: Sequence[float] | None
+    ) -> tuple[float, float, list[Sighting], np.ndarray, float] | None:
+        found: tuple[float, float, list[Sighting], np.ndarray, float] | None = None
+        for off in try_offsets:
+            got = best_lag(track, reports, float(off), try_lags, min_pairs, max_gap_s)
+            if got is None:
+                continue
+            lag, seen, H, rms = got
+            if found is None or rms < found[4]:
+                found = (float(off), lag, seen, H, rms)
+        return found
+
+    if offsets is not None:
+        return scan(offsets, lags)
+    # Coarse, then close in: the full grid of offsets against the full grid of lags is a few
+    # hundred fits and stalls the window it is drawn in.
+    coarse = scan(np.arange(0.0, 171.0, 40.0), lags)
+    if coarse is None:
+        return None
+    near = np.arange(max(0.0, coarse[0] - 40.0), coarse[0] + 41.0, 10.0)
+    return scan(near, [coarse[1]]) or coarse
+
+
+MIN_PAIRS = 40
+MIN_LONG_MM = 1500.0  # how far the robot drove, along its longest line
+MIN_WIDE_MM = 600.0  # and across it: a straight line cannot fix a homography at all
+MAX_RMS_MM = 80.0
+
+
+def readiness(
+    seen: Sequence[Sighting],
+    rms: float,
+    min_pairs: int = MIN_PAIRS,
+    min_long_mm: float = MIN_LONG_MM,
+    min_wide_mm: float = MIN_WIDE_MM,
+    max_rms_mm: float = MAX_RMS_MM,
+) -> tuple[bool, str]:
+    """Is the drive enough to fit on, and if not, what should the robot do about it?
+
+    A low rms is not enough. A homography has 8 free numbers, so a handful of positions fit
+    almost perfectly and say nothing; and a robot that drove in a straight line cannot fix
+    one at all, however many positions it sent. So this asks for a count, for distance
+    along the drive's longest line, and for distance **across** it.
+    """
+    n = len(seen)
+    if n < min_pairs:
+        return False, f"Keep driving: {n} of {min_pairs} positions"
+    pts = np.array([s.map_mm for s in seen], np.float64)
+    centred = pts - pts.mean(axis=0)
+    _, _, vt = np.linalg.svd(centred, full_matrices=False)
+    along = centred @ vt[0]
+    across = centred @ vt[1]
+    long_mm = float(along.max() - along.min())
+    wide_mm = float(across.max() - across.min())
+    if long_mm < min_long_mm:
+        return False, f"Drive further: {long_mm / 1000:.1f} m of {min_long_mm / 1000:.1f} m"
+    if wide_mm < min_wide_mm:
+        return False, f"Too straight a line: drive across it too ({wide_mm / 1000:.1f} m wide)"
+    if rms > max_rms_mm:
+        return False, f"The fit is loose: {rms:.0f} mm (want under {max_rms_mm:.0f})"
+    return True, f"Ready: press F to save ({n} positions, {rms:.0f} mm)"

@@ -1,10 +1,11 @@
 """Map the floor from the robot's own drive. No paper markers, no tape measure.
 
-    uv run python scripts/vacuum_map.py --camera 1 --offset 90
+    uv run python scripts/vacuum_map.py --camera 0
 
 1. Tape the robot marker (ID 14, `hardware/print/robot-marker.pdf`) on the robot's lid with
    its printed top toward the robot's front, in front of the LiDAR turret (never on it).
-   Measure how far the marker's centre is ahead of the robot's centre: --offset, in mm.
+   How far the marker's centre sits ahead of the robot's centre is worked out from the
+   drive itself; give it with --offset <mm> only if you would rather say.
 2. Start this script, then start the robot cleaning in the ECOVACS app (or
    `vacuum.py zone ...`) so that it drives around the floor the camera sees. The more of
    the patch it covers, and the more it turns, the better the fit.
@@ -48,23 +49,38 @@ from pointdraw.layout import ROBOT_MARKER_ID
 from pointdraw.vacuum.calibrate import DEFAULT_MAP_PATH, FloorToMap
 from pointdraw.vacuum.floor import DEFAULT_FIXED_PATH, FixedFloor
 from pointdraw.vacuum.link import LinkError, VacuumLink
-from pointdraw.vacuum.mapfit import LID_HEIGHT_MM, best_lag, camera_pose, floor_frame, lift_to_floor
+from pointdraw.vacuum.mapfit import (
+    LID_HEIGHT_MM,
+    best_lag,
+    best_offset,
+    camera_pose,
+    floor_frame,
+    lift_to_floor,
+    readiness,
+)
 from pointdraw.vacuum.profile import vacuum_profile
 from pointdraw.vision.aruco import detect_markers
 from pointdraw.vision.camera import Camera, CameraSettings, CameraUnavailable
 
 WINDOW_W = 1280
-GOOD_RMS_MM = 80.0
 ENOUGH_SPREAD_MM = 1000.0
 
 
 def poll(link: VacuumLink, out: queue.Queue, stop: threading.Event) -> None:
-    """Ask the robot where it is, four times a second."""
+    """Ask the robot where it is, four times a second.
+
+    A parked robot does not stream its position, so `status` alone can sit at nothing for
+    ever. Every fourth turn asks for a fresh one (`locate`, which pokes the robot and then
+    reads the status back) -- that is what makes a slow or stop-start drive work.
+    """
+    n = 0
     while not stop.is_set():
         try:
-            out.put((time.monotonic(), link.status()))
+            st = link.locate(wait_s=0.0) if n % 4 == 0 else link.status()
+            out.put((time.monotonic(), st))
         except (LinkError, OSError) as e:  # pragma: no cover - the robot's server
             out.put((time.monotonic(), {"error": str(e)}))
+        n += 1
         stop.wait(0.25)
 
 
@@ -76,6 +92,27 @@ def _spread_mm(track: list[tuple[float, np.ndarray]]) -> float:
     return float(np.max(pts.max(axis=0) - pts.min(axis=0)))
 
 
+
+def _fit(track, reports, offset: float | None):
+    """(lag, sightings, pixels -> map, rms, the marker's offset). The offset is scanned for
+    unless it was given: a wrong one pushes the marker's map point out by that much."""
+    if offset is not None:
+        got = best_lag(track, reports, offset)
+        return None if got is None else (*got, offset)
+    got = best_offset(track, reports)
+    return None if got is None else (got[1], got[2], got[3], got[4], got[0])
+
+def _refit(track, reports, offset: float | None, out: list) -> None:
+    """Fit in the background. On the window's thread it stalls the picture every few
+    seconds, which reads as a stuttering camera."""
+    got = _fit(track, reports, offset)
+    if got is not None:
+        out[0] = got
+        lag, seen, _, rms, off = got
+        print(f"lag {lag:.1f} s, {len(seen)} pairs, {rms:.0f} mm rms, "
+              f"marker {off:.0f} mm ahead")  # fmt: skip
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -84,7 +121,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--backend", default="msmf", choices=["auto", "dshow", "msmf", "any"])
     ap.add_argument("--width", type=int, default=1920)
     ap.add_argument("--height", type=int, default=1080)
-    ap.add_argument("--offset", type=float, default=0.0, help="marker ahead of centre, mm")
+    ap.add_argument("--offset", default="auto",
+                    help="marker ahead of the robot's centre, mm, or 'auto'")  # fmt: skip
     ap.add_argument("--lid-height", type=float, default=LID_HEIGHT_MM, help="marker height, mm")
     ap.add_argument("--camera-height", type=float, default=None, help="above the floor, mm")
     ap.add_argument("--focal", type=float, default=None, help="the camera's focal length, px")
@@ -117,6 +155,9 @@ def main(argv: list[str] | None = None) -> int:
     stop = threading.Event()
     threading.Thread(target=poll, args=(link, inbox, stop), daemon=True).start()
     size = (a.width, a.height)
+    offset = None if str(a.offset).lower() == "auto" else float(a.offset)
+    found: list = [None]  # the newest fit, handed over by the worker thread
+    fitter: threading.Thread | None = None
     result = None
     last_fit = 0.0
     window = "floor from the robot"
@@ -142,21 +183,24 @@ def main(argv: list[str] | None = None) -> int:
                     rec = (t, (float(robot["x"]), float(robot["y"])))
                     if not reports or reports[-1][1] != rec[1]:
                         reports.append(rec)
-            if time.monotonic() - last_fit > 3.0 and _spread_mm(track) > 100:
+            busy = fitter is not None and fitter.is_alive()
+            if not busy and time.monotonic() - last_fit > 3.0 and _spread_mm(track) > 100:
                 last_fit = time.monotonic()
-                result = best_lag(track, reports, a.offset)
-                if result is not None:
-                    lag, seen, _, rms = result
-                    print(f"lag {lag:.1f} s, {len(seen)} pairs, {rms:.0f} mm rms")
+                fitter = threading.Thread(
+                    target=_refit, args=(list(track), list(reports), offset, found), daemon=True
+                )
+                fitter.start()
+            result = found[0]
 
             vis = frame.image.copy()
             if len(track) > 1:
                 pts = np.array([c.mean(axis=0) for _, c in track[-3000:]])
                 cv2.polylines(vis, [np.round(pts).astype(np.int32)], False, (255, 140, 40), 2)
-            ready = result is not None and result[3] < GOOD_RMS_MM
-            text = ("Ready: press F to save" if ready else
+            ready, why = (readiness(result[1], result[3]) if result else (False, ""))
+            text = (why if ready else
                     "Robot marker not seen" if lid is None else
-                    f"Following the robot: {len(reports)} reports")  # fmt: skip
+                    "Start a clean: the robot is not reporting" if not reports else
+                    why or f"Following the robot: {len(reports)} reports")  # fmt: skip
             cv2.rectangle(vis, (0, 0), (vis.shape[1], 70), (30, 30, 30), -1)
             cv2.putText(vis, text, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.4,
                         (60, 220, 60) if ready else (255, 255, 255), 3)  # fmt: skip
@@ -166,11 +210,11 @@ def main(argv: list[str] | None = None) -> int:
             if key in (ord("q"), 27):
                 break
             if key == ord("c"):
-                track, reports, result = [], [], None
+                track, reports, result, found[0] = [], [], None, None
                 print("cleared")
             if key == ord("f"):
-                if result is None:
-                    print("not enough yet: let the robot drive further across the patch")
+                if result is None or not ready:
+                    print(why or "not enough yet: let the robot drive across the patch")
                     continue
                 if save(result, size, a, core) == 0:
                     print("done: you can press Q")
@@ -185,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def save(result, size: tuple[int, int], a: argparse.Namespace, core: DeixisClient) -> int:
     """Work the fit up into the two files the app loads, and write them."""
-    lag, seen, H_lid, rms = result
+    lag, seen, H_lid, rms, found_offset = result
     pose = camera_pose(H_lid, size, focal_px=a.focal)
     if pose is None:
         print("the fit will not give a camera position: let the robot drive further")
@@ -213,7 +257,7 @@ def save(result, size: tuple[int, int], a: argparse.Namespace, core: DeixisClien
             "camera_height_mm": round(height),
             "camera_height_measured": a.camera_height is not None,
             "lid_height_mm": a.lid_height,
-            "marker_offset_mm": a.offset,
+            "marker_offset_mm": round(found_offset, 1),
         },
     )
     path = fixed.save(a.out)
@@ -228,7 +272,8 @@ def save(result, size: tuple[int, int], a: argparse.Namespace, core: DeixisClien
     )
     map_path = f2m.save(a.map_out)
     print(f"saved {path}: the patch is {area[2] / 1000:.2f} m wide and {area[3] / 1000:.2f} m "
-          f"deep, from {len(seen)} pairs at {rms:.0f} mm rms (lag {lag:.1f} s)")  # fmt: skip
+          f"deep, from {len(seen)} pairs at {rms:.0f} mm rms (lag {lag:.1f} s, the marker "
+          f"{found_offset:.0f} mm ahead of the robot's centre)")  # fmt: skip
     print(f"saved {map_path}: floor to map, {f2m.transform.rms_mm:.0f} mm rms")
     return 0
 
