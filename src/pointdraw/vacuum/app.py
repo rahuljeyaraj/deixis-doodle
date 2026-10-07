@@ -100,6 +100,37 @@ class OpenQuestion:
     k: int  # the call it is about
 
 
+#: What Parakeet made of "to here" in rahul's voice (live, 7 Oct): "To hear", "Two here".
+#: Both only ever mean "to here" to a vacuum, and both are fixed by their neighbour, so
+#: "two metres" and "I can't hear you" are left alone.
+_TO_SLIPS = {"two", "too"}  # -> "to", only right before a pointing word
+_HERE_SLIPS = {"hear", "heir"}  # -> "here", only right after "to" or "from"
+_POINTING = {"here", "there", "hear", "heir", "their"}
+
+
+def repair_words(words: Sequence[Word]) -> list[Word]:
+    """Undo the two ASR slips that break "clean from here ... to here" (live, 7 Oct).
+
+    - "two here" / "too here" -> "to here": only when a pointing word comes next;
+    - "to hear" -> "to here": only when "to" or "from" came before.
+
+    Nothing else is touched, and the words keep their times, so the core still finds each
+    "here" by its own word index.
+    """
+    out: list[Word] = []
+    for i, w in enumerate(words):
+        low = norm_word(w.text)
+        nxt = norm_word(words[i + 1].text) if i + 1 < len(words) else ""
+        prev = norm_word(out[-1].text) if out else ""
+        if low in _TO_SLIPS and nxt in _POINTING:
+            out.append(Word("to", w.t0, w.t1, w.confidence))
+        elif low in _HERE_SLIPS and prev in ("to", "from"):
+            out.append(Word("here", w.t0, w.t1, w.confidence))
+        else:
+            out.append(w)
+    return out
+
+
 def _opens(utt: Utterance) -> bool:
     """'Clean from here' (a pause, a walk): 'from' then a pointing word, and no 'to' after."""
     ws = [norm_word(w) for w in utt.texts]
@@ -201,7 +232,7 @@ class VacuumApp:
             self.samples.popleft()
 
     def on_utterance(self, words: Sequence[Word], t: float) -> None:
-        utt = Utterance(list(words), t)
+        utt = Utterance(repair_words(words), t)
         if not utt.words:
             return
         self.log.add(t, "utterance", text=utt.text, words=[[w.text, w.t0, w.t1] for w in words])
@@ -408,7 +439,6 @@ class VacuumApp:
             self.say(t, "OK. Step out, and I'll clean it.")  # one line (claim 30)
             prev.reminded_t = t
         self._wait_clear(t)
-
 
     def on_robot_state(self, t: float, state: str | None) -> None:
         """What the robot says it is doing. Only remembers it -- `tick` decides.

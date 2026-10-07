@@ -259,3 +259,46 @@ def test_the_window_shows_the_guess_dashed_blue_and_you_amber():
     vis = draw(img, view, FloorLayout.rectangle(3000, 2500).area_mm, app, feet, 0.0)
     colours = {tuple(c) for c in vis.reshape(-1, 3)[::3]}
     assert look.GUESS in colours and look.AMBER in colours
+
+
+# ------------------------------------------------------- the words Parakeet got wrong
+
+
+@pytest.mark.parametrize(
+    "said, want",
+    [
+        # live, 7 Oct: both of these broke "clean from here ... to here"
+        ("clean from here To hear", "clean from here To here"),
+        ("Clean from here Two here", "Clean from here to here"),
+        # left alone: a size, and a sentence that really is about hearing
+        ("clean a two metre square here", "clean a two metre square here"),
+        ("I cannot hear you", "I cannot hear you"),
+    ],
+)
+def test_repair_words(said: str, want: str) -> None:
+    from deixis.types import Word
+    from pointdraw.vacuum.app import repair_words
+
+    words = [Word(w, i, i + 0.2) for i, w in enumerate(said.split())]
+    assert " ".join(w.text for w in repair_words(words)) == want
+
+
+def test_mishdeard_to_here_still_makes_a_two_corner_box() -> None:
+    """ "Two here" is heard instead of "to here": the box still has two corners."""
+    from deixis.types import Word
+    from pointdraw.vacuum.agent import parse
+    from pointdraw.vacuum.app import repair_words
+
+    words = [Word(w, i, i + 0.2) for i, w in enumerate("clean from here Two here".split())]
+    calls = parse([w.text for w in repair_words(words)])
+    assert calls == [
+        {
+            "name": "clean",
+            "args": {
+                "place": {
+                    "from": {"deixis": "here", "word_index": 2},
+                    "to": {"deixis": "here", "word_index": 4},
+                }
+            },
+        }
+    ]
