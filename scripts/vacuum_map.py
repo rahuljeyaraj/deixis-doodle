@@ -93,6 +93,23 @@ def _spread_mm(track: list[tuple[float, np.ndarray]]) -> float:
 
 
 
+
+def send_drive(link: VacuumLink, side_mm: float) -> bool:
+    """Set the robot cleaning a box around where it stands, so that it drives about."""
+    st = link.locate(wait_s=1.5)
+    robot = st.get("robot")
+    if not robot:
+        print("  the robot will not say where it is")
+        return False
+    x, y = float(robot["x"]), float(robot["y"])
+    where = {"frame": "map", "kind": "box",
+             "box_mm": [x - side_mm / 2, y - side_mm / 2, side_mm, side_mm]}  # fmt: skip
+    reply = link.clean_area(where)
+    ok = bool(reply.get("ok"))
+    print(f"sent it to clean {side_mm / 1000:.1f} m around ({x:.0f}, {y:.0f}): "
+          f"{'ok' if ok else reply}", flush=True)  # fmt: skip
+    return ok
+
 def _fit(track, reports, offset: float | None):
     """(lag, sightings, pixels -> map, rms, the marker's offset). The offset is scanned for
     unless it was given: a wrong one pushes the marker's map point out by that much."""
@@ -128,6 +145,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--focal", type=float, default=None, help="the camera's focal length, px")
     ap.add_argument("--out", type=Path, default=DEFAULT_FIXED_PATH)
     ap.add_argument("--map-out", type=Path, default=DEFAULT_MAP_PATH)
+    ap.add_argument("--drive", type=float, default=0.0,
+                    help="clean a box this many mm across, to make it drive")  # fmt: skip
+    ap.add_argument("--auto", action="store_true", help="save and quit without a keypress")
+    ap.add_argument("--want", type=int, default=150,
+                    help="--auto: keep driving until this many positions")  # fmt: skip
     ap.add_argument("--fake", action="store_true", help="a pretend robot (to try the window)")
     a = ap.parse_args(argv)
 
@@ -162,6 +184,13 @@ def main(argv: list[str] | None = None) -> int:
     last_fit = 0.0
     window = "floor from the robot"
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    if a.drive and not send_drive(link, a.drive):
+        cv2.destroyAllWindows()
+        cam.close()
+        link.close()
+        core.close()
+        return 1
+    last_drive = time.monotonic()
     try:
         while True:
             frame = cam.read(timeout=2.0)
@@ -197,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
                 pts = np.array([c.mean(axis=0) for _, c in track[-3000:]])
                 cv2.polylines(vis, [np.round(pts).astype(np.int32)], False, (255, 140, 40), 2)
             ready, why = (readiness(result[1], result[3]) if result else (False, ""))
+            if a.auto and ready and result is not None and len(result[1]) < a.want:
+                why = f"Collecting: {len(result[1])} of {a.want} positions, {result[3]:.0f} mm"
             text = (why if ready else
                     "Robot marker not seen" if lid is None else
                     "Start a clean: the robot is not reporting" if not reports else
@@ -206,6 +237,14 @@ def main(argv: list[str] | None = None) -> int:
                         (60, 220, 60) if ready else (255, 255, 255), 3)  # fmt: skip
             scale = WINDOW_W / vis.shape[1]
             cv2.imshow(window, cv2.resize(vis, None, fx=scale, fy=scale))
+            if a.drive and not ready and time.monotonic() - last_drive > 45.0:
+                last_drive = time.monotonic()  # it will have finished the box by now
+                send_drive(link, a.drive)
+            if a.auto and ready and len(result[1]) >= a.want:
+                print(why, flush=True)
+                if save(result, size, a, core) == 0:
+                    link.stop()
+                    break
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
