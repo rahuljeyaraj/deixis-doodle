@@ -50,7 +50,13 @@ from pointdraw.vacuum.agent import Background, RuleAgent, VacuumAgent  # noqa: E
 from pointdraw.vacuum.app import VacuumApp  # noqa: E402
 from pointdraw.vacuum.calibrate import DEFAULT_MAP_PATH, FloorToMap  # noqa: E402
 from pointdraw.vacuum.feet import FeetTracker  # noqa: E402
-from pointdraw.vacuum.floor import DEFAULT_LAYOUT_PATH, FloorCamera, FloorLayout  # noqa: E402
+from pointdraw.vacuum.floor import (  # noqa: E402
+    DEFAULT_FIXED_PATH,
+    DEFAULT_LAYOUT_PATH,
+    FixedFloor,
+    FloorCamera,
+    FloorLayout,
+)
 from pointdraw.vacuum.link import LinkError, VacuumLink  # noqa: E402
 from pointdraw.vacuum.profile import vacuum_profile  # noqa: E402
 from pointdraw.vacuum.view import draw  # noqa: E402
@@ -71,6 +77,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--height", type=int, default=1080)
     ap.add_argument("--exposure", type=float, default=None)
     ap.add_argument("--floor", type=Path, default=DEFAULT_LAYOUT_PATH, help="floor layout JSON")
+    ap.add_argument("--fixed", type=Path, default=DEFAULT_FIXED_PATH,
+                    help="the floor fitted from the robot's drive (vacuum_map.py)")  # fmt: skip
+    ap.add_argument("--markers", action="store_true",
+                    help="use the 4 floor markers even if a fitted floor is saved")  # fmt: skip
     ap.add_argument("--map", type=Path, default=DEFAULT_MAP_PATH, help="floor-to-map JSON")
     ap.add_argument("--robot", choices=["real", "fake", "none"], default="real")
     ap.add_argument("--ai", choices=["live", "rules"], default="live")
@@ -101,12 +111,24 @@ def make_words(args: argparse.Namespace, muted=None):
 
 
 def run(args: argparse.Namespace) -> int:
-    try:
-        layout = FloorLayout.load(args.floor)
-    except FileNotFoundError:
-        print(f"no floor layout at {args.floor}: run scripts/vacuum_floor.py first")
-        return 1
-    profile = vacuum_profile(layout.area_mm)
+    fixed = None if args.markers else FixedFloor.load_or_none(args.fixed)
+    if fixed is not None:
+        floor_source: FixedFloor | FloorCamera = fixed
+        area_mm = fixed.area_mm
+        print(f"floor: fitted from the robot's drive, {args.fixed} ({fixed.created}). "
+              f"Nothing on the floor to look at, so the camera must not have moved.")  # fmt: skip
+    else:
+        try:
+            layout = FloorLayout.load(args.floor)
+        except FileNotFoundError:
+            print(f"no floor at {args.fixed} or {args.floor}.")
+            print("run scripts/vacuum_map.py (the robot drives it), or")
+            print("scripts/vacuum_floor.py (the 4 markers and a tape measure)")
+            return 1
+        floor_source = FloorCamera(layout)
+        area_mm = layout.area_mm
+        print(f"floor: the 4 markers, {args.floor}")
+    profile = vacuum_profile(area_mm)
     f2m = FloorToMap.load_or_none(args.map)
     if f2m is None:
         print(f"no floor-to-map calibration at {args.map}: boxes are shown, never sent")
@@ -152,7 +174,7 @@ def run(args: argparse.Namespace) -> int:
     words = make_words(args, muted=speaker.muted if speaker else None)
     print("start: pose tracker", flush=True)
     tracker = FeetTracker()
-    floor = FloorCamera(layout)
+    floor = floor_source
     try:
         cam = Camera(
             CameraSettings(
@@ -202,7 +224,7 @@ def run(args: argparse.Namespace) -> int:
                 n_spoken = len(speaker.spoken)
             timeline.write_new(log.events)
             sent = log.of("clean_area")
-            vis = draw(frame.image, view, layout, app, feet, t,
+            vis = draw(frame.image, view, area_mm, app, feet, t,
                        sent[-1]["floor_box"] if sent else None)  # fmt: skip
             scale = WINDOW_W / vis.shape[1]
             cv2.imshow(window, cv2.resize(vis, None, fx=scale, fy=scale))

@@ -256,6 +256,6 @@ def test_the_window_shows_the_guess_dashed_blue_and_you_amber():
     view = FloorView(np.diag([4.0, 4.0, 1.0]), (10, 11, 12, 13), True)  # 4 mm a pixel
     img = np.full((720, 1000, 3), 120, np.uint8)
     feet = FeetSeen(0.0, (np.array([370.0, 250.0]),), np.array([375.0, 250.0]), spot, True)
-    vis = draw(img, view, FloorLayout.rectangle(3000, 2500), app, feet, 0.0)
+    vis = draw(img, view, FloorLayout.rectangle(3000, 2500).area_mm, app, feet, 0.0)
     colours = {tuple(c) for c in vis.reshape(-1, 3)[::3]}
     assert look.GUESS in colours and look.AMBER in colours

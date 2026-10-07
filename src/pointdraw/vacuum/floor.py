@@ -111,3 +111,61 @@ class FloorCamera:
         if self.last is not None:
             return FloorView(self.last.H, self.last.marker_ids, False, self.last.t)
         return None
+
+
+DEFAULT_FIXED_PATH = Path(".cache/vacuum/floor_fixed.json")
+
+
+@dataclass
+class FixedFloor:
+    """Pixels -> floor mm from one saved fit, with nothing on the floor to look at.
+
+    The markers tell `FloorCamera` where the floor is in every frame, so a knocked camera
+    corrects itself. This one is fitted once from the robot's own drive (`vacuum_map.py`)
+    and then stands still, so **the camera must not move**: if it does, redo the drive.
+    """
+
+    H: np.ndarray  # 3x3, pixels -> floor mm
+    area: tuple[float, float, float, float]  # the patch the robot covered: x, y, w, h
+    created: str = ""
+    note: dict = field(default_factory=dict)  # how it was fitted, for the log
+
+    @property
+    def area_mm(self) -> tuple[float, float, float, float]:
+        return self.area
+
+    def update(self, markers: list[MarkerDetection], t: float | None = None) -> FloorView:
+        """The same fit for every frame; the markers are ignored."""
+        return FloorView(self.H, (), True, t)
+
+    def save(self, path: str | Path = DEFAULT_FIXED_PATH) -> Path:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "frame": "floor",
+            "units": "mm",
+            "from": "robot drive (no floor markers)",
+            "px_to_floor_mm": np.asarray(self.H, np.float64).tolist(),
+            "area_mm": list(self.area),
+            "created": self.created,
+            "note": self.note,
+        }
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        return path
+
+    @classmethod
+    def load(cls, path: str | Path = DEFAULT_FIXED_PATH) -> FixedFloor:
+        d = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(
+            np.array(d["px_to_floor_mm"], np.float64),
+            tuple(float(v) for v in d["area_mm"]),  # type: ignore[arg-type]
+            d.get("created", ""),
+            d.get("note", {}),
+        )
+
+    @classmethod
+    def load_or_none(cls, path: str | Path = DEFAULT_FIXED_PATH) -> FixedFloor | None:
+        try:
+            return cls.load(path)
+        except FileNotFoundError:
+            return None

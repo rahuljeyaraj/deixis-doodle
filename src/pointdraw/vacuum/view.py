@@ -14,7 +14,7 @@ import numpy as np
 from pointdraw.live import look
 from pointdraw.vacuum.app import CLEANING, PREVIEW, WAIT_CLEAR, VacuumApp
 from pointdraw.vacuum.feet import FeetSeen
-from pointdraw.vacuum.floor import FloorLayout, FloorView
+from pointdraw.vacuum.floor import FloorView
 
 YELLOW, GREEN, BLUE, RED, WHITE, GREY = (
     (0, 220, 255),
@@ -54,7 +54,7 @@ def box_corners(box: tuple[float, float, float, float] | list[float]) -> list[tu
 def draw(
     image: np.ndarray,
     view: FloorView | None,
-    layout: FloorLayout,
+    area_mm: tuple[float, float, float, float],
     app: VacuumApp,
     feet: FeetSeen | None,
     t: float,
@@ -62,9 +62,9 @@ def draw(
 ) -> np.ndarray:
     vis = image.copy()
     if view is None:
-        look.status(vis, "Can't see the 4 floor markers", RED)
+        look.status(vis, "Can't see the floor", RED)
         return vis
-    x, y, w, h = layout.area_mm
+    x, y, w, h = area_mm
     for gx in np.arange(x, x + w + 1, 500.0):
         cv2.polylines(vis, [_line(view, (gx, y), (gx, y + h))], False, GREY, 1)
     for gy in np.arange(y, y + h + 1, 500.0):
