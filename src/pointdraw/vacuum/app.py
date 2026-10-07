@@ -372,7 +372,10 @@ class VacuumApp:
     def confirm(self, t: float) -> None:
         prev = self.preview
         if prev is None or self.state != PREVIEW:
-            self.say(t, "There's nothing to start.")
+            # 7 Oct, live: rahul said "okay" twice while it was already cleaning and got
+            # "There's nothing to start", which sounds like a refusal. Say what is going on.
+            busy = self.state == CLEANING
+            self.say(t, "It's already cleaning." if busy else "Nothing's waiting.")
             return
         prev.confirmed_t = t
         if prev.narrow:  # "Clean half a metre wide?" ... "yes"
