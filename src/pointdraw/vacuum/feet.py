@@ -11,7 +11,8 @@ The model file (Apache-2.0) is downloaded once to `.cache/models/pose_landmarker
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +59,56 @@ def feet_from_landmarks(
     return tuple(feet), np.mean(feet, axis=0)
 
 
+
+MAX_WALK_MM_S = 2500.0  # nobody crosses a room faster than this; a jump beyond it is the
+# tracker losing the person and finding a chair leg, not a person moving
+RECOVER_S = 0.8  # with nothing believed for this long, take whatever comes next
+SMOOTH = 5  # frames in the median: about 0.17 s at 30 fps
+
+
+@dataclass
+class SteadySpot:
+    """Hold the dot still: drop impossible jumps, and smooth what is left.
+
+    MediaPipe is given one frame at a time and will happily put a foot on a chair leg for a
+    few frames. 7 Oct, live: the dot "jumps away most of the time". Each new spot is checked
+    against the last believed one -- faster than a person can walk means the tracker lost the
+    person, so the spot is dropped rather than drawn somewhere wrong. After `recover_s` with
+    nothing believed, the next spot is taken on trust, so a person who really did walk out
+    and back is picked up again.
+    """
+
+    max_speed_mm_s: float = MAX_WALK_MM_S
+    recover_s: float = RECOVER_S
+    smooth: int = SMOOTH
+    _kept: list[tuple[float, np.ndarray, tuple[float, float]]] = field(default_factory=list)
+    dropped: int = 0
+    offered: int = 0
+
+    def offer(
+        self, t: float, spot_px: np.ndarray | None, spot_mm: tuple[float, float] | None
+    ) -> tuple[np.ndarray | None, tuple[float, float] | None, bool]:
+        """The spot to believe this frame, and whether this frame's own spot was taken."""
+        if spot_px is None or spot_mm is None:
+            return (*self._best(), False)
+        self.offered += 1
+        if self._kept:
+            t0, _, last_mm = self._kept[-1]
+            gap = max(t - t0, 1e-3)
+            if gap < self.recover_s and math.dist(spot_mm, last_mm) / gap > self.max_speed_mm_s:
+                self.dropped += 1
+                return (*self._best(), False)
+        self._kept.append((t, np.asarray(spot_px, np.float64), spot_mm))
+        del self._kept[: -self.smooth]
+        return (*self._best(), True)
+
+    def _best(self) -> tuple[np.ndarray | None, tuple[float, float] | None]:
+        if not self._kept:
+            return None, None
+        px = np.median(np.array([p for _, p, _ in self._kept]), axis=0)
+        mm = np.median(np.array([m for _, _, m in self._kept]), axis=0)
+        return px, (round(float(mm[0]), 1), round(float(mm[1]), 1))
+
 def feet_seen(
     t: float,
     px: np.ndarray | None,
@@ -84,7 +135,8 @@ class FeetTracker:
         min_detection: float = 0.5,
         min_presence: float = 0.5,
         min_tracking: float = 0.5,
-        min_visibility: float = 0.5,
+        min_visibility: float = 0.6,
+        steady: bool = True,
     ) -> None:
         from mediapipe.tasks.python import BaseOptions, vision
 
@@ -99,6 +151,7 @@ class FeetTracker:
         )
         self._landmarker = vision.PoseLandmarker.create_from_options(opts)
         self.min_visibility = min_visibility
+        self.steady = SteadySpot() if steady else None
         self._last_ms = -1
 
     def process(self, image_bgr: np.ndarray, t: float, floor: FloorView | None) -> FeetSeen:
@@ -117,7 +170,19 @@ class FeetTracker:
         lms = result.pose_landmarks[0]
         px = np.array([[p.x * w, p.y * h] for p in lms], np.float64)
         vis = np.array([p.visibility if p.visibility is not None else 1.0 for p in lms])
-        return feet_seen(t, px, vis, floor, self.min_visibility)
+        seen = feet_seen(t, px, vis, floor, self.min_visibility)
+        return self._steadied(seen)
+
+    def _steadied(self, seen: FeetSeen) -> FeetSeen:
+        """The same frame with an impossible jump dropped and the spot smoothed."""
+        if self.steady is None:
+            return seen
+        spot_px, spot_mm, took = self.steady.offer(seen.t, seen.spot_px, seen.spot_mm)
+        if spot_px is None:
+            return FeetSeen(seen.t, seen.feet_px, None, None, False)
+        # Standing means both feet seen *this* frame. A held or dropped spot is not standing:
+        # the core's hold rule must never be told the person is still when we have lost them.
+        return FeetSeen(seen.t, seen.feet_px, spot_px, spot_mm, seen.standing and took)
 
     def close(self) -> None:
         self._landmarker.close()

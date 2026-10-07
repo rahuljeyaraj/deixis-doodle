@@ -226,6 +226,8 @@ def run(args: argparse.Namespace) -> int:
                     print(f"microphone: {ev[1]}")
             app.tick(t)
             for ev in watch.drain() if watch is not None else []:  # the robot's positions (M24)
+                if ev.get("kind") == "robot":
+                    app.on_robot_state(t, ev.get("state"))
                 log.add(ev.pop("t"), ev.pop("kind"), **ev)
             if speaker is not None and len(speaker.spoken) > n_spoken:  # when it spoke (M25)
                 for text, t0, t1 in speaker.spoken[n_spoken:]:

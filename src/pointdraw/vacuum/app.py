@@ -56,6 +56,8 @@ class VacuumParams:
     remind_s: float = 8.0  # ask again to step out after this
     join_s: float = 8.0  # "clean from here" waits this long for "... to here" (a walk apart)
     narrow_mm: float = 500.0  # a two-spot box narrower than this: "Clean half a metre wide?"
+    min_clean_s: float = 6.0  # the robot gets this long to start before it is believed
+    clean_settle_s: float = 3.0  # ... and must say it has stopped for this long to count
 
 
 @dataclass
@@ -168,6 +170,8 @@ class VacuumApp:
         self.pending: deque[tuple[Utterance, Future[AgentResult]]] = deque()
         self.opening: Utterance | None = None  # "clean from here", waiting for "to here"
         self.sent: list[dict[str, Any]] = []  # the boxes sent to the robot (map frame)
+        self._cleaning_since: float | None = None  # when the robot was told to clean
+        self._quiet_since: float | None = None  # since when it has not said "cleaning"
 
     # ------------------------------------------------------------------ inputs
 
@@ -218,6 +222,8 @@ class VacuumApp:
             self._handle(utt, fut.result(), t)
         if self.state == WAIT_CLEAR:
             self._wait_clear(t)
+        if self.state == CLEANING:
+            self._finished(t)
 
     # ------------------------------------------------------------------ talking
 
@@ -380,6 +386,38 @@ class VacuumApp:
             prev.reminded_t = t
         self._wait_clear(t)
 
+
+    def on_robot_state(self, t: float, state: str | None) -> None:
+        """What the robot says it is doing. Only remembers it -- `tick` decides.
+
+        The watcher reports a *change*, so a robot that finishes and falls silent says
+        "idle" exactly once. Judging it here meant that one report could land inside the
+        settling time and be thrown away, and the app then waited for ever for a second one
+        (7 Oct, live, twice).
+        """
+        if state == "cleaning":
+            self._quiet_since = None
+        elif self._quiet_since is None:
+            self._quiet_since = t
+
+    def _finished(self, t: float) -> None:
+        """Leave CLEANING once the robot has stopped by itself. Called every frame.
+
+        The robot is given `min_clean_s` to get going before anything it says counts (it
+        reports the old state while it leaves the dock), and must have been quiet for
+        `clean_settle_s`: a single stray "idle" mid-clean must not end the job.
+        """
+        if self.state != CLEANING or self._cleaning_since is None or self._quiet_since is None:
+            return
+        if t - self._cleaning_since < self.p.min_clean_s:
+            return
+        if t - self._quiet_since < self.p.clean_settle_s:
+            return
+        self.state = LISTEN
+        self._cleaning_since = self._quiet_since = None
+        self.log.add(t, "finished")
+        self.say(t, "Finished.")
+
     def cancel(self, t: float) -> None:
         if self.preview is not None and self.state in (PREVIEW, WAIT_CLEAR):
             self.preview = None
@@ -396,6 +434,7 @@ class VacuumApp:
     def stop(self, t: float) -> None:
         self.preview, self.question = None, None
         self.state = LISTEN
+        self._cleaning_since = self._quiet_since = None
         reply = self._robot("stop", t)
         self.log.add(t, "stop", reply=reply)
         self.say(t, "Stopped.")
@@ -486,6 +525,7 @@ class VacuumApp:
             self.say(t, "Dry run: the robot would clean there now.")
         elif reply.get("ok"):
             self.state = CLEANING
+            self._cleaning_since, self._quiet_since = t, None
             self.say(t, "Cleaning there now.")
         else:
             self.say(t, f"The robot said no: {reply.get('why', 'no reason given')}.")

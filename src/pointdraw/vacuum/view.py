@@ -64,12 +64,9 @@ def draw(
     if view is None:
         look.status(vis, "Can't see the floor", RED)
         return vis
-    x, y, w, h = area_mm
-    for gx in np.arange(x, x + w + 1, 500.0):
-        cv2.polylines(vis, [_line(view, (gx, y), (gx, y + h))], False, GREY, 1)
-    for gy in np.arange(y, y + h + 1, 500.0):
-        cv2.polylines(vis, [_line(view, (x, gy), (x + w, gy))], False, GREY, 1)
-    cv2.polylines(vis, [_poly(view, box_corners((x, y, w, h)))], True, WHITE, 2)
+    # Nothing is drawn for the floor itself (rahul, 7 Oct): the 50 cm grid and the patch
+    # outline were both correctly placed, but over a tiled floor they read as crooked and
+    # pull the eye off what matters. What is on the floor is the dot and the robot's box.
     if not view.fresh:
         cv2.putText(vis, "floor fit kept (markers hidden)", (20, vis.shape[0] - 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, GREY, 2)  # fmt: skip
