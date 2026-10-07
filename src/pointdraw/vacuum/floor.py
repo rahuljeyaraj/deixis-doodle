@@ -125,10 +125,14 @@ class FixedFloor:
     and then stands still, so **the camera must not move**: if it does, redo the drive.
     """
 
-    H: np.ndarray  # 3x3, pixels -> floor mm
+    H: np.ndarray  # 3x3, pixels -> floor mm (things ON the floor: feet)
     area: tuple[float, float, float, float]  # the patch the robot covered: x, y, w, h
     created: str = ""
     note: dict = field(default_factory=dict)  # how it was fitted, for the log
+    H_lid: np.ndarray | None = None  # 3x3, pixels -> floor mm for things at the lid's height
+    # The robot is seen by its lid, 100 mm up, so a camera looking across the room shows it
+    # further from underneath itself than its wheels are. Drawing it with H would put the
+    # circle off the robot (rahul, 7 Oct). Feet use H; the robot uses H_lid.
 
     @property
     def area_mm(self) -> tuple[float, float, float, float]:
@@ -146,6 +150,8 @@ class FixedFloor:
             "units": "mm",
             "from": "robot drive (no floor markers)",
             "px_to_floor_mm": np.asarray(self.H, np.float64).tolist(),
+            "px_to_lid_mm": (None if self.H_lid is None
+                             else np.asarray(self.H_lid, np.float64).tolist()),  # fmt: skip
             "area_mm": list(self.area),
             "created": self.created,
             "note": self.note,
@@ -161,6 +167,7 @@ class FixedFloor:
             tuple(float(v) for v in d["area_mm"]),  # type: ignore[arg-type]
             d.get("created", ""),
             d.get("note", {}),
+            None if d.get("px_to_lid_mm") is None else np.array(d["px_to_lid_mm"], np.float64),
         )
 
     @classmethod

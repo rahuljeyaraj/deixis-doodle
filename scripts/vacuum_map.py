@@ -297,7 +297,9 @@ def save(result, size: tuple[int, int], a: argparse.Namespace, core: DeixisClien
             "camera_height_measured": a.camera_height is not None,
             "lid_height_mm": a.lid_height,
             "marker_offset_mm": round(found_offset, 1),
+            "nadir_map_mm": [round(nadir[0]), round(nadir[1])],
         },
+        R @ H_lid,  # the same frame, but for things at the lid's height: the robot itself
     )
     path = fixed.save(a.out)
     floor_pts = apply_matrix(R, covered)

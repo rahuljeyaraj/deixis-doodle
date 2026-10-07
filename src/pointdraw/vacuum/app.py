@@ -56,7 +56,8 @@ class VacuumParams:
     remind_s: float = 8.0  # ask again to step out after this
     join_s: float = 8.0  # "clean from here" waits this long for "... to here" (a walk apart)
     narrow_mm: float = 500.0  # a two-spot box narrower than this: "Clean half a metre wide?"
-    send_inset_mm: float = 40.0  # shrink the box sent to the robot by this on every side
+    send_inset_mm: float = 0.0  # shrink the box sent to the robot by this on every side
+    # (7 Oct: tried at 40 mm, turned off by rahul -- the box sent is the box asked for)
     min_clean_s: float = 6.0  # the robot gets this long to start before it is believed
     clean_settle_s: float = 3.0  # ... and must say it has stopped for this long to count
 
