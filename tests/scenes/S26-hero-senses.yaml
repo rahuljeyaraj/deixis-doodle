@@ -78,4 +78,4 @@ expect:
     - {kind: arrow, from: brain, to: hand}
   asks: 0
 variations: {hover_mm: null}
-max_time: 300
+max_time: 480.0  # 7 Oct: colouring drawings take ~2.5x the icons this was timed for

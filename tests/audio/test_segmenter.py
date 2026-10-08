@@ -42,7 +42,7 @@ def run(seg: Segmenter, x: np.ndarray, t0: float = 100.0, block: int = 700):
 
 
 def test_one_utterance_with_preroll_and_times():
-    x = signal([("silence", 1.0), ("speech", 1.0), ("silence", 1.0)])
+    x = signal([("silence", 1.0), ("speech", 1.0), ("silence", 1.4)])
     utts = run(Segmenter(LoudVad()), x)
     assert len(utts) == 1
     u = utts[0]
@@ -61,17 +61,17 @@ def test_one_utterance_with_preroll_and_times():
 
 def test_short_pause_does_not_split_but_long_one_does():
     x = signal(
-        [("silence", 0.5), ("speech", 0.6), ("silence", 0.4), ("speech", 0.5), ("silence", 1.0)]
+        [("silence", 0.5), ("speech", 0.6), ("silence", 0.9), ("speech", 0.5), ("silence", 1.4)]
     )
     assert len(run(Segmenter(LoudVad()), x)) == 1
     x = signal(
-        [("silence", 0.5), ("speech", 0.6), ("silence", 0.9), ("speech", 0.5), ("silence", 1.0)]
+        [("silence", 0.5), ("speech", 0.6), ("silence", 1.3), ("speech", 0.5), ("silence", 1.4)]
     )
     assert len(run(Segmenter(LoudVad()), x)) == 2
 
 
-def test_needs_600ms_of_silence_to_end():
-    x = signal([("silence", 0.5), ("speech", 0.5), ("silence", 0.5)])
+def test_needs_a_full_second_of_silence_to_end():
+    x = signal([("silence", 0.5), ("speech", 0.5), ("silence", 0.9)])
     seg = Segmenter(LoudVad())
     assert run(seg, x) == []
     assert seg.in_speech
@@ -79,7 +79,7 @@ def test_needs_600ms_of_silence_to_end():
 
 
 def test_max_length_truncates():
-    x = signal([("silence", 0.5), ("speech", 12.0), ("silence", 1.0)])
+    x = signal([("silence", 0.5), ("speech", 12.0), ("silence", 1.4)])
     utts = run(Segmenter(LoudVad()), x)
     assert utts[0].truncated
     assert utts[0].duration <= 10.0 + FRAME_S
@@ -87,14 +87,14 @@ def test_max_length_truncates():
 
 
 def test_clicks_are_ignored():
-    x = signal([("silence", 0.5), ("speech", 0.03), ("silence", 1.0)])
+    x = signal([("silence", 0.5), ("speech", 0.03), ("silence", 1.4)])
     assert run(Segmenter(LoudVad()), x) == []
 
 
 def test_mute_drops_audio_and_unmute_resumes():
     vad = LoudVad()
     seg = Segmenter(vad)
-    x = signal([("silence", 0.3), ("speech", 0.8), ("silence", 1.0)])
+    x = signal([("silence", 0.3), ("speech", 0.8), ("silence", 1.4)])
     seg.mute()
     assert run(seg, x) == []
     assert seg.muted and not seg.in_speech
@@ -115,7 +115,7 @@ def test_mute_mid_utterance_discards_it():
 
 
 def test_energy_vad_segments_too():
-    x = signal([("silence", 1.5), ("speech", 1.0), ("silence", 1.0)])
+    x = signal([("silence", 1.5), ("speech", 1.0), ("silence", 1.4)])
     utts = run(Segmenter(EnergyVad(), SegmenterParams()), x)
     assert len(utts) == 1
     assert utts[0].t_speech == pytest.approx(101.5, abs=2 * FRAME_S)

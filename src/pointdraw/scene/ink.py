@@ -51,7 +51,11 @@ class InkParams:
     robot_pen_width_mm: float = 0.7
     robot_dilate_mm: float = 1.5  # extra margin for calibration error around robot strokes
     min_area_mm2: float = 2.0
-    min_extent_mm: float = 2.5  # the larger side of a mark's box
+    # The larger side of a mark's box. 7 Oct 2026: 2.5 mm let dust, paper texture and pen
+    # dots through as "marks". In one live run six specks of 1 to 8 mm each cost a blocking
+    # Cosmos call, and the app froze. The 80 ground-truth marks in .cache/r1/synthetic are
+    # 18 mm or bigger (median 32), so 10 mm drops the specks with room to spare.
+    min_extent_mm: float = 10.0
     merge_gap_mm: float = 2.0
     merge_contained: bool = True
 

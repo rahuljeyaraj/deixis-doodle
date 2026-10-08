@@ -8,9 +8,12 @@ module is pure Python so it can be tested offline against recorded replies.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
+
+log = logging.getLogger(__name__)
 
 CoordMode = Literal["auto", "norm1000", "norm1", "pixels"]
 
@@ -273,8 +276,18 @@ def parse_label(text: str) -> str:
 _ARTICLES = re.compile(r"^(?:a|an|the|this is|it is|it's|drawing of|a drawing of)\s+", re.I)
 
 
+#: An object name is a few words. Anything longer is a runaway reply, not a label
+#: (7 Oct 2026: a label came back 4,586 characters long and went into the agent's prompt).
+MAX_LABEL_CHARS = 60
+
+
 def normalise_label(label: str) -> str:
-    """Lower-case, strip punctuation and leading articles: 'A drawing of a Cat.' -> 'cat'."""
+    """Lower-case, strip punctuation and leading articles: 'A drawing of a Cat.' -> 'cat'.
+
+    A reply longer than `MAX_LABEL_CHARS` is treated as no label at all."""
+    if len(label) > MAX_LABEL_CHARS:
+        log.warning("cosmos label was %d characters; ignoring it", len(label))
+        return ""
     s = label.strip().strip("\"'`").strip().rstrip(".!").lower()
     for _ in range(5):
         s2 = _ARTICLES.sub("", s)

@@ -15,12 +15,19 @@ from pointdraw.cosmos.parse import CoordMode
 
 DEFAULT_MODEL = "nvidia/Cosmos3-Nano"
 
-# Without reasoning: the cookbook's recommendation and exactly what worked on 22 Sep.
+# Greedy. Grounding is a measurement, not a conversation: we want the single most likely
+# answer every time, not a varied one.
+#
+# Until 7 Oct this used Qwen3's *chat* settings (temperature 0.7, top_p 0.8, top_k 20,
+# presence_penalty 1.5), copied from the cookbook. On a sheet with three drawings they made
+# the model pair labels with the wrong boxes (car <-> elephant) in 3 runs out of 5, and made
+# repeated point answers wander by 20 to 30 parts in 1000. At temperature 0 the same calls
+# came back correct 10 times out of 10, and repeated points were identical. Qwen's own notes
+# warn that a high presence_penalty costs accuracy.
 SAMPLING_FAST: dict[str, Any] = {
-    "temperature": 0.7,
-    "top_p": 0.8,
-    "presence_penalty": 1.5,
-    "extra_body": {"top_k": 20},
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "presence_penalty": 0.0,
 }
 # With reasoning (<think>): the cookbook's second set.
 SAMPLING_REASONING: dict[str, Any] = {

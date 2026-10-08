@@ -30,9 +30,11 @@ def test_find_request_shape_and_parsing():
     r = c.find(_img(), "circle")
     call = fake.calls[0]
     assert call["model"] == "nvidia/Cosmos3-Nano"
-    assert call["temperature"] == 0.7 and call["top_p"] == 0.8
-    assert call["presence_penalty"] == 1.5
-    assert call["extra_body"]["top_k"] == 20
+    # Greedy: grounding is a measurement, not a conversation (7 Oct 2026). The old chat
+    # settings (0.7 / 0.8 / 1.5 / top_k 20) made it pair labels with the wrong boxes.
+    assert call["temperature"] == 0.0 and call["top_p"] == 1.0
+    assert call["presence_penalty"] == 0.0
+    assert "top_k" not in (call["extra_body"] or {})  # greedy needs no top_k
     content = call["messages"][0]["content"]
     assert content[0]["type"] == "image_url"  # image before text, as the cookbook recommends
     assert content[0]["image_url"]["url"].startswith("data:image/jpeg;base64,")

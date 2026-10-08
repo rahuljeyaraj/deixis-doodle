@@ -133,6 +133,7 @@ class CosmosClient:
         self.timeout_s = timeout_s
         # None: use the model's default. False asks for a direct answer (faster, R1 default).
         self.think = think
+        injected = openai_client is not None  # a test's fake: nothing to time
         if openai_client is None:
             from openai import OpenAI
 
@@ -143,16 +144,24 @@ class CosmosClient:
             if not key:
                 raise ValueError("COSMOS_API_KEY (or COSMOS_ENDPOINT_TOKEN) is not set")
             openai_client = OpenAI(base_url=url, api_key=key, timeout=timeout_s, max_retries=1)
-        # every call to a real endpoint goes in out/cosmos/calls.jsonl (busy time, M21)
-        self.call_log = None if openai_client is not None else CALL_LOG
+        # Every call to a real endpoint goes in out/cosmos/calls.jsonl (busy time, M21).
+        # 7 Oct 2026: this read `openai_client is not None`, which is always true by here
+        # because the line above assigns it, so nothing was ever logged.
+        self.call_log = None if injected else CALL_LOG
         self._client = openai_client
 
     # -- low level -------------------------------------------------------------------------
 
     def ask(
-        self, image: ImageLike, text: str, max_side: int = 1920
+        self, image: ImageLike, text: str, max_side: int = 1920, max_tokens: int | None = None
     ) -> tuple[CosmosReply, int, int]:
-        """One image + one text prompt. Returns the reply and the image's original width, height."""
+        """One image + one text prompt. Returns the reply and the image's original width, height.
+
+        `max_tokens` caps the reply. Leave it None for the model's default; pass a small
+        number for a short answer. 7 Oct 2026: a `label_crop` of an unclear mark ran away
+        repeating itself to the full 1024 tokens and came back 4,586 characters long, which
+        froze the live app (the labeller blocks its main loop) and then went into Nemotron's
+        prompt as context."""
         data_url, w, h = encode_image(image, max_side=max_side)
         if self.think is False:
             text = text + prompts.NO_THINK_SUFFIX
@@ -164,7 +173,7 @@ class CosmosClient:
         t0 = time.perf_counter()
         resp = self._client.chat.completions.create(
             model=self.model,
-            max_tokens=self.profile.max_tokens,
+            max_tokens=max_tokens or self.profile.max_tokens,
             messages=[
                 {
                     "role": "user",
@@ -218,7 +227,8 @@ class CosmosClient:
 
     def label_crop(self, image: ImageLike) -> LabelResult:
         """(a) What is drawn in this crop? Returns a normalised label ('cat', 'circle')."""
-        reply, _, _ = self.ask(image, prompts.label_crop_prompt(), max_side=768)
+        # A label is {"label": "...", "alternatives": [...]}: 160 tokens is plenty.
+        reply, _, _ = self.ask(image, prompts.label_crop_prompt(), max_side=768, max_tokens=160)
         label = parse_label(reply.raw)
         alts: list[str] = []
         try:

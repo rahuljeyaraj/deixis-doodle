@@ -113,7 +113,10 @@ class SceneSpec(_M):
     expect: Expect = Field(default_factory=Expect)
     variations: Variations = Field(default_factory=Variations)
     plotter: Plotter = Field(default_factory=Plotter)
-    max_time: float = 90.0
+    # 7 Oct 2026: 90 s was sized for icon drawings. The default style is now "colouring"
+    # (rahul's nine are all colouring), which is 3 to 11 times the strokes, so a two-object
+    # scene no longer fits in 90 s. This is the simulation's cap, not a machine limit.
+    max_time: float = 180.0
     known_issue: str | None = None  # a known failure, with the reason; the test xfails
     path: str | None = None
 

@@ -1,4 +1,5 @@
-"""'A detailed house' draws the colouring-book drawing; plain 'a house' the default (icon)."""
+"""'A simple house' draws the icon; plain 'a house' the default, which is colouring
+(index.json "default_style", changed from icon on 7 Oct 2026)."""
 
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ def _s4(text: str) -> scenefile.SceneSpec:
 @pytest.mark.parametrize(
     "text,style",
     [
-        ("A big house in the top left.", "icon"),
+        ("A big house in the top left.", "colouring"),  # no style word: the default
         ("A big simple house in the top left.", "icon"),
         ("A big detailed house in the top left.", "colouring"),
     ],

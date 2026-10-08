@@ -8,8 +8,8 @@ Feed it timestamped blocks of any size; it hands back finished utterances:
             words = asr.transcribe(utt.samples, utt.sample_rate, utt.t_start)
 
 Rules (plan 4.4, brief SPEECH): 300 ms of pre-roll before the first speech frame; an utterance
-ends after 600 ms of silence; 10 s at most. `mute()` while TTS plays so the robot never hears
-itself, `unmute()` afterwards.
+ends after 1.0 s of silence (7 Oct: 0.6 s cut sentences in half); 10 s at most. `mute()`
+while TTS plays so the robot never hears itself, `unmute()` afterwards.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class SegmenterParams:
     end_threshold: float = 0.35  # below this a frame counts as silence (hysteresis)
     min_speech_s: float = 0.064  # consecutive speech needed to open an utterance
     preroll_s: float = 0.3
-    end_silence_s: float = 0.6
+    end_silence_s: float = 1.0  # 7 Oct: 0.6 split "Draw a mushroom / of this size" (0.98 s gap)
     tail_s: float = 0.2  # silence kept after the last speech frame
     max_s: float = 10.0
     min_utterance_s: float = 0.15  # shorter bursts (clicks) are dropped
