@@ -174,3 +174,28 @@ def test_a_call_that_fails_to_plan_is_reported_not_raised(monkeypatch):
     rt.tick(5.0)
     assert rt.log.of("error")[-1]["why"] == "ValueError: planner broke"
     assert rt.log.of("say")[-1]["text"] == "Sorry, I couldn't draw that."
+
+
+def test_a_lone_one_is_not_a_request_for_another():
+    """Live 8 Oct 2026: a mis-heard "One", just after an elephant was drawn, came back as
+    place_drawing of another elephant at a corner nobody named, and it previewed there.
+
+    "one" counts as "another one" only beside one of the other repeat words.
+    """
+    from pointdraw.runtime.references import Utterance
+    from pointdraw.runtime.runtime import WEAK_REPEAT_WORDS
+
+    assert WEAK_REPEAT_WORDS == {"one", "ones"}
+    call = parse_call("place_drawing", {"object": "elephant", "place": {"empty_space": True}})
+
+    def utt(text):
+        words = [Word(w, 0.1 * i, 0.1 * i + 0.05) for i, w in enumerate(text.split())]
+        return Utterance(0, words, 1.0)
+
+    rt = Runtime(Repeats(), VirtualPlotter(), MachineConfig(), Planner())
+    assert rt._invented(call, utt("One")), "a lone 'One' was taken as 'another one'"
+    assert rt._invented(call, utt("Ones"))
+    assert not rt._invented(call, utt("another one"))  # a real repeat still works
+    assert not rt._invented(call, utt("one more"))
+    assert not rt._invented(call, utt("the same one"))
+    assert not rt._invented(call, utt("draw an elephant"))  # named outright

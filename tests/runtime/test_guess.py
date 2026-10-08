@@ -113,3 +113,167 @@ def test_a_tree_next_to_the_house_cosmos_called_a_building():
     assert rt.proposal is not None and rt.proposal.items[0].label == "tree"
     assert rt.proposal.items[0].box.x >= 90  # beside the sketch, not on it
     assert "A tree, next to the house?" in [e["text"] for e in rt.log.of("say")]
+
+
+class CountingCamera:
+    """A PaperCamera stand-in: a blank sheet, counting every look."""
+
+    def __init__(self) -> None:
+        self.looks = 0
+
+    def paper_image(self, t):
+        import numpy as np
+
+        self.looks += 1
+        return np.full((200, 220, 3), 255, np.uint8), 1.0
+
+
+def test_yes_does_not_make_it_look_at_the_paper_again():
+    """Live on 8 Oct 2026 rahul had to say "yes" twice.
+
+    The first "yes" was heard, but answering it re-read the paper, and naming the new marks
+    through Cosmos took 8 s, so the yes waited behind it. While a guess is on the table the
+    scene has already been read to make it, and the answer is about the guess.
+    """
+    plotter = VirtualPlotter(CFG)
+    camera = CountingCamera()
+    rt = Runtime(Script([CROSS], [YES]), plotter, CFG, Planner(), camera=camera)
+    rt.start(0.0)
+    say(rt, "draw a circle", 0.0)
+    run_until(rt, plotter, 1.0, 40.0)
+    assert rt.state == PREVIEW
+    looks = camera.looks
+    assert looks  # the request itself did look
+    say(rt, "yes", 40.0)
+    run_until(rt, plotter, 41.0, 42.0)
+    assert [e["reason"] for e in rt.log.of("confirm")] == ["confirm"]
+    assert camera.looks == looks  # answering the guess did not look again
+
+
+class SlowVision:
+    """A Cosmos stand-in that takes `delay_s` to name one mark, as the real one did."""
+
+    def __init__(self, delay_s: float = 0.4, name: str = "house") -> None:
+        self.delay_s, self.name, self.calls = delay_s, name, 0
+
+    def label(self, img, mark, mmpp):
+        import time
+
+        self.calls += 1
+        time.sleep(self.delay_s)
+        return self.name
+
+
+class InkCamera:
+    """One pen outline on a white sheet, so segmenting finds exactly one mark.
+
+    An outline, not a filled block: the local paper level is a median over 12 mm, so a big
+    solid patch reads as the paper itself and no ink is found."""
+
+    def paper_image(self, t):
+        import cv2
+        import numpy as np
+
+        img = np.full((200, 220, 3), 255, np.uint8)
+        cv2.rectangle(img, (60, 60), (120, 120), (20, 20, 20), 3)
+        return img, 1.0
+
+
+def test_the_at_rest_look_does_not_block_the_loop():
+    """Live on 8 Oct 2026 the window froze for 4.7 s after each drawing while Cosmos named
+    the new marks. Nothing waits on that look, so it runs in the background now.
+    """
+    import time
+
+    plotter = VirtualPlotter(CFG)
+    vision = SlowVision(delay_s=0.4)
+    rt = Runtime(Script([CROSS], [YES]), plotter, CFG, Planner(), camera=InkCamera(), vision=vision)
+    rt.start(0.0)
+    try:
+        t0 = time.monotonic()
+        rt.refresh_scene_soon(1.0)
+        assert time.monotonic() - t0 < 0.2, "the call itself blocked"
+        assert not rt.log.of("scene")[1:], "the marks were applied before the look finished"
+        # The scene is only changed on the main thread, in tick.
+        deadline = time.monotonic() + 5.0
+        while not rt.log.of("scene")[1:] and time.monotonic() < deadline:
+            rt.tick(2.0)
+            time.sleep(0.02)
+        names = [o.label for o in rt.scene.marks]
+        assert names == ["house"], names
+        assert vision.calls == 1
+    finally:
+        rt.close()
+
+
+def test_a_background_look_never_undoes_a_fresh_one():
+    """If the paper is read again while a background look is still running, the late answer
+    is dropped: it was taken before the newer one and would put the scene back."""
+    plotter = VirtualPlotter(CFG)
+    rt = Runtime(
+        Script([CROSS]), plotter, CFG, Planner(), camera=InkCamera(), vision=SlowVision(0.3)
+    )
+    rt.start(0.0)
+    try:
+        rt.refresh_scene_soon(1.0)
+        rt.refresh_scene(1.5)  # a blocking look, while the background one is still going
+        job = rt._scene_job
+        assert job is not None
+        job.result()  # let it finish
+        rt.tick(2.0)
+        assert [e["why"] for e in rt.log.of("scene_dropped")] == [
+            "the paper was read again while this one ran"
+        ]
+    finally:
+        rt.close()
+
+
+class DeadVision:
+    """Cosmos after its endpoint was preempted: every call raises."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def label(self, img, mark, mmpp):
+        self.calls += 1
+        raise RuntimeError("Not Found")
+
+
+def test_a_dead_cosmos_endpoint_does_not_stop_the_app():
+    """Live on 8 Oct 2026 a preempted endpoint's 404 came out of the blocking look and
+    killed the app at start-up. The marks are kept, just unnamed."""
+    plotter = VirtualPlotter(CFG)
+    vision = DeadVision()
+    rt = Runtime(Script([CROSS]), plotter, CFG, Planner(), camera=InkCamera(), vision=vision)
+    rt.start(0.0)  # start() looks at the paper: this used to raise
+    try:
+        rt.refresh_scene(1.0)
+        assert vision.calls >= 1
+        assert [o.label for o in rt.scene.marks] == [None]  # kept, with no name
+        assert [e["why"] for e in rt.log.of("naming_failed")][-1] == "RuntimeError: Not Found"
+    finally:
+        rt.close()
+
+
+def test_one_failure_gives_up_on_the_rest_of_that_look():
+    """Asking for every mark when the endpoint is down costs a timeout each."""
+    import cv2
+    import numpy as np
+
+    class TwoMarks:
+        def paper_image(self, t):
+            img = np.full((200, 220, 3), 255, np.uint8)
+            cv2.rectangle(img, (20, 20), (80, 80), (20, 20, 20), 3)
+            cv2.rectangle(img, (120, 120), (180, 180), (20, 20, 20), 3)
+            return img, 1.0
+
+    vision = DeadVision()
+    rt = Runtime(
+        Script([CROSS]), VirtualPlotter(CFG), CFG, Planner(), camera=TwoMarks(), vision=vision
+    )
+    try:
+        rt.refresh_scene(1.0)
+        assert len(rt.scene.marks) == 2
+        assert vision.calls == 1, "it kept asking after the first failure"
+    finally:
+        rt.close()

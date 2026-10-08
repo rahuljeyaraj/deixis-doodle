@@ -35,13 +35,23 @@ class Script:
         return AgentResult(calls=self.answers.pop(0), source="cache")
 
 
-def run(rt: Runtime, plotter: VirtualPlotter, t0: float, t1: float) -> None:
+def run(rt: Runtime, plotter: VirtualPlotter, t0: float, t1: float, hand=None) -> None:
     t = t0
     while t < t1:
-        rt.on_frame(HandsFrame(t, [], (1920, 1080)))
+        rt.on_frame(HandsFrame(t, [hand] if hand else [], (1920, 1080)))
         plotter.tick(t)
         rt.tick(t)
         t += 0.05
+
+
+def pointing(x: float, y: float):
+    """A hand pointing at this spot on the paper."""
+    import numpy as np
+
+    from pointdraw.vision.hands import HandObservation, PoseResult
+
+    mm = np.tile([CFG.paper_box.x + x, CFG.paper_box.y + y], (21, 1)).astype(float)
+    return HandObservation("Right", 0.9, mm * 4, mm, None, PoseResult(True))
 
 
 def say(rt: Runtime, text: str, t: float) -> None:
@@ -105,7 +115,11 @@ def test_a_mangled_correction_is_not_turned_into_a_place_nobody_said():
 
 
 def test_a_correction_that_was_said_still_moves_the_preview():
-    """The guard must not block the real thing: "no, there" names no object either."""
+    """The guard must not block the real thing: "no, there" names no object either.
+
+    The model answers with a corner nobody said. "there" was said, so the correction lands on
+    the pointed spot rather than on the corner (rahul, 8 Oct 2026).
+    """
     plotter = VirtualPlotter(CFG)
     moved = parse_call("place_drawing", {"object": "cat", "place": {"named": "top left corner"}})
     rt = Runtime(Script([CAT], [moved]), plotter, CFG, Planner())
@@ -114,10 +128,30 @@ def test_a_correction_that_was_said_still_moves_the_preview():
     run(rt, plotter, 1.0, 4.0)
     where = rt.proposal.items[0].center
 
+    run(rt, plotter, 4.0, 5.0, hand=pointing(70, 60))  # point while saying it
     say(rt, "no, over there", 5.0)
     run(rt, plotter, 6.0, 12.0)
 
-    assert rt.proposal.items[0].center != where  # the move was asked for, so it happened
+    now = rt.proposal.items[0].center
+    assert now != where  # the move was asked for, so it happened
+    assert abs(now[0] - 70) < 3 and abs(now[1] - 60) < 3  # where the finger was, not a corner
+
+
+def test_a_corner_nobody_said_is_not_used_as_a_place():
+    """Live 8 Oct 2026: a mis-heard "One" came back as place_drawing of the elephant just
+    drawn at the "bottom right corner", and it previewed there. Nothing was pointed at either,
+    so the right answer is to ask."""
+    plotter = VirtualPlotter(CFG)
+    corner = parse_call(
+        "place_drawing", {"object": "cat", "place": {"named": "bottom right corner"}}
+    )
+    rt = Runtime(Script([corner]), plotter, CFG, Planner())
+    rt.start(0.0)
+    say(rt, "draw a cat", 0.0)
+    run(rt, plotter, 1.0, 4.0)
+    assert rt.proposal is None, "it previewed at a place nobody named"
+    assert any("not said" in e["why"] for e in rt.log.of("guard")), rt.log.of("guard")
+    assert rt.question is not None and rt.question.q.reason in ("no_gesture", "unsteady")
 
 
 def test_the_preview_traces_at_the_preview_height_not_over_the_clips():

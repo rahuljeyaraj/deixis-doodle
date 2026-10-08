@@ -43,8 +43,11 @@ microphone is muted while it speaks and for 0.3 s after, so it never hears itsel
 (the default).
 
 Keys: Q or Esc quit, Space stop the plotter, P park it (home first, back to the corner),
-S save a snapshot, R reconnect the plotter. The window can be resized or maximised and the
-camera view keeps its shape, on black bars.
+S save a snapshot, R reconnect the plotter, B draw the border again on a fresh sheet,
+C clear the window (the robot's last words, the lines at the bottom and any guess still
+showing), so a new take starts on a clean window without restarting the app (rahul, 8 Oct
+2026). The window can be resized or maximised and the camera view keeps its shape, on black
+bars.
 
 Say "park" (or "go home") at any time and the head goes back to the corner; after a stop it
 homes on the way. A "no" to a guess parks it too, so the pen never stands in the camera's
@@ -99,6 +102,7 @@ from pointdraw.live import look  # noqa: E402
 from pointdraw.live.agent import BackgroundAgent  # noqa: E402
 from pointdraw.live.frames import SavedFrames, frame_paths  # noqa: E402
 from pointdraw.live.logs import JsonlWriter, TimelineWriter  # noqa: E402
+from pointdraw.live.look import fit_window  # noqa: E402
 from pointdraw.live.status import Banner  # noqa: E402
 from pointdraw.live.view import BedView, PaperCamera  # noqa: E402
 from pointdraw.m1 import over_bed  # noqa: E402
@@ -192,6 +196,19 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=0.0,
         help="keep this much of the window free down its right side (0.3 = 30%%), for a "
         "second camera's inset",
+    )
+    ap.add_argument(
+        "--view-top",
+        type=float,
+        default=0.0,
+        help="keep this much of the window free along its top edge (0.12 = 12%%), so the "
+        "banner does not cover the paper's north edge",
+    )
+    ap.add_argument(
+        "--show-guides",
+        action="store_true",
+        help="draw the debug overlays over the camera view: the paper's outline in grey and "
+        "the ink the plotter has laid in red",
     )
     ap.add_argument(
         "--full-view", action="store_true", help="show the whole camera frame, table and all"
@@ -413,6 +430,11 @@ class Laps:
         return out
 
 
+#: Marks that belong to the paper are drawn at the bed's parked Y, so they hold still while
+#: the bed slides to draw (rahul, 8 Oct 2026).
+PARKED = 0.0
+
+
 def draw_overlay(
     vis,
     hf,
@@ -423,31 +445,50 @@ def draw_overlay(
     guesses=(),
     holds=(),
     centres=(),
+    guides: bool = False,
+    area=None,
 ) -> None:
-    """The paper, the robot's ink, the hands, your holds (filled amber) and the robot's guess
-    (dashed blue, with a cross on each `centres` point), on `vis` (the camera image times
-    `scale`). `guesses` are bed boxes or
-    closed outlines (a drawing's circle), `holds` bed points (claim 39q: one look on every
-    robot)."""
-    corners = np.array(
-        [(paper.x, paper.y), (paper.x2, paper.y), (paper.x2, paper.y2), (paper.x, paper.y2)]
-    )
-    quad = (view.to_px(corners) * scale).astype(np.int32)
-    cv2.polylines(vis, [quad], True, GREY, 1, cv2.LINE_AA)
-    ink = plotter.ink_polylines()[-2000:]
-    if ink:
-        px = (view.to_px(np.array(ink).reshape(-1, 2)) * scale).astype(np.int32).reshape(-1, 2, 2)
-        cv2.polylines(vis, list(px), False, RED, 1, cv2.LINE_AA)
+    """The hands, your holds (filled amber) and the robot's guess (dashed blue, with a cross
+    on each `centres` point), on `vis` (the camera image times `scale`). `guesses` are bed
+    boxes or closed outlines (a drawing's circle), `holds` bed points (claim 39q: one look on
+    every robot).
+
+    Everything that belongs to the paper is drawn **where the paper sits when parked**
+    (`PARKED`), not where the bed is at this instant. The Ender's bed slides in Y to draw, so
+    marks pinned to the bed slid off across the table with it; the circle has to stay still so
+    the drawing can be seen coming back inside it (rahul, 8 Oct 2026). Only the hands are
+    live, because a hand really is where the camera sees it.
+
+    `area` (the drawing area, in bed mm) is outlined whenever it is given: that is the frame
+    the plotter draws at the start, so you can see where the paper will come back to.
+
+    With `guides`, two debug overlays as well: the paper's outline in grey, and the ink the
+    plotter has laid in red. Both are off by default -- the camera already shows the real
+    paper and the real ink, so they only clutter the film's window (rahul, 8 Oct 2026)."""
+    if guides:
+        corners = np.array(
+            [(paper.x, paper.y), (paper.x2, paper.y), (paper.x2, paper.y2), (paper.x, paper.y2)]
+        )
+        quad = (view.to_px(corners, offset_y=PARKED) * scale).astype(np.int32)
+        cv2.polylines(vis, [quad], True, GREY, 1, cv2.LINE_AA)
+        laid = plotter.ink_polylines()[-2000:]
+        if laid:
+            flat = np.array(laid).reshape(-1, 2)
+            px = (view.to_px(flat, offset_y=PARKED) * scale).astype(np.int32)
+            cv2.polylines(vis, list(px.reshape(-1, 2, 2)), False, RED, 1, cv2.LINE_AA)
+    if area is not None:
+        box = (view.to_px(np.array(frame_outline(area)), offset_y=PARKED) * scale).astype(np.int32)
+        cv2.polylines(vis, [box], True, GREY, 1, cv2.LINE_AA)
     for b in guesses:
         if isinstance(b, Box):
             outline = np.array([(b.x, b.y), (b.x2, b.y), (b.x2, b.y2), (b.x, b.y2)])
         else:
             outline = np.array(b[:-1])  # closed: the last point is the first
-        look.dashed(vis, view.to_px(outline) * scale)
+        look.dashed(vis, view.to_px(outline, offset_y=PARKED) * scale)
     for p in centres:
-        look.cross(vis, view.to_px(np.array([p]))[0] * scale)
+        look.cross(vis, view.to_px(np.array([p]), offset_y=PARKED)[0] * scale)
     for p in holds:
-        look.dot(vis, view.to_px(np.array([p]))[0] * scale, 5)
+        look.dot(vis, view.to_px(np.array([p]), offset_y=PARKED)[0] * scale, 5)
     for h in hf.hands:
         lm = (h.landmarks_px * scale).astype(np.int32)
         for a, b in HAND_CONNECTIONS:
@@ -473,6 +514,8 @@ def render_window(
     centres=(),
     said: str | None = None,
     crop: tuple[int, int, int, int] | None = None,
+    guides: bool = False,
+    area=None,
 ) -> np.ndarray:
     """The window's picture: shrunk first (drawing on the full 1080p frame took ~7 ms), the
     overlay, turned 180 degrees as the user sees the bed, then the `banner` (text, colour) in
@@ -480,7 +523,9 @@ def render_window(
     [(text, colour)] under that and the last few `lines` at the bottom."""
     scale = min(1.0, WINDOW_W / img.shape[1])
     vis = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-    draw_overlay(vis, hf, view, paper, plotter, scale, guesses, holds, centres)
+    draw_overlay(
+        vis, hf, view, paper, plotter, scale, guesses, holds, centres, guides=guides, area=area
+    )
     if crop is not None:
         # after the overlay, so the marks are drawn in frame coordinates as before
         x0, y0, x1, y1 = (round(v * scale) for v in crop)
@@ -507,6 +552,7 @@ def view_crop(
     margin: float = 0.18,
     aspect: float = 16 / 9,
     right: float = 0.0,
+    top: float = 0.0,
 ) -> tuple[int, int, int, int]:
     """The part of the camera frame worth showing: the paper, a `margin` of it all round
     for the hands, widened to `aspect` and clamped to the frame.
@@ -521,6 +567,10 @@ def view_crop(
     turned 180 degrees after this crop, so the free band is taken from the low-x side of
     the camera frame, and the paper is centred in what is left.
 
+    `top` does the same along the window's top edge, where the banner sits: without it the
+    banner covered the paper's north edge (rahul, 8 Oct). The 180 degree turn puts the
+    window's top at the camera frame's high-y side, so that band is taken from there.
+
     Worked out once, with the bed parked, so the view does not drift as the bed slides.
     """
     w, h = size
@@ -534,39 +584,20 @@ def view_crop(
     x0, x1, y0, y1 = x0 - pad, x1 + pad, y0 - pad, y1 + pad
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     right = min(max(right, 0.0), 0.6)
-    # Wide enough for the paper beside the free band, and tall enough for the paper.
-    view_w = max((x1 - x0) / (1 - right), (y1 - y0) * aspect)
+    top = min(max(top, 0.0), 0.6)
+    # Wide enough for the paper beside the free band, and tall enough for the paper under
+    # the banner's band.
+    view_w = max((x1 - x0) / (1 - right), (y1 - y0) / (1 - top) * aspect)
     view_w = min(view_w, w, h * aspect)  # no more than the frame can give
     view_h = view_w / aspect
-    # The paper sits in the middle of what is left once the band is taken off the low-x
-    # side, which the 180 degree turn puts on the window's right.
+    # The paper sits in the middle of what is left once each band is taken off: the low-x
+    # side, which the 180 degree turn puts on the window's right, and the high-y side,
+    # which it puts along the window's top.
     left = cx - right * view_w - (1 - right) * view_w / 2
     left = min(max(left, 0.0), w - view_w)
-    top = min(max(cy - view_h / 2, 0.0), h - view_h)
-    return (round(left), round(top), round(left + view_w), round(top + view_h))
-
-
-def fit_window(name: str, vis: np.ndarray) -> np.ndarray:
-    """`vis` scaled to fill the window it is shown in without stretching, on black bars.
-
-    OpenCV's WINDOW_KEEPRATIO stretches the picture to the window on Windows, so a
-    maximised view came out wide and squat (rahul, 7 Oct). Fitting it here keeps the shape
-    right on any platform; a window the same shape as the picture gets no bars.
-    """
-    try:
-        _, _, w, h = cv2.getWindowImageRect(name)
-    except cv2.error:
-        return vis
-    if w <= 1 or h <= 1:
-        return vis
-    ih, iw = vis.shape[:2]
-    k = min(w / iw, h / ih)
-    nw, nh = max(1, round(iw * k)), max(1, round(ih * k))
-    interp = cv2.INTER_AREA if k < 1 else cv2.INTER_LINEAR
-    out = np.zeros((h, w, 3), vis.dtype)
-    x, y = (w - nw) // 2, (h - nh) // 2
-    out[y : y + nh, x : x + nw] = cv2.resize(vis, (nw, nh), interpolation=interp)
-    return out
+    y_top = cy - (1 - top) * view_h / 2
+    y_top = min(max(y_top, 0.0), h - view_h)
+    return (round(left), round(y_top), round(left + view_w), round(y_top + view_h))
 
 
 def window_marks(rt: Runtime, t: float, last_said=None, holds_s: float = 6.0) -> dict:
@@ -591,6 +622,48 @@ def window_marks(rt: Runtime, t: float, last_said=None, holds_s: float = 6.0) ->
     return {"guesses": guesses, "centres": centres, "holds": holds, "said": said}
 
 
+class GuessLinger:
+    """Keeps the guess circle on screen after "yes", until the drawing is back and settled.
+
+    The circle used to vanish the moment it was confirmed, so there was no way to see the
+    drawing land inside it (rahul, 8 Oct 2026). Now it stays while the plotter draws and for
+    `linger_s` after it has parked, then goes. `cap_s` is a backstop: a guess that is dropped
+    without ever being drawn (cancelled, replaced) does not hang about for ever.
+    """
+
+    def __init__(self, linger_s: float = 4.0, cap_s: float = 40.0) -> None:
+        self.linger_s, self.cap_s = linger_s, cap_s
+        self.guesses: list = []
+        self.centres: list = []
+        self.since: float | None = None  # when the guess stopped being the live proposal
+        self.drew = False  # the plotter has been busy since then
+        self.idle_since: float | None = None
+
+    def clear(self) -> None:
+        """Drop a guess still showing, for the C key's clean window."""
+        self.guesses, self.centres = [], []
+        self.since, self.drew, self.idle_since = None, False, None
+
+    def apply(self, marks: dict, t: float, busy: bool) -> dict:
+        if marks["guesses"]:  # a live proposal: remember it and show it as it is
+            self.guesses, self.centres = list(marks["guesses"]), list(marks["centres"])
+            self.since, self.drew, self.idle_since = None, False, None
+            return marks
+        if not self.guesses:
+            return marks
+        if self.since is None:
+            self.since = t
+        if busy:
+            self.drew, self.idle_since = True, None
+        elif self.drew and self.idle_since is None:
+            self.idle_since = t
+        done = self.idle_since is not None and t - self.idle_since >= self.linger_s
+        if done or t - self.since >= self.cap_s:
+            self.guesses, self.centres = [], []
+            return marks
+        return {**marks, "guesses": self.guesses, "centres": self.centres}
+
+
 def problems(plotter_state: str, plotter_problem: str | None, mic_problem: str | None):
     """What is wrong, in plain words for the window."""
     out = []
@@ -599,6 +672,27 @@ def problems(plotter_state: str, plotter_problem: str | None, mic_problem: str |
     if mic_problem:
         out.append("Microphone lost: plug it back in. Trying again every 2 seconds.")
     return out
+
+
+def draw_border(plotter: LivePlotter, cfg: MachineConfig, log: EventLog) -> bool:
+    """B: draw the drawing area's outline again and park, for a fresh sheet.
+
+    The frame is drawn once at start-up, so changing the paper meant restarting the whole app
+    (rahul, 8 Oct 2026). The job queues like any other, so it waits for your hand to be off
+    the paper first.
+    """
+    t = clock.now()
+    if plotter.status().state == "error":
+        print("B: the plotter is not answering, press R first")
+        return False
+    if plotter.busy:
+        print("B: busy -- wait for the drawing to finish")
+        return False
+    log.add(t, "border", why="b key")
+    plotter.draw_polylines([frame_outline(cfg.drawable)], tag="frame")
+    plotter.park(tag="border")
+    print("drawing the border on a fresh sheet")
+    return True
 
 
 def reconnect(plotter: LivePlotter, rt: Runtime, log: EventLog) -> bool:
@@ -750,7 +844,9 @@ def run(args: argparse.Namespace) -> int:
     window = "pointdraw live (Q quit, Space stop, P park, S save, R reconnect)"
     crop = None
     if not args.full_view:
-        crop = view_crop(view, paper, first.size, args.view_margin, right=args.view_right)
+        crop = view_crop(
+            view, paper, first.size, args.view_margin, right=args.view_right, top=args.view_top
+        )
         print(f"window: showing x {crop[0]}..{crop[2]}, y {crop[1]}..{crop[3]} of {first.size}")
     if not args.headless:
         # Without this, imshow makes an AUTOSIZE window fixed to the picture's size, so
@@ -759,6 +855,7 @@ def run(args: argparse.Namespace) -> int:
         cv2.resizeWindow(window, WINDOW_W, round(WINDOW_W * 9 / 16))
     mic_problem: str | None = None
     banner = Banner()
+    linger = GuessLinger()
     said_banner = ""
     if args.shots:
         (out / "window").mkdir(parents=True, exist_ok=True)
@@ -851,7 +948,9 @@ def run(args: argparse.Namespace) -> int:
                     lines,
                     words_now,
                     crop=crop,
-                    **window_marks(rt, t, last_said),
+                    guides=args.show_guides,
+                    area=cfg.drawable,
+                    **linger.apply(window_marks(rt, t, last_said), t, plotter.busy),
                 )
                 if shoot:
                     slug = "".join(c if c.isalnum() else "-" for c in words_now[0].lower())
@@ -868,6 +967,15 @@ def run(args: argparse.Namespace) -> int:
                 rt.do_park(clock.now(), "p key")
             if key == ord("r"):
                 reconnect(plotter, rt, log)
+            if key == ord("b"):
+                draw_border(plotter, cfg, log)
+            if key == ord("c"):
+                # A clean window for the next take: the banner itself is not cleared, it says
+                # what the plotter is doing now and reads "Ready" when it is parked and idle.
+                lines, last_said = [], None
+                linger.clear()
+                log.add(clock.now(), "window_cleared", why="c key")
+                print("window cleared")
             if key == ord("s"):
                 out.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(out / f"{frames:06d}-camera.png"), img)
@@ -882,6 +990,7 @@ def run(args: argparse.Namespace) -> int:
             print("stopping the plotter (no camera interlock after quitting)")
             plotter.stop()
             plotter.wait(10)
+        rt.close()
         plotter.close()
         words.close()
         if speaker is not None:

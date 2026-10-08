@@ -301,3 +301,164 @@ def test_a_crop_never_leaves_the_frame():
         x0, y0, x1, y1 = live.view_crop(_View(rect), _Paper(), (1920, 1080), 0.3)
         assert 0 <= x0 < x1 <= 1920, rect
         assert 0 <= y0 < y1 <= 1080, rect
+
+
+def test_the_banner_does_not_cover_the_paper_north_edge():
+    """`top` keeps a band free along the window's top, where the banner sits.
+
+    Live on 8 Oct 2026 the banner hid the paper's north edge. The 180 degree turn puts the
+    window's top at the camera frame's high-y side, so the band is taken from there and the
+    whole paper must sit clear of it.
+    """
+    live = load_script("live_run")
+    view = _View((597, 244, 1277, 796))  # the measured paper on this bed
+    band = 0.12
+    x0, y0, x1, y1 = live.view_crop(view, _Paper(), (1920, 1080), 0.18, top=band)
+    assert 0 <= x0 < x1 <= 1920 and 0 <= y0 < y1 <= 1080
+    assert x0 < 597 and x1 > 1277 and y0 < 244 and y1 > 796  # the whole paper is still in
+    free_from = y0 + (1 - band) * (y1 - y0)
+    assert 796 <= free_from  # the paper's high-y edge clears the banner's band
+    assert abs((x1 - x0) / (y1 - y0) - 16 / 9) < 0.02  # still the window's shape
+
+
+def test_the_top_band_works_beside_the_right_band():
+    live = load_script("live_run")
+    view = _View((597, 244, 1277, 796))
+    x0, y0, x1, y1 = live.view_crop(view, _Paper(), (1920, 1080), 0.18, right=0.3, top=0.12)
+    assert 0 <= x0 < x1 <= 1920 and 0 <= y0 < y1 <= 1080
+    assert x0 < 597 and x1 > 1277 and y0 < 244 and y1 > 796
+    assert 796 <= y0 + 0.88 * (y1 - y0)  # clear of the banner
+    assert 597 >= x0 + 0.3 * (x1 - x0)  # clear of the inset's band (low-x side)
+
+
+def test_the_guess_stays_until_the_drawing_is_back_and_settled():
+    """The circle used to go the instant "yes" was said, so the drawing could not be seen
+    landing inside it (rahul, 8 Oct 2026). It now waits for the plotter to park and settle.
+    """
+    live = load_script("live_run")
+    linger = live.GuessLinger(linger_s=4.0)
+    circle = [(10.0, 10.0), (20.0, 10.0), (10.0, 10.0)]
+    live_marks = {"guesses": [circle], "centres": [(15.0, 10.0)], "holds": [], "said": None}
+    gone = {"guesses": [], "centres": [], "holds": [], "said": None}
+
+    assert linger.apply(live_marks, 0.0, busy=False)["guesses"] == [circle]  # the proposal
+    # "yes": the proposal is gone, the plotter has not started yet
+    assert linger.apply(gone, 1.0, busy=False)["guesses"] == [circle]
+    assert linger.apply(gone, 2.0, busy=True)["guesses"] == [circle]  # drawing
+    assert linger.apply(gone, 20.0, busy=True)["guesses"] == [circle]  # still drawing
+    out = linger.apply(gone, 21.0, busy=False)  # parked: the wait starts now
+    assert out["guesses"] == [circle] and out["centres"] == [(15.0, 10.0)]
+    assert linger.apply(gone, 24.0, busy=False)["guesses"] == [circle]  # 3 s: still there
+    assert linger.apply(gone, 25.1, busy=False)["guesses"] == []  # past 4 s: gone
+
+
+def test_a_guess_that_is_never_drawn_does_not_hang_about():
+    live = load_script("live_run")
+    linger = live.GuessLinger(linger_s=4.0, cap_s=40.0)
+    circle = [(10.0, 10.0), (20.0, 10.0), (10.0, 10.0)]
+    gone = {"guesses": [], "centres": [], "holds": [], "said": None}
+    linger.apply({"guesses": [circle], "centres": [], "holds": [], "said": None}, 0.0, False)
+    assert linger.apply(gone, 1.0, busy=False)["guesses"] == [circle]  # cancelled, never drawn
+    assert linger.apply(gone, 39.0, busy=False)["guesses"] == [circle]
+    assert linger.apply(gone, 42.0, busy=False)["guesses"] == []  # the backstop
+
+
+def test_the_paper_marks_are_drawn_where_the_paper_parks():
+    """The bed slides in Y to draw. The circle must stay where the parked paper is, so the
+    drawing can be seen coming back inside it (rahul, 8 Oct 2026).
+    """
+    live = load_script("live_run")
+    assert live.PARKED == 0.0
+
+    class Spy:
+        """A BedView stand-in that records the offset each call asked for."""
+
+        def __init__(self):
+            self.offsets = []
+
+        def to_px(self, pts_mm, offset_y=None):
+            import numpy as _np
+
+            self.offsets.append(offset_y)
+            return _np.array(pts_mm, dtype=float).reshape(-1, 2)
+
+    class NoInk:
+        def ink_polylines(self):
+            return []
+
+    import numpy as _np
+
+    vis = _np.zeros((400, 600, 3), _np.uint8)
+    view = Spy()
+
+    class NoHands:
+        hands: list = []
+
+    live.draw_overlay(
+        vis,
+        NoHands(),
+        view,
+        _Paper(),
+        NoInk(),
+        1.0,
+        guesses=[live.Box(10, 10, 20, 20)],
+        holds=[(5.0, 5.0)],
+        centres=[(20.0, 20.0)],
+        area=live.Box(0, 0, 100, 100),
+    )
+    assert view.offsets, "nothing was drawn"
+    assert all(o == live.PARKED for o in view.offsets), view.offsets
+
+
+def test_clearing_the_window_drops_a_guess_still_showing():
+    """C gives a clean window for the next take, without restarting the app."""
+    live = load_script("live_run")
+    linger = live.GuessLinger(linger_s=4.0)
+    circle = [(10.0, 10.0), (20.0, 10.0), (10.0, 10.0)]
+    gone = {"guesses": [], "centres": [], "holds": [], "said": None}
+    linger.apply(
+        {"guesses": [circle], "centres": [(15.0, 10.0)], "holds": [], "said": None}, 0.0, False
+    )
+    assert linger.apply(gone, 1.0, busy=False)["guesses"] == [circle]  # lingering
+    linger.clear()
+    assert linger.apply(gone, 2.0, busy=False)["guesses"] == []
+    # And it still works for the next guess.
+    out = linger.apply({"guesses": [circle], "centres": [], "holds": [], "said": None}, 3.0, False)
+    assert out["guesses"] == [circle]
+
+
+def test_the_border_key_draws_the_frame_and_parks():
+    """B redraws the drawing area's outline for a fresh sheet, so changing the paper no
+    longer means restarting the app (rahul, 8 Oct 2026)."""
+    live = load_script("live_run")
+    from pointdraw.controller.config import MachineConfig
+    from pointdraw.runtime.events import EventLog
+
+    class FakePlotter:
+        def __init__(self, state="idle", busy=False):
+            self.state, self.busy = state, busy
+            self.drawn: list = []
+            self.parked: list = []
+
+        def status(self):
+            return type("S", (), {"state": self.state})()
+
+        def draw_polylines(self, polys, tag=None):
+            self.drawn.append((polys, tag))
+
+        def park(self, tag=None):
+            self.parked.append(tag)
+
+    cfg, log = MachineConfig(), EventLog()
+    plotter = FakePlotter()
+    assert live.draw_border(plotter, cfg, log) is True
+    (polys, tag) = plotter.drawn[0]
+    assert tag == "frame" and plotter.parked == ["border"]
+    assert polys[0][0] == polys[0][-1]  # a closed outline
+    assert [e["why"] for e in log.of("border")] == ["b key"]
+
+    # It must not cut into a drawing, or talk to a dead link.
+    busy = FakePlotter(busy=True)
+    assert live.draw_border(busy, cfg, log) is False and not busy.drawn
+    dead = FakePlotter(state="error")
+    assert live.draw_border(dead, cfg, log) is False and not dead.drawn

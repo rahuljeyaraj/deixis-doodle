@@ -113,3 +113,35 @@ def test_this_big_without_a_gesture_asks_again():
     assert rt.question is not None and rt.question.q.reason == "no_size"
     asks = [a["question"] for a in rt.log.of("ask")]
     assert len(asks) == 2 and asks[-1].startswith("How big?")
+
+
+def test_answering_one_question_keeps_the_other_answer():
+    """Live on 8 Oct 2026 it asked "How big?" and "Where do you mean?" for ever, in turn.
+
+    Each answer re-ran the request with only the slot it had just filled, so the slot filled
+    by the answer before it was lost, and the other question came straight back.
+    """
+    agent = OnlyTheRequest()
+    rt = Runtime(agent, VirtualPlotter(CFG), CFG, Planner())
+    rt.start(0.0)
+    said = ["Draw", "a", "cross", "here", "this", "big"]
+    rt.on_utterance([Word(w, 0.4 + 0.25 * i, 0.6 + 0.25 * i) for i, w in enumerate(said)], 2.0)
+    frames(rt, 2.0, 3.0, None)  # nothing shown with the request: a slot is missing
+    assert rt.question is not None
+    first = rt.question.q.reason
+
+    # Answer the size with a pinch, then the place by pointing (each with its own words).
+    frames(rt, 3.0, 4.0, pinch(50.0))
+    rt.on_utterance([Word("This", 3.4, 3.6), Word("big", 3.7, 3.9)], 4.1)
+    frames(rt, 4.1, 5.0, None)
+    frames(rt, 5.0, 6.0, pointing(60, 50))
+    rt.on_utterance([Word("Here", 5.4, 5.6)], 6.1)
+    frames(rt, 6.1, 7.0, None)
+
+    asks = [a["question"] for a in rt.log.of("ask")]
+    assert len(agent.asked) == 1, "the answers never went to the agent"
+    assert rt.proposal is not None, f"still asking after both answers: {asks} (first {first})"
+    item = rt.proposal.items[0]
+    assert item.label == "cross"
+    assert abs(max(item.box.w, item.box.h) - 50.0) < 5.0  # the size it was shown
+    assert abs(item.center[0] - 60) < 3 and abs(item.center[1] - 50) < 3  # where it pointed

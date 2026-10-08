@@ -23,6 +23,29 @@ BAR = (30, 30, 30)
 FONT = cv2.FONT_HERSHEY_DUPLEX
 
 
+def fit_window(name: str, vis: np.ndarray) -> np.ndarray:
+    """`vis` scaled to fill the window it is shown in without stretching, on black bars.
+
+    OpenCV's WINDOW_KEEPRATIO stretches the picture to the window on Windows, so a
+    maximised view came out wide and squat (rahul, 7 Oct). Fitting it here keeps the shape
+    right on any platform; a window the same shape as the picture gets no bars.
+    """
+    try:
+        _, _, w, h = cv2.getWindowImageRect(name)
+    except cv2.error:
+        return vis
+    if w <= 1 or h <= 1:
+        return vis
+    ih, iw = vis.shape[:2]
+    k = min(w / iw, h / ih)
+    nw, nh = max(1, round(iw * k)), max(1, round(ih * k))
+    interp = cv2.INTER_AREA if k < 1 else cv2.INTER_LINEAR
+    out = np.zeros((h, w, 3), vis.dtype)
+    x, y = (w - nw) // 2, (h - nh) // 2
+    out[y : y + nh, x : x + nw] = cv2.resize(vis, (nw, nh), interpolation=interp)
+    return out
+
+
 def dot(vis: np.ndarray, pt: Sequence[float], r: int = 9, colour=AMBER) -> None:
     """A filled dot with a dark edge (your fingertip, a hold, your feet's spot)."""
     c = (int(round(pt[0])), int(round(pt[1])))

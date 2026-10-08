@@ -36,6 +36,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -43,12 +44,14 @@ from pydantic import BaseModel
 
 from deixis.geometry import Box, Point
 from deixis.resolver import ResolverParams
+from deixis.scene import iou
 from deixis.types import Word
 from pointdraw.agent.nemotron import AgentResult
 from pointdraw.agent.prompts import AgentContext
 from pointdraw.agent.schema import (
     DeicticObject,
     DeicticPlace,
+    NamedPlace,
     RelationPlace,
     ToolCall,
     norm_word,
@@ -99,6 +102,10 @@ ACKS |= {"mhm", "hello", "hi", "hey", "so", "well", "and", "i", "mean", "just"}
 # Words that let place_drawing repeat an object the person didn't name ("another one").
 SIZE_WORDS = {"this", "that", "so", "big", "small", "large", "long", "wide", "tall", "size"}
 REPEAT_WORDS = {"another", "again", "same", "more", "copy", "one", "ones"}
+# "one" and "ones" only mean "another one" alongside one of the others ("another one", "one
+# more", "the same one"). On 8 Oct 2026 a lone mis-heard "One" counted as a repeat, so the
+# guard let through place_drawing of the elephant just drawn, at a corner nobody named.
+WEAK_REPEAT_WORDS = {"one", "ones"}
 # Words that ask to move or resize the preview. Live 2 Oct: "I think" (half heard) came back
 # as adjust(dx=-1, scale=0.8) and the cat moved 5 mm off rahul's point; an adjust needs one.
 ADJUST_WORDS = {"left", "right", "up", "down", "north", "south", "east", "west", "move"}
@@ -199,6 +206,11 @@ class OpenQuestion:
     utt: Utterance | None
     call: ToolCall | None
     t: float
+    # What earlier answers to this same call already settled: the place (`overrides`) and the
+    # size (`sizes`), by word index. Without them each answer filled one slot and lost the
+    # other, so "How big?" and "Where do you mean?" alternated for ever (rahul, 8 Oct 2026).
+    overrides: dict = field(default_factory=dict)
+    sizes: dict = field(default_factory=dict)
 
 
 class Runtime:
@@ -230,6 +242,13 @@ class Runtime:
         self.tracker = GestureTracker(paper)
         self.camera = camera
         self.vision = vision
+        # The background look at the paper (`refresh_scene_soon`). `_scene_epoch` counts the
+        # looks that have been applied, so a background one that finished after a blocking
+        # one is thrown away rather than undoing it.
+        self._scene_job: Future | None = None
+        self._scene_epoch = 0
+        self._scene_at = 0
+        self._scene_pool: ThreadPoolExecutor | None = None
         self.log = log or EventLog()
         self.on_new_sheet = on_new_sheet
         self.state = LISTEN
@@ -351,7 +370,11 @@ class Runtime:
     def _understand(self, utt: Utterance, t: float) -> None:
         if self.question is not None and self._answer(utt, t):
             return
-        if not self.plotter.busy:
+        if not self.plotter.busy and self.state not in (PREVIEW, ADJUST):
+            # While a guess is on the table the scene was already read to make it, and the
+            # answer ("yes", "a bit bigger") is about the guess, not about the paper. Looking
+            # again here cost 8 s of Cosmos naming and swallowed a "yes", so rahul said it
+            # twice (live 8 Oct 2026).
             self.refresh_scene(t)
         ctx = self.context()
         submit = getattr(self.agent, "submit", None)
@@ -380,6 +403,7 @@ class Runtime:
 
     def tick(self, t: float) -> None:
         self.t = max(self.t, t)
+        self._collect_scene(t)
         self._plotter_events()
         self._check_size_wait(t)
         for p in self.pending:
@@ -427,17 +451,95 @@ class Runtime:
         return ctx
 
     def refresh_scene(self, t: float) -> None:
-        """Look at the paper: segment the user's marks (minus the robot's own ink)."""
+        """Look at the paper: segment the user's marks (minus the robot's own ink).
+
+        Blocking: the caller needs the answer now (an utterance is being understood)."""
         if self.camera is None:
             return
         img, mmpp = self.camera.paper_image(t)
         robot = [[self._to_paper(p) for p in pl] for pl in self.plotter.ink_polylines()]
+        marks, labels, why = self._look(img, mmpp, robot, self._known_boxes())
+        self._apply_marks(marks, labels, t, why)
+
+    def refresh_scene_soon(self, t: float) -> None:
+        """The same look, in the background, for when nothing is waiting on it.
+
+        At rest it ran on the camera loop, so the window -- and OBS, recording it -- froze for
+        up to 4.7 s while Cosmos named the new marks (rahul, 8 Oct 2026: "the frame was not
+        getting updated"). Only the slow part moves off the loop: segmenting and naming. The
+        scene itself is still changed on the main thread, in `tick`.
+        """
+        if self.camera is None:
+            return
+        if self.vision is None:  # nothing slow to wait for: the local work is milliseconds
+            self.refresh_scene(t)
+            return
+        if self._scene_job is not None and not self._scene_job.done():
+            return  # one look at a time
+        img, mmpp = self.camera.paper_image(t)
+        robot = [[self._to_paper(p) for p in pl] for pl in self.plotter.ink_polylines()]
+        self._scene_at = self._scene_epoch
+        self._scene_job = self._pool().submit(self._look, img, mmpp, robot, self._known_boxes())
+
+    def _collect_scene(self, t: float) -> None:
+        """Take a finished background look, unless the scene has been read since it started."""
+        job = self._scene_job
+        if job is None or not job.done():
+            return
+        self._scene_job = None
+        try:
+            marks, labels, why = job.result()
+        except Exception as e:  # a lost camera must not stop the app
+            self.log.add(t, "scene_failed", why=str(e))
+            return
+        if self._scene_at != self._scene_epoch:
+            self.log.add(t, "scene_dropped", why="the paper was read again while this one ran")
+            return
+        self._apply_marks(marks, labels, t, why)
+
+    def close(self) -> None:
+        """Drop the background look, so quitting does not wait on a Cosmos call."""
+        pool, self._scene_pool, self._scene_job = self._scene_pool, None, None
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+    def _pool(self) -> ThreadPoolExecutor:
+        if self._scene_pool is None:
+            self._scene_pool = ThreadPoolExecutor(1, thread_name_prefix="scene")
+        return self._scene_pool
+
+    def _known_boxes(self) -> list[Box]:
+        return [o.box for o in self.scene.marks]
+
+    def _look(
+        self, img: Any, mmpp: float, robot: Any, known: list[Box]
+    ) -> tuple[Any, dict, str | None]:
+        """Segment the marks and name the ones the scene does not have yet.
+
+        No scene changes and no logging here: this also runs on a worker thread. A naming
+        that fails (the endpoint stopped, the network went) gives up on the rest of this look
+        and is reported back, so the marks are still kept, just unnamed: on 8 Oct 2026 a
+        preempted Cosmos endpoint brought the whole app down with a 404.
+        """
         marks = segment_ink(img, mmpp, robot)
+        labels: dict[Any, Any] = {}
+        if self.vision is None:
+            return marks, labels, None
+        hit = self.scene.params.mark_match_iou
+        for m in marks:
+            if any(iou(b, m.box_mm) >= hit for b in known):
+                continue
+            try:
+                labels[m.id] = self.vision.label(img, m, mmpp)
+            except Exception as e:
+                return marks, labels, f"{type(e).__name__}: {e}"
+        return marks, labels, None
 
-        def labeler(m: Any) -> Any:
-            return self.vision.label(img, m, mmpp) if self.vision else None
-
-        added = self.scene.set_user_marks(marks, labeler, t)
+    def _apply_marks(self, marks: Any, labels: dict, t: float, why: str | None = None) -> None:
+        if why is not None:
+            self.log.add(t, "naming_failed", why=why)
+        added = self.scene.set_user_marks(marks, lambda m: labels.get(m.id), t)
+        self._scene_epoch += 1
         self.log.add(
             t,
             "scene",
@@ -1068,12 +1170,20 @@ class Runtime:
             self._preview(t)
         else:
             self._set_state(self._rest_state(), t)
-            self.refresh_scene(t)
+            self.refresh_scene_soon(t)
 
     # ------------------------------------------------------------------ questions
 
-    def _ask(self, q: Question, utt: Utterance | None, call: ToolCall | None, t: float) -> None:
-        self.question = OpenQuestion(q, utt, call, t)
+    def _ask(
+        self,
+        q: Question,
+        utt: Utterance | None,
+        call: ToolCall | None,
+        t: float,
+        overrides: dict | None = None,
+        sizes: dict | None = None,
+    ) -> None:
+        self.question = OpenQuestion(q, utt, call, t, dict(overrides or {}), dict(sizes or {}))
         self.log.add(t, "ask", question=q.text, reason=q.reason, options=q.options)
         self.say(t, q.text)
         self._set_state(CLARIFY, t)
@@ -1104,7 +1214,8 @@ class Runtime:
             elif q.candidates:
                 obj = next(c for c in q.candidates if (c.label or c.id) == chosen)
                 call = _retarget(call, obj)
-            self._rerun(oq.utt, call, t, overrides)
+            overrides = {**oq.overrides, **overrides}
+            self._rerun(oq.utt, call, t, overrides, dict(oq.sizes))
             return True
         if q.reason == "no_size" and oq.call is not None and oq.utt is not None:
             # "How big?" ... "this big": the size comes from this answer's gesture, the rest
@@ -1126,14 +1237,20 @@ class Runtime:
             try:
                 _, where = refs.point_for_word(demos[-1])
             except NeedAsk as e:
-                self._ask(e.q, oq.utt, oq.call, t)
+                self._ask(e.q, oq.utt, oq.call, t, oq.overrides, oq.sizes)
                 return True
             pick = refs.picks[demos[-1]]
             self.question = None
             self.log.add(t, "answer", question=q.text, answer="pointing", where=where.mean_mm)
             assert oq.utt is not None
             idx = _deictic_indices(oq.call) or [-1]
-            self._rerun(oq.utt, oq.call, t, {i: pick.hold for i in idx})  # type: ignore[union-attr]
+            self._rerun(
+                oq.utt,
+                oq.call,
+                t,
+                {**oq.overrides, **{i: pick.hold for i in idx}},  # type: ignore[union-attr]
+                dict(oq.sizes),
+            )
             return True
         if chosen is not None and oq.call is None:
             return False  # an agent question: let the agent read the answer in context
@@ -1185,7 +1302,9 @@ class Runtime:
         self.question, self.size_wait = None, None
         self.log.add(t, "answer", question=oq.q.text, answer="size", size=round(span.span_mm, 1))
         _, sizes = deictic_words(oq.call.args)
-        self._rerun(oq.utt, oq.call, t, {}, {i: span for i in sizes})
+        self._rerun(
+            oq.utt, oq.call, t, dict(oq.overrides), {**oq.sizes, **{i: span for i in sizes}}
+        )
 
     def _check_size_wait(self, t: float, span: Any = None) -> None:
         if self.size_wait is None:
@@ -1199,7 +1318,7 @@ class Runtime:
             self._size_answer(oq, span, t)
         elif t > deadline:
             self.size_wait = None
-            self._ask(oq.q, oq.utt, oq.call, t)
+            self._ask(oq.q, oq.utt, oq.call, t, oq.overrides, oq.sizes)
 
     def _rerun(
         self,
@@ -1216,7 +1335,7 @@ class Runtime:
         try:
             self._handle(call, refs, new, t)
         except NeedAsk as e:
-            self._ask(e.q, utt, call, t)
+            self._ask(e.q, utt, call, t, overrides, sizes)
         for entry in refs.log:
             self.log.add(t, "resolve", utt=utt.id, tool=call.name, **entry)
         if new:
@@ -1255,7 +1374,8 @@ class Runtime:
         asked = getattr(call0.args, "object", None) if call0 is not None else None
         if asked and (self.planner.resolve(asked) or norm_word(asked)) == target:
             return False  # "How big?" ... "this big"
-        if any(w in REPEAT_WORDS for w in toks):
+        repeats = {w for w in toks if w in REPEAT_WORDS}
+        if repeats and repeats - WEAK_REPEAT_WORDS:
             return False
         grams = toks + [f"{a} {b}" for a, b in zip(toks, toks[1:], strict=False)]
         for g in grams:
@@ -1266,7 +1386,7 @@ class Runtime:
 
     def _grounded(self, call: ToolCall, utt: Utterance, t: float) -> ToolCall:
         """Undo a place or a size the model made up: "a sun up here" is the pointed place,
-        not "above the house"; nobody said "small"."""
+        not "above the house"; nobody said "small"; nobody said "bottom right corner"."""
         if call.name not in ("place_drawing", "write_label"):
             return call
         from pointdraw.agent.schema import PresetSize
@@ -1283,6 +1403,13 @@ class Runtime:
             and not any(isinstance(o, DeicticObject) for o in (place.target, place.target2))
         ):
             upd["place"] = DeicticPlace(deixis=toks[demos[0]], word_index=demos[0])
+        if isinstance(place, NamedPlace) and not self._said_region(place.named, toks):
+            # "bottom right corner" out of a mis-heard "One" (rahul, 8 Oct 2026: "it went to
+            # draw a place i didnt mention"). If a pointing word was said, that is the place;
+            # otherwise there is no place left and it asks where, as it should.
+            upd["place"] = (
+                DeicticPlace(deixis=toks[demos[0]], word_index=demos[0]) if demos else None
+            )
         size = getattr(args, "size", None)
         if isinstance(size, PresetSize) and not set(toks) & PRESET_WORDS:
             upd["size"] = None
@@ -1296,6 +1423,15 @@ class Runtime:
             + ", ".join(f"{k} {getattr(args, k).model_dump()}" for k in upd),
         )
         return ToolCall(name=call.name, args=args.model_copy(update=upd))
+
+    @staticmethod
+    def _said_region(named: str, toks: list[str]) -> bool:
+        """Did the person say any word of this named region ("bottom right corner")?
+
+        One word is enough: "the corner" for "bottom right corner", "middle" for "middle".
+        A region nobody said a word of was made up."""
+        words = {norm_word(w) for w in named.replace("_", " ").split()}
+        return bool(words & set(toks))
 
     def _is_stop(self, utt: Utterance) -> bool:
         toks = [norm_word(w.text) for w in utt.words]

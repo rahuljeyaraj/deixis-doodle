@@ -1,6 +1,9 @@
 """The scene geometry moved to the deixis core (core split C7): same answers as before.
 
 The old OpenCV empty space and the old relation formulas are copied here as references.
+One answer has changed since, on purpose: beside something on a page now stands on its
+ground rather than on its middle (rahul, 8 Oct 2026). The test below spells that out, so the
+rest of each formula is still pinned to the pre-split code.
 """
 
 import math
@@ -92,7 +95,13 @@ def test_relations_are_exactly_the_old_ones(rel):
         size = float(rng.uniform(5, 80))
         ext = (float(rng.uniform(5, 80)), float(rng.uniform(5, 80))) if i % 2 else None
         got = model.relation(rel, target, size, extent=ext)
-        assert got == old_relation(rel, target.box, size, 10.0, ext)
+        want = old_relation(rel, target.box, size, 10.0, ext)
+        if rel in ("left_of", "right_of"):
+            # The one deliberate change: the base lines up with the target's base, so the
+            # sideways offset is as before but the height is not.
+            hy = ext[1] / 2 if ext else size / 2
+            want = (want[0], target.box.y + hy)
+        assert got == want
         model.remove(target)
 
 
