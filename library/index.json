@@ -1,7 +1,7 @@
 {
  "version": 1,
  "source": "Quick, Draw! by Google Creative Lab (CC BY 4.0); see ATTRIBUTION.md. Categories with source 'sana': SANA 1600M line art (Apache-2.0)",
- "default_style": "icon",
+ "default_style": "colouring",
  "categories": {
   "airplane": {
    "file": "sana/airplane.json",
@@ -982,5 +982,6 @@
   "webcam": "camera",
   "woman": "person",
   "yacht": "sailboat"
- }
+ },
+ "note_default_style": "7 Oct 2026: was \"icon\". rahul's nine are all colouring (library/final_picks.json), and scenes use detailed drawings, not icons."
 }

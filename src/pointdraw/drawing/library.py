@@ -135,6 +135,14 @@ class Library:
         self._next: dict[tuple[str, str | None], int] = {}
         #: the style used when a request names none (index.json "default_style")
         self.default_style: str | None = index.get("default_style")
+        #: categories rahul locked to one drawing (final_picks.json): never cycle these.
+        #: Without it, asking twice in one session gives a different drawing each time,
+        #: so a retake would not match the first take (7 Oct 2026).
+        self.locked: dict[str, str] = {}
+        picks = root / "final_picks.json"
+        if picks.is_file():
+            with open(picks, encoding="utf-8") as fh:
+                self.locked = {p["object"]: p["variant"] for p in json.load(fh)["picks"]}
 
     @classmethod
     def load(cls, root: str | Path | None = None) -> Library:
@@ -206,6 +214,11 @@ class Library:
             raise ValueError(f"no variant {variant!r} of {name!r}")
         vs = self.variants(name, style)
         cat = vs[0].category
+        if variant is None and style is None and cat in self.locked:
+            want = self.locked[cat]
+            for d in self.variants(name, "any"):
+                if d.key_id == want:
+                    return d
         if variant is None:
             key = (cat, vs[0].style)
             i = self._next.get(key, 0)

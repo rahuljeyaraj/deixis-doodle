@@ -33,8 +33,8 @@
   "banana_icon_s1004"
  ],
  "bed": [
-  "bed_colouring_s1004",
   "bed_colouring_s1003",
+  "bed_colouring_s1004",
   "bed_colouring_s1005",
   "bed_icon_s1001",
   "bed_icon_s1000",
@@ -209,9 +209,9 @@
   "door_icon_s1005"
  ],
  "duck": [
+  "duck_colouring_s1004",
   "duck_colouring_s1005",
   "duck_colouring_s1001",
-  "duck_colouring_s1004",
   "duck_icon_s1002",
   "duck_icon_s1003",
   "duck_icon_s1004"
@@ -225,8 +225,8 @@
   "ear_icon_s1003"
  ],
  "elephant": [
-  "elephant_colouring_s1001",
   "elephant_colouring_s1004",
+  "elephant_colouring_s1001",
   "elephant_colouring_s1002",
   "elephant_icon_s1005",
   "elephant_icon_s1000",
@@ -400,8 +400,8 @@
   "mouth_icon_s1002"
  ],
  "mushroom": [
-  "mushroom_colouring_s1004",
   "mushroom_colouring_s1002",
+  "mushroom_colouring_s1004",
   "mushroom_colouring_s1001",
   "mushroom_icon_s1002",
   "mushroom_icon_s1004",
@@ -533,8 +533,8 @@
   "train_icon_s1003"
  ],
  "tree": [
-  "tree_colouring_s1004",
   "tree_colouring_s1003",
+  "tree_colouring_s1004",
   "tree_colouring_s1000",
   "tree_icon_s1004",
   "tree_icon_s1003",

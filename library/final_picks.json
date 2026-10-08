@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "note": "FINAL. Chosen by rahul 6 Oct 2026, locked 7 Oct. Numbers are rows in out/detailed-catalogue.json. Do not change.",
+  "source": "out/detailed-catalogue.json",
+  "picks": [
+    {
+      "n": 103,
+      "object": "bed",
+      "variant": "bed_colouring_s1003",
+      "seconds": 15.8,
+      "lifts": 13
+    },
+    {
+      "n": 89,
+      "object": "mushroom",
+      "variant": "mushroom_colouring_s1002",
+      "seconds": 14.5,
+      "lifts": 11
+    },
+    {
+      "n": 130,
+      "object": "dog",
+      "variant": "dog_colouring_s1005",
+      "seconds": 18.3,
+      "lifts": 19
+    },
+    {
+      "n": 98,
+      "object": "elephant",
+      "variant": "elephant_colouring_s1004",
+      "seconds": 15.5,
+      "lifts": 16
+    },
+    {
+      "n": 101,
+      "object": "gift",
+      "variant": "gift_colouring_s1001",
+      "seconds": 15.6,
+      "lifts": 8
+    },
+    {
+      "n": 116,
+      "object": "duck",
+      "variant": "duck_colouring_s1004",
+      "seconds": 16.7,
+      "lifts": 18
+    },
+    {
+      "n": 120,
+      "object": "frog",
+      "variant": "frog_colouring_s1003",
+      "seconds": 17.1,
+      "lifts": 14
+    },
+    {
+      "n": 122,
+      "object": "cat",
+      "variant": "cat_colouring_s1005",
+      "seconds": 17.3,
+      "lifts": 20
+    },
+    {
+      "n": 53,
+      "object": "tree",
+      "variant": "tree_colouring_s1003",
+      "seconds": 10.7,
+      "lifts": 11
+    }
+  ]
+}
