@@ -92,8 +92,6 @@ def _spread_mm(track: list[tuple[float, np.ndarray]]) -> float:
     return float(np.max(pts.max(axis=0) - pts.min(axis=0)))
 
 
-
-
 def send_drive(link: VacuumLink, side_mm: float) -> bool:
     """Set the robot cleaning a box around where it stands, so that it drives about."""
     st = link.locate(wait_s=1.5)
@@ -110,6 +108,7 @@ def send_drive(link: VacuumLink, side_mm: float) -> bool:
           f"{'ok' if ok else reply}", flush=True)  # fmt: skip
     return ok
 
+
 def _fit(track, reports, offset: float | None):
     """(lag, sightings, pixels -> map, rms, the marker's offset). The offset is scanned for
     unless it was given: a wrong one pushes the marker's map point out by that much."""
@@ -118,6 +117,7 @@ def _fit(track, reports, offset: float | None):
         return None if got is None else (*got, offset)
     got = best_offset(track, reports)
     return None if got is None else (got[1], got[2], got[3], got[4], got[0])
+
 
 def _refit(track, reports, offset: float | None, out: list) -> None:
     """Fit in the background. On the window's thread it stalls the picture every few
@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
             if len(track) > 1:
                 pts = np.array([c.mean(axis=0) for _, c in track[-3000:]])
                 cv2.polylines(vis, [np.round(pts).astype(np.int32)], False, (255, 140, 40), 2)
-            ready, why = (readiness(result[1], result[3]) if result else (False, ""))
+            ready, why = readiness(result[1], result[3]) if result else (False, "")
             if a.auto and ready and result is not None and len(result[1]) < a.want:
                 why = f"Collecting: {len(result[1])} of {a.want} positions, {result[3]:.0f} mm"
             text = (why if ready else

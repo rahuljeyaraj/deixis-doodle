@@ -248,6 +248,7 @@ def best_offset(
     was facing, so the rms rises on both sides of the right answer. Returns
     (offset, lag, sightings, pixels -> map, rms mm).
     """
+
     def scan(
         try_offsets: Sequence[float], try_lags: Sequence[float] | None
     ) -> tuple[float, float, list[Sighting], np.ndarray, float] | None:

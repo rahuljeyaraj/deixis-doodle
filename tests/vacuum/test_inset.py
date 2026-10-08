@@ -12,8 +12,13 @@ from pointdraw.vacuum.app import area_text, inset
 
 
 def box(x=1000.0, y=1000.0, w=1000.0, h=1000.0) -> Where:
-    return Where(frame="map", kind="box", box_mm=(x, y, w, h),
-                 mean_mm=(x + w / 2, y + h / 2), source="gesture")
+    return Where(
+        frame="map",
+        kind="box",
+        box_mm=(x, y, w, h),
+        mean_mm=(x + w / 2, y + h / 2),
+        source="gesture",
+    )
 
 
 def test_it_shrinks_every_side_about_the_same_middle():

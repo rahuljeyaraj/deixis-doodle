@@ -140,8 +140,11 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             got |= {"box": [round(v) for v in box], "from": [ux, uy]}
             trials.append(got)
-            print(f" {got['inside']}/{got['n']} inside ({100 * got['share']:.0f} %), "
-                  f"off by {got['bias_mm']} mm, worst {got['worst_out_mm']} mm out", flush=True)
+            print(
+                f" {got['inside']}/{got['n']} inside ({100 * got['share']:.0f} %), "
+                f"off by {got['bias_mm']} mm, worst {got['worst_out_mm']} mm out",
+                flush=True,
+            )
             link.stop()
             time.sleep(2.0)
     finally:
@@ -161,8 +164,10 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"M24 over {len(trials)} cleans: median {100 * statistics.median(shares):.0f} % inside, "
           f"worst {max(t['worst_out_mm'] for t in trials)} mm out")  # fmt: skip
-    print(f"bias: mean ({mean[0]:+.0f}, {mean[1]:+.0f}) mm, "
-          f"spread ({spread[0]:.0f}, {spread[1]:.0f}) mm")
+    print(
+        f"bias: mean ({mean[0]:+.0f}, {mean[1]:+.0f}) mm, "
+        f"spread ({spread[0]:.0f}, {spread[1]:.0f}) mm"
+    )
     print("the bias is steady enough to cancel" if steady else
           "the bias moves about more than it points one way: do not cancel it")  # fmt: skip
     out = a.out or Path("out/vacuum_bias") / dt.datetime.now().strftime("%Y%m%d-%H%M%S")

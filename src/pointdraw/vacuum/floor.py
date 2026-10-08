@@ -150,8 +150,9 @@ class FixedFloor:
             "units": "mm",
             "from": "robot drive (no floor markers)",
             "px_to_floor_mm": np.asarray(self.H, np.float64).tolist(),
-            "px_to_lid_mm": (None if self.H_lid is None
-                             else np.asarray(self.H_lid, np.float64).tolist()),  # fmt: skip
+            "px_to_lid_mm": (
+                None if self.H_lid is None else np.asarray(self.H_lid, np.float64).tolist()
+            ),  # fmt: skip
             "area_mm": list(self.area),
             "created": self.created,
             "note": self.note,

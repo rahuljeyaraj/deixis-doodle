@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     lid_H = floor.H if floor.H_lid is None else floor.H_lid
     to_px_lid = np.linalg.inv(lid_H)  # for the robot, which is seen by its lid
     if floor.H_lid is None:
-        print('this floor fit has no lid plane: remap to put the circle on the robot')
+        print("this floor fit has no lid plane: remap to put the circle on the robot")
 
     x, y, w, h = floor.area_mm
     cx, cy = x + w / 2, y + h / 2
@@ -164,9 +164,7 @@ def main(argv: list[str] | None = None) -> int:
             if robot_px is not None:
                 # a circle the robot's size, measured on the floor where the robot is
                 here = apply_matrix(lid_H, robot_px.reshape(1, 2))[0]
-                rim = apply_matrix(
-                    to_px_lid, np.array([[here[0] + ROBOT_R_MM, here[1]]])
-                )[0]
+                rim = apply_matrix(to_px_lid, np.array([[here[0] + ROBOT_R_MM, here[1]]]))[0]
                 r_px = int(max(4, np.linalg.norm(rim - robot_px)))
                 cv2.circle(vis, tuple(np.round(robot_px).astype(int)), r_px, GREEN, 2)
             feet = tracker.process(frame.image, frame.t, feet_view)
@@ -181,9 +179,16 @@ def main(argv: list[str] | None = None) -> int:
                 c = np.asarray(lid.corners_px, np.float64).reshape(4, 2).mean(axis=0)
                 cv2.circle(vis, tuple(np.round(c).astype(int)), 8, ORANGE, -1)
             cv2.rectangle(vis, (0, 0), (vis.shape[1], 92), (30, 30, 30), -1)
-            cv2.putText(vis, "white = the box on the floor (same mapping as your feet)   "
-                        f"blue = it at lid height   green = the robot ({state})", (20, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, WHITE, 2)
+            cv2.putText(
+                vis,
+                "white = the box on the floor (same mapping as your feet)   "
+                f"blue = it at lid height   green = the robot ({state})",
+                (20, 50),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                WHITE,
+                2,
+            )
             cv2.putText(vis, "amber = your feet.  Stand on a white corner: the dot should "
                         "land on it.", (20, 72),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.95, WHITE, 2)  # fmt: skip

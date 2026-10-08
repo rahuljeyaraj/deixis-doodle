@@ -59,7 +59,6 @@ def feet_from_landmarks(
     return tuple(feet), np.mean(feet, axis=0)
 
 
-
 MAX_WALK_MM_S = 2500.0  # nobody crosses a room faster than this; a jump beyond it is the
 # tracker losing the person and finding a chair leg, not a person moving
 RECOVER_S = 0.8  # with nothing believed for this long, take whatever comes next
@@ -108,6 +107,7 @@ class SteadySpot:
         px = np.median(np.array([p for _, p, _ in self._kept]), axis=0)
         mm = np.median(np.array([m for _, _, m in self._kept]), axis=0)
         return px, (round(float(mm[0]), 1), round(float(mm[1]), 1))
+
 
 def feet_seen(
     t: float,

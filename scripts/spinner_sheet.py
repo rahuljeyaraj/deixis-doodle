@@ -6,7 +6,7 @@ Two A4 PDFs, printed at 100 %, with the plastic pointer on its ball-bearing base
 the middle. The pointer is 70 mm from the axis to the tip, so the tip sweeps the dashed ring
 and comes to rest just outside a word.
 - `spinner-shapes.pdf`: eight shapes, one per segment, the shape to ask the robot for;
-- `spinner-side.pdf`: LEFT and RIGHT, four segments each, the side the tree goes on.
+- `spinner-side.pdf`: LEFT and RIGHT, two segments each, the side the tree goes on.
 The dial alone is on the page, nothing printed round it. It is 190 mm across, which is the
 measurement to check if the printer was asked for 100 %.
 Nothing printed says "your": the sheet is on camera in the film.
@@ -38,7 +38,7 @@ FAINT = 0.93  # the lighter segments
 #: the eight on the wheel, rahul's pick on 6 Oct: the nine timed on the machine that day
 #: (M06), without the tree. Catalogue numbers 103, 89, 130, 98, 101, 116, 120, 122.
 SHAPES = ["DUCK", "MUSHROOM", "DOG", "BED", "GIFT", "ELEPHANT", "FROG", "CAT"]
-SIDES = ["LEFT", "RIGHT"] * 4
+SIDES = ["LEFT", "RIGHT"] * 2
 
 
 def clears(word: str, h: float, mid: float, r: float, half: float) -> bool:
@@ -79,9 +79,7 @@ def fit(words: list[str], n: int) -> float:
     half = math.radians(180 / n)
 
     def fits(h: float) -> bool:
-        return all(
-            radius(w, h, a0 + 180 / n, half) is not None for _i, a0, w in segments(words)
-        )
+        return all(radius(w, h, a0 + 180 / n, half) is not None for _i, a0, w in segments(words))
 
     lo, hi = 1.0, WORD_H
     if fits(hi):
@@ -146,9 +144,7 @@ def make_pdf(path: Path, words: list[str]) -> None:
     for _i, a0, w in segments(words):
         mid = a0 + step / 2
         a, r = math.radians(mid), radius(w, h, mid, half)
-        c.drawCentredString(
-            (CX + r * math.cos(a)) * mm, (CY + r * math.sin(a) - h / 2) * mm, w
-        )
+        c.drawCentredString((CX + r * math.cos(a)) * mm, (CY + r * math.sin(a) - h / 2) * mm, w)
     c.showPage()
     c.save()
 
@@ -193,8 +189,9 @@ def make_png(path: Path, words: list[str], dpmm: int = 4) -> None:
     for _i, a0, w in segments(words):
         mid = a0 + step / 2
         a, r = math.radians(mid), radius(w, h, mid, half)
-        d.text(P(CX + r * math.cos(a), CY + r * math.sin(a)), w, fill="black",
-               font=font, anchor="mm")
+        d.text(
+            P(CX + r * math.cos(a), CY + r * math.sin(a)), w, fill="black", font=font, anchor="mm"
+        )
     img.save(path)
 
 

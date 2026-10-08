@@ -63,7 +63,6 @@ def speed_px_s(track: list[tuple[float, tuple[float, float]]], over_s: float = 1
     return moved / (recent[-1][0] - recent[0][0])
 
 
-
 def send_drive(link: VacuumLink, side_mm: float) -> dict | None:
     """Set the robot cleaning a box around where it stands, so it drives for a while."""
     st = link.locate(wait_s=1.5)
@@ -78,6 +77,7 @@ def send_drive(link: VacuumLink, side_mm: float) -> dict | None:
     print(f"  sent it to clean {side_mm / 1000:.1f} m around ({x:.0f}, {y:.0f}): "
           f"{'ok' if reply.get('ok') else reply}")  # fmt: skip
     return reply
+
 
 def one_trial(cam: Camera, link: VacuumLink, wait_s: float) -> dict | None:
     """Wait for the robot to be driving, stop it, and time how long it keeps going.
