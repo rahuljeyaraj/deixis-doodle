@@ -6,7 +6,7 @@ app was simply waiting for quiet. `Banner` says which, from the controller's sta
 hands-clear interlock and the plotter's events:
 
 - "Plotter problem: check its USB cable, then press R"  the link failed
-- "Stopped"                                              after a stop
+- "Stopped. Say "park" or press P to send it home"       after a stop
 - "Paused: hand over the paper"                          a job began, then a hand came
 - "Waiting: hand over the paper"                         a job is ready, a hand is in the way
 - "Starting: hand away, half a second"                   the hand just left (the 0.5 s hold)
@@ -69,7 +69,10 @@ class Banner:
         if state == "error" or problem:
             return "Plotter problem: check its USB cable, then press R", RED
         if state == "stopped" and not busy:
-            return "Stopped", RED
+            # A stop leaves the head where it halted. It does not move again by itself --
+            # that is what a stop is for -- so the words say how to send it home (rahul,
+            # 7 Oct: "I don't know how to park the bed again").
+            return 'Stopped. Say "park" or press P to send it home', RED
         if state == "paused" or (busy and not hands_clear):
             if self.running is not None:  # under way (the "paused" event comes a bit later)
                 return "Paused: hand over the paper", ORANGE

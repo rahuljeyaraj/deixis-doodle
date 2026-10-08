@@ -92,3 +92,105 @@ def test_listener_hears_nothing_while_the_app_speaks():
         assert "speech_start" in kinds  # the person, once the reply is over
     finally:
         lis.close()
+
+
+class _FakeSd:
+    """Enough of sounddevice to see what rate and shape the speech was played at."""
+
+    class PortAudioError(Exception):
+        pass
+
+    def __init__(self, rate=48000, channels=2, mono_fails=False):
+        self.info = {"default_samplerate": rate, "max_output_channels": channels}
+        self.mono_fails = mono_fails
+        self.played = []
+        self.default = type("d", (), {"device": [None, 7]})()
+
+    def query_devices(self, dev, kind=None):
+        return self.info
+
+    def play(self, x, rate, device=None):
+        import numpy as _np
+
+        a = _np.asarray(x)
+        if self.mono_fails and a.ndim == 1:
+            raise self.PortAudioError("Invalid number of channels")
+        self.played.append((a.shape, rate, device))
+
+    def wait(self):
+        pass
+
+
+def _speaker_playing_on(fake, monkeypatch, device=None):
+    import sys
+
+    from pointdraw.live.speaker import Speaker
+
+    monkeypatch.setitem(sys.modules, "sounddevice", fake)
+    sp = Speaker(lambda t: np.zeros(16000, np.float32), play=True, device=device)
+    sp._play(np.zeros(16000, np.float32))
+    return sp
+
+
+def test_the_voice_is_resampled_to_what_the_device_takes(monkeypatch):
+    """A WASAPI endpoint refuses any rate but its own: the replies went silent when
+    --speaker pointed at the headset (rahul, 7 Oct 2026, "Invalid sample rate")."""
+    fake = _FakeSd(rate=48000)
+    _speaker_playing_on(fake, monkeypatch, device=16)
+    ((shape, rate, device),) = fake.played
+    assert rate == 48000 and device == 16
+    assert shape[0] == 48000  # one second, resampled from 16 kHz
+
+
+def test_a_device_that_wants_its_own_rate_only_gets_mono_when_it_can(monkeypatch):
+    fake = _FakeSd(rate=16000, channels=2)
+    _speaker_playing_on(fake, monkeypatch, device=3)
+    ((shape, rate, _),) = fake.played
+    assert rate == 16000 and len(shape) == 1  # no needless resample, mono accepted
+
+
+def test_a_device_that_refuses_mono_is_given_every_channel(monkeypatch):
+    fake = _FakeSd(rate=48000, channels=2, mono_fails=True)
+    _speaker_playing_on(fake, monkeypatch, device=21)
+    ((shape, rate, _),) = fake.played
+    assert rate == 48000 and shape == (48000, 2)
+
+
+class _FlakySd(_FakeSd):
+    """Fails the first `fails` streams, as a sleeping Bluetooth link does."""
+
+    def __init__(self, fails, **kw):
+        super().__init__(**kw)
+        self.fails = fails
+        self.attempts = 0
+
+    def play(self, x, rate, device=None):
+        self.attempts += 1
+        if self.attempts <= self.fails:
+            raise self.PortAudioError("Unanticipated host error")
+        super().play(x, rate, device)
+
+
+def test_a_sleeping_bluetooth_link_is_tried_again(monkeypatch):
+    """The headset refused the first stream after idling (rahul, 7 Oct 2026). A lost reply
+    mid-demo is worse than a stutter."""
+    fake = _FlakySd(1, rate=48000)
+    _speaker_playing_on(fake, monkeypatch, device=20)
+    assert fake.attempts == 2 and len(fake.played) == 1
+
+
+def test_a_speaker_that_will_not_play_falls_back_to_windows(monkeypatch):
+    fake = _FlakySd(4, rate=48000)
+    _speaker_playing_on(fake, monkeypatch, device=20)
+    assert fake.attempts == 5
+    ((_, _, device),) = fake.played
+    assert device is None  # Windows' own, so the reply is still heard
+
+
+def test_without_a_chosen_speaker_a_failure_is_raised(monkeypatch):
+    """Nothing to fall back to: the caller logs it, as it always did."""
+    import pytest
+
+    fake = _FlakySd(9, rate=48000)
+    with pytest.raises(fake.PortAudioError):
+        _speaker_playing_on(fake, monkeypatch, device=None)

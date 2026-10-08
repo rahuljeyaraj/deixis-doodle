@@ -36,7 +36,14 @@ def ev(kind: str, tag: str = "cross#1") -> PlotEvent:
             "Paused: hand over the paper",
         ),
         (["job_start", "job_end"], "paused", True, False, None, "Waiting: hand over the paper"),
-        (["job_start", "stop_request", "halted"], "stopped", False, True, None, "Stopped"),
+        (
+            ["job_start", "stop_request", "halted"],
+            "stopped",
+            False,
+            True,
+            None,
+            'Stopped. Say "park" or press P to send it home',  # a stop never moves by itself
+        ),
         (
             ["job_start", "error"],
             "error",

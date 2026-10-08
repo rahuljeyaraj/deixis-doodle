@@ -75,24 +75,36 @@ class BlockClock:
         return t
 
 
-def list_input_devices() -> list[dict]:
-    """Input devices as dicts: index, name, host API, channels, default rate."""
+def list_devices(kind: str = "input") -> list[dict]:
+    """The sound devices of `kind` ("input" or "output") as dicts: index, name, host API,
+    channels, default rate."""
     import sounddevice as sd
 
+    field = f"max_{kind}_channels"
     apis = sd.query_hostapis()
     out = []
     for i, d in enumerate(sd.query_devices()):
-        if d["max_input_channels"] > 0:
+        if d[field] > 0:
             out.append(
                 {
                     "index": i,
                     "name": d["name"],
                     "hostapi": apis[d["hostapi"]]["name"],
-                    "channels": d["max_input_channels"],
+                    "channels": d[field],
                     "default_samplerate": d["default_samplerate"],
                 }
             )
     return out
+
+
+def list_input_devices() -> list[dict]:
+    """Input devices as dicts: index, name, host API, channels, default rate."""
+    return list_devices("input")
+
+
+def list_output_devices() -> list[dict]:
+    """Output devices (headphones, speakers) in the same shape as the inputs."""
+    return list_devices("output")
 
 
 def default_input_device() -> int | None:
@@ -104,6 +116,20 @@ def default_input_device() -> int | None:
         if idx is None or idx < 0:
             ins = list_input_devices()
             return ins[0]["index"] if ins else None
+        return int(idx)
+    except Exception:
+        return None
+
+
+def default_output_device() -> int | None:
+    """Index of the default output device (where Windows is playing), or None."""
+    import sounddevice as sd
+
+    try:
+        idx = sd.default.device[1]
+        if idx is None or idx < 0:
+            outs = list_output_devices()
+            return outs[0]["index"] if outs else None
         return int(idx)
     except Exception:
         return None
@@ -124,6 +150,60 @@ def wasapi_twin(default_index: int, devices: list[dict]) -> int | None:
         if x["hostapi"] == "Windows WASAPI" and x["name"].startswith(prefix):
             return x["index"]
     return None
+
+
+def find_device(spec: int | str, kind: str = "input") -> dict:
+    """The sound device a `--mic` or `--speaker` value names: an index, or any part of a
+    name (case is ignored, WASAPI entries first, so an input's stamps carry ADC times).
+
+    Raises ValueError naming every device of that kind when nothing matches. rahul,
+    7 Oct 2026: the default microphone was the webcam's, not the one on the desk, and
+    there was no way to see which it had taken.
+    """
+    devices = list_devices(kind)
+    what = "microphone" if kind == "input" else "speaker"
+    if not devices:
+        raise ValueError(f"no {what} found")
+    text = str(spec).strip()
+    if not text:
+        raise ValueError(f"needs an index or part of a name.\n{device_table(kind, devices)}")
+    if text.lstrip("-").isdigit():
+        i = int(text)
+        for d in devices:
+            if d["index"] == i:
+                return d
+        raise ValueError(f"no {kind} device {i}.\n{device_table(kind, devices)}")
+    hits = [d for d in devices if text.lower() in d["name"].lower()]
+    if not hits:
+        raise ValueError(f"no {what} whose name holds {text!r}.\n{device_table(kind, devices)}")
+    hits.sort(key=lambda d: d["hostapi"] != "Windows WASAPI")
+    return hits[0]
+
+
+def find_input_device(spec: int | str) -> dict:
+    """The microphone a `--mic` value names (see `find_device`)."""
+    return find_device(spec, "input")
+
+
+def find_output_device(spec: int | str) -> dict:
+    """The speaker a `--speaker` value names (see `find_device`)."""
+    return find_device(spec, "output")
+
+
+def device_table(kind: str = "input", devices: list[dict] | None = None) -> str:
+    """The sound devices as lines for a terminal, `index  name  (host API)`."""
+    devices = list_devices(kind) if devices is None else devices
+    default = default_input_device() if kind == "input" else default_output_device()
+    rows = []
+    for d in devices:
+        mark = " <- Windows' default" if d["index"] == default else ""
+        rows.append(f"  {d['index']:>3}  {d['name']}  ({d['hostapi']}){mark}")
+    return "\n".join(rows) or "  (none)"
+
+
+def input_device_table(devices: list[dict] | None = None) -> str:
+    """The microphones as lines for a terminal."""
+    return device_table("input", devices)
 
 
 def preferred_input_device() -> int | None:

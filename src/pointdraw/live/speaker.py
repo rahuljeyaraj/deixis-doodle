@@ -7,7 +7,9 @@ System.Speech (SAPI), as in `virtual.tts`: each line is made once by PowerShell 
 The microphone must not hear the robot: while a reply plays, and for `after_s` (0.3 s) after,
 `muted()` is True, and the `Listener` mutes its `Segmenter` (dropping any utterance in
 progress) from its own thread. With `play=False` the speech is written to WAV files instead
-of played (no sound; the mute still lasts as long as the speech would).
+of played (no sound; the mute still lasts as long as the speech would). `device` picks the
+output it plays through (`live_run.py --speaker "oneplus"`); without one it follows whatever
+Windows is playing on.
 """
 
 from __future__ import annotations
@@ -43,9 +45,14 @@ class Speaker:
         wav_dir: str | Path | None = None,
         after_s: float = 0.3,
         now: Callable[[], float] = clock.now,
+        device: int | None = None,
     ) -> None:
         self.synth = synth
         self.play = play
+        #: the output device to speak through (None: whatever Windows is playing on). A
+        #: headset is picked with `live_run.py --speaker`, so the replies go to the ear
+        #: and not to the room (rahul, 7 Oct 2026).
+        self.device = device
         self.wav_dir = None if wav_dir is None else Path(wav_dir)
         self.after_s = after_s
         self.now = now
@@ -72,6 +79,42 @@ class Speaker:
         self._q.put(None)
         self._thread.join(5)
 
+    def _play(self, x: np.ndarray) -> None:
+        """Play `x` (16 kHz mono) on `self.device`, at a rate and width it will take.
+
+        A WASAPI endpoint in shared mode refuses anything but its own rate ("Invalid
+        sample rate", rahul 7 Oct 2026: the replies went silent the moment --speaker
+        pointed at the headset), and some will only take their full channel count, so the
+        speech is resampled and, if need be, copied to every channel.
+        """
+        import sounddevice as sd
+
+        from pointdraw.audio.wavio import resample_linear
+
+        dev = self.device if self.device is not None else sd.default.device[1]
+        info = sd.query_devices(dev, "output")
+        rate = int(info["default_samplerate"]) or SR
+        y = resample_linear(x, SR, rate) if rate != SR else x
+        n = int(info["max_output_channels"])
+        wide = np.repeat(y.reshape(-1, 1), n, axis=1) if n > 1 else y
+        last: Exception | None = None
+        # A Bluetooth link that has gone idle fails the first stream it is given
+        # ("Unanticipated host error") and takes the next one, so each shape is tried twice
+        # before the reply is given up on. Losing a reply mid-demo is worse than a stutter.
+        for data in (y, wide, y, wide):
+            try:
+                sd.play(data, rate, device=self.device)
+                sd.wait()
+                return
+            except sd.PortAudioError as e:
+                last = e
+                self._stop.wait(0.15)
+        if self.device is None or last is None:
+            raise last or RuntimeError("could not play")
+        log.warning("speaker %s would not play (%s); using Windows' own", self.device, last)
+        sd.play(wide if n > 1 else y, rate)
+        sd.wait()
+
     def _run(self) -> None:
         n = 0
         while True:
@@ -94,10 +137,7 @@ class Speaker:
             t0 = self.now()
             try:
                 if self.play:
-                    import sounddevice as sd
-
-                    sd.play(x, SR)
-                    sd.wait()
+                    self._play(x)
                 else:
                     self._stop.wait(len(x) / SR)  # as long as it would take to say
             except Exception:  # noqa: BLE001

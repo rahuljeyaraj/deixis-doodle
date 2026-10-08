@@ -83,6 +83,11 @@ LISTEN, UNDERSTAND, CLARIFY, PREVIEW, ADJUST, WAIT_HANDS_CLEAR, DRAW = (
 )
 
 STOP_WORDS = {"stop", "halt", "freeze"}
+# Said on their own, these send the head back to the corner. Spotted here, like a stop, so
+# the agent is never asked and "park" works while the plotter sits stopped (rahul, 7 Oct:
+# after a stop there was no way to park it again). A long sentence is left alone, so
+# "draw a park here" is still a drawing.
+PARK_WORDS = {"park", "home"}
 WRITE_VERBS = {"write", "label", "print"}
 FILLERS = {"please", "um", "uh", "er", "erm", "okay", "ok", "oh", "now", "wait", "robot"}
 CANCEL_ANSWERS = {"cancel", "nevermind", "never", "forget", "nothing"}
@@ -323,6 +328,17 @@ class Runtime:
                 calls=[{"name": "stop", "args": {}}],
             )
             self.do_stop(t, "stop word")
+            return
+        if self._is_park(utt):
+            self.log.add(
+                t,
+                "tool_calls",
+                utt=utt.id,
+                source="fast_path",
+                latency_s=0.0,
+                calls=[{"name": "park", "args": {}}],
+            )
+            self.do_park(t, "park word")
             return
         if self.pending:
             # One utterance at a time: "draw an ear here ... about this big" needs the ear's
@@ -899,7 +915,26 @@ class Runtime:
             self.proposal = None
             self.log.add(t, "cancel", items=[o.id for o in prop.items])
             self.say(t, "Cancelled.")
+            # The pen traced the guess over the paper and stayed there. A "no" has to send
+            # it back, or it stands in the camera's way and nothing can be pointed at
+            # (rahul, 7 Oct).
+            self.do_park(t, "cancelled", say=False)
         self._set_state(self._rest_state(), t)
+
+    def do_park(self, t: float, why: str, say: bool = True) -> None:
+        """Send the head back to the corner, out of the camera's view of the paper.
+
+        Nothing moves until no hand has been over the paper (the controller's interlock),
+        and after a stop the controller homes first, so the head's place is known again.
+        """
+        self.log.add(t, "park", why=why)
+        if self.plotter_problem is not None:
+            if say:
+                self.say(t, "The plotter isn't answering. Check its cable.")
+            return
+        self.plotter.park(tag=self._tag("park"))
+        if say:
+            self.say(t, "Going back to the corner.")
 
     def do_stop(self, t: float, why: str) -> None:
         self.plotter.stop()
@@ -1266,6 +1301,13 @@ class Runtime:
         toks = [norm_word(w.text) for w in utt.words]
         toks = [w for w in toks if w and w not in FILLERS]
         return bool(toks) and toks[0] in STOP_WORDS
+
+    def _is_park(self, utt: Utterance) -> bool:
+        """A short phrase that is only "park" or "go home", so a drawing request that
+        happens to hold the word ("draw a park here") is untouched."""
+        toks = [norm_word(w.text) for w in utt.words]
+        toks = [w for w in toks if w and w not in FILLERS and w not in ("go", "back", "it")]
+        return bool(toks) and len(toks) == 1 and toks[0] in PARK_WORDS
 
     def _rest_state(self) -> str:
         if self.question is not None:

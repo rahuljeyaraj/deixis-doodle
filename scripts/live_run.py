@@ -42,7 +42,22 @@ microphone is muted while it speaks and for 0.3 s after, so it never hears itsel
 `--speak-wav DIR` the replies go to WAV files instead (no sound). `--quiet` turns speech off
 (the default).
 
-Keys: Q or Esc quit, Space stop the plotter, S save a snapshot, R reconnect the plotter.
+Keys: Q or Esc quit, Space stop the plotter, P park it (home first, back to the corner),
+S save a snapshot, R reconnect the plotter. The window can be resized or maximised and the
+camera view keeps its shape, on black bars.
+
+Say "park" (or "go home") at any time and the head goes back to the corner; after a stop it
+homes on the way. A "no" to a guess parks it too, so the pen never stands in the camera's
+view of the paper.
+
+The window shows the paper with a margin round it, not the whole camera frame: the camera
+sees far more table than paper. `--view-margin` sets how much (0.18 by default), `--full-view`
+shows everything, and `--view-right 0.3` keeps the right-hand third of the window clear for
+the front camera's inset in the film.
+
+`--list-mics` prints the microphones and the speakers. `--mic 22` or `--mic usb` picks the one
+it listens through, `--speaker oneplus` the one it talks through. Without them the app takes
+Windows' defaults, and says which those are.
 """
 
 from __future__ import annotations
@@ -148,7 +163,15 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--model", default=None, help="live agent model (default: the code default)")
     ap.add_argument("--cosmos", choices=["off", "live"], default="off")
     ap.add_argument("--type", action="store_true", help="type lines instead of speaking")
-    ap.add_argument("--mic", default=None, help="input device index or name")
+    ap.add_argument("--mic", default=None, help="input device index, or any part of its name")
+    ap.add_argument(
+        "--speaker", default=None, help="output device for --speak (index, or part of a name)"
+    )
+    ap.add_argument(
+        "--list-mics",
+        action="store_true",
+        help="print the microphones and the speakers, then quit",
+    )
     ap.add_argument("--asr", default=None, help="ASR model (default: the code default)")
     ap.add_argument("--vad", default="silero", choices=["silero", "energy"])
     ap.add_argument("--speak", action="store_true", help="say the replies aloud")
@@ -157,6 +180,22 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     ap.add_argument("--quiet", action="store_true", help="never speak (the default)")
 
+    ap.add_argument(
+        "--view-margin",
+        type=float,
+        default=0.18,
+        help="how much round the paper the window shows (0.18 = 18%% of it; 0 is tight)",
+    )
+    ap.add_argument(
+        "--view-right",
+        type=float,
+        default=0.0,
+        help="keep this much of the window free down its right side (0.3 = 30%%), for a "
+        "second camera's inset",
+    )
+    ap.add_argument(
+        "--full-view", action="store_true", help="show the whole camera frame, table and all"
+    )
     ap.add_argument("--headless", action="store_true", help="no window")
     ap.add_argument("--profile", action="store_true", help="time each stage of the loop")
     ap.add_argument("--shots", type=int, default=0, help="save the window every N frames")
@@ -203,7 +242,14 @@ def make_speaker(args: argparse.Namespace):
         return None
     from pointdraw.live.speaker import Speaker
 
-    return Speaker(play=args.speak_wav is None, wav_dir=args.speak_wav)
+    out = None
+    if args.speaker and args.speak_wav is None:
+        from pointdraw.audio.capture import find_output_device
+
+        dev = find_output_device(args.speaker)
+        print(f"speech: speaker {dev['index']} {dev['name']} ({dev['hostapi']})")
+        out = dev["index"]
+    return Speaker(play=args.speak_wav is None, wav_dir=args.speak_wav, device=out)
 
 
 def make_words(args: argparse.Namespace, muted=None):
@@ -213,13 +259,18 @@ def make_words(args: argparse.Namespace, muted=None):
         print("type what you would say, then Enter (point first)")
         return TypedInput().start()
     from pointdraw.audio.asr_local import AsrConfig, LocalAsr
+    from pointdraw.audio.capture import find_input_device, preferred_input_device
     from pointdraw.audio.models import DEFAULT_ASR
     from pointdraw.audio.vad import make_vad
 
     asr = LocalAsr(AsrConfig(model=args.asr or DEFAULT_ASR))
-    mic = int(args.mic) if args.mic and args.mic.isdigit() else args.mic
     print(f"speech: {args.asr or DEFAULT_ASR} loaded in {asr.load_s:.1f} s")
-    return Listener(asr, make_vad(args.vad), device=mic, muted=muted).start()
+    mic = find_input_device(args.mic) if args.mic else find_input_device(preferred_input_device())
+    # Always say which one: on 7 Oct it listened through the webcam and nothing said so.
+    print(f"speech: microphone {mic['index']} {mic['name']} ({mic['hostapi']})")
+    if not args.mic:
+        print("speech: that is Windows' default; --list-mics shows the others, --mic picks one")
+    return Listener(asr, make_vad(args.vad), device=mic["index"], muted=muted).start()
 
 
 def load_lens(path: Path, size: tuple[int, int]) -> LensModel | None:
@@ -421,6 +472,7 @@ def render_window(
     holds=(),
     centres=(),
     said: str | None = None,
+    crop: tuple[int, int, int, int] | None = None,
 ) -> np.ndarray:
     """The window's picture: shrunk first (drawing on the full 1080p frame took ~7 ms), the
     overlay, turned 180 degrees as the user sees the bed, then the `banner` (text, colour) in
@@ -429,6 +481,13 @@ def render_window(
     scale = min(1.0, WINDOW_W / img.shape[1])
     vis = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     draw_overlay(vis, hf, view, paper, plotter, scale, guesses, holds, centres)
+    if crop is not None:
+        # after the overlay, so the marks are drawn in frame coordinates as before
+        x0, y0, x1, y1 = (round(v * scale) for v in crop)
+        x0, y0 = max(0, x0), max(0, y0)
+        x1, y1 = min(vis.shape[1], x1), min(vis.shape[0], y1)
+        if x1 - x0 > 40 and y1 - y0 > 40:
+            vis = vis[y0:y1, x0:x1]
     vis = cv2.rotate(vis, cv2.ROTATE_180)
     y0 = 32
     if banner is not None:
@@ -439,6 +498,75 @@ def render_window(
     for i, s in enumerate(lines):
         put(vis, s, (14, vis.shape[0] - 20 - 30 * (len(lines) - 1 - i)), scale=0.5)
     return vis
+
+
+def view_crop(
+    view: BedView,
+    paper,
+    size: tuple[int, int],
+    margin: float = 0.18,
+    aspect: float = 16 / 9,
+    right: float = 0.0,
+) -> tuple[int, int, int, int]:
+    """The part of the camera frame worth showing: the paper, a `margin` of it all round
+    for the hands, widened to `aspect` and clamped to the frame.
+
+    The camera sees far more table than paper -- with this bed the paper is 680 px of
+    1920 -- so most of the window was wood (rahul, 7 Oct 2026). Cropping the sides alone
+    would leave a tall picture that maximises into black bars, so the crop is grown to the
+    window's shape instead, which puts the paper on screen as large as it can be.
+
+    `right` keeps that fraction of the view free down the right-hand side **as the window
+    shows it**, for the front camera's inset in the film (rahul, 7 Oct). The window is
+    turned 180 degrees after this crop, so the free band is taken from the low-x side of
+    the camera frame, and the paper is centred in what is left.
+
+    Worked out once, with the bed parked, so the view does not drift as the bed slides.
+    """
+    w, h = size
+    corners = np.array(
+        [(paper.x, paper.y), (paper.x2, paper.y), (paper.x2, paper.y2), (paper.x, paper.y2)]
+    )
+    px = view.to_px(corners, offset_y=0.0)
+    x0, x1 = float(px[:, 0].min()), float(px[:, 0].max())
+    y0, y1 = float(px[:, 1].min()), float(px[:, 1].max())
+    pad = margin * max(x1 - x0, y1 - y0)
+    x0, x1, y0, y1 = x0 - pad, x1 + pad, y0 - pad, y1 + pad
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    right = min(max(right, 0.0), 0.6)
+    # Wide enough for the paper beside the free band, and tall enough for the paper.
+    view_w = max((x1 - x0) / (1 - right), (y1 - y0) * aspect)
+    view_w = min(view_w, w, h * aspect)  # no more than the frame can give
+    view_h = view_w / aspect
+    # The paper sits in the middle of what is left once the band is taken off the low-x
+    # side, which the 180 degree turn puts on the window's right.
+    left = cx - right * view_w - (1 - right) * view_w / 2
+    left = min(max(left, 0.0), w - view_w)
+    top = min(max(cy - view_h / 2, 0.0), h - view_h)
+    return (round(left), round(top), round(left + view_w), round(top + view_h))
+
+
+def fit_window(name: str, vis: np.ndarray) -> np.ndarray:
+    """`vis` scaled to fill the window it is shown in without stretching, on black bars.
+
+    OpenCV's WINDOW_KEEPRATIO stretches the picture to the window on Windows, so a
+    maximised view came out wide and squat (rahul, 7 Oct). Fitting it here keeps the shape
+    right on any platform; a window the same shape as the picture gets no bars.
+    """
+    try:
+        _, _, w, h = cv2.getWindowImageRect(name)
+    except cv2.error:
+        return vis
+    if w <= 1 or h <= 1:
+        return vis
+    ih, iw = vis.shape[:2]
+    k = min(w / iw, h / ih)
+    nw, nh = max(1, round(iw * k)), max(1, round(ih * k))
+    interp = cv2.INTER_AREA if k < 1 else cv2.INTER_LINEAR
+    out = np.zeros((h, w, 3), vis.dtype)
+    x, y = (w - nw) // 2, (h - nh) // 2
+    out[y : y + nh, x : x + nw] = cv2.resize(vis, (nw, nh), interpolation=interp)
+    return out
 
 
 def window_marks(rt: Runtime, t: float, last_said=None, holds_s: float = 6.0) -> dict:
@@ -619,7 +747,16 @@ def run(args: argparse.Namespace) -> int:
     photos = ParkedPhotos(out / "photos", (cfg.park_x, cfg.park_y))
     laps = Laps(args.profile)
     next_pic = 0.0
-    window = "pointdraw live (Q quit, Space stop, S save, R reconnect)"
+    window = "pointdraw live (Q quit, Space stop, P park, S save, R reconnect)"
+    crop = None
+    if not args.full_view:
+        crop = view_crop(view, paper, first.size, args.view_margin, right=args.view_right)
+        print(f"window: showing x {crop[0]}..{crop[2]}, y {crop[1]}..{crop[3]} of {first.size}")
+    if not args.headless:
+        # Without this, imshow makes an AUTOSIZE window fixed to the picture's size, so
+        # maximising it leaves the camera view small with grey around it (7 Oct 2026).
+        cv2.namedWindow(window, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+        cv2.resizeWindow(window, WINDOW_W, round(WINDOW_W * 9 / 16))
     mic_problem: str | None = None
     banner = Banner()
     said_banner = ""
@@ -713,19 +850,22 @@ def run(args: argparse.Namespace) -> int:
                     top,
                     lines,
                     words_now,
+                    crop=crop,
                     **window_marks(rt, t, last_said),
                 )
                 if shoot:
                     slug = "".join(c if c.isalnum() else "-" for c in words_now[0].lower())
                     cv2.imwrite(str(out / "window" / f"{frames:06d}-{slug[:24]}.png"), vis)
             if not args.headless:
-                cv2.imshow(window, vis)
+                cv2.imshow(window, fit_window(window, vis))
                 key = cv2.waitKey(1) & 0xFF
             laps.lap("window")
             if key in (ord("q"), 27):
                 break
             if key == ord(" "):
                 rt.do_stop(clock.now(), "space key")
+            if key == ord("p"):
+                rt.do_park(clock.now(), "p key")
             if key == ord("r"):
                 reconnect(plotter, rt, log)
             if key == ord("s"):
@@ -775,6 +915,15 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s: %(message)s",
     )
     cv2.setNumThreads(4)
+    if a.list_mics:
+        from pointdraw.audio.capture import device_table
+
+        print("microphones (--mic):")
+        print(device_table("input"))
+        print("speakers (--speaker, for --speak):")
+        print(device_table("output"))
+        print('pick them with --mic 22 --speaker "oneplus"')
+        return 0
     return run(a)
 
 

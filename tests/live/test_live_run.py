@@ -209,3 +209,95 @@ def test_window_shows_the_guess_dashed_blue_and_holds_amber(guess):
     )
     colours = {tuple(c) for c in vis.reshape(-1, 3)[::7]}
     assert look.GUESS in colours and look.AMBER in colours
+
+
+def test_the_window_keeps_the_camera_view_s_shape(monkeypatch):
+    """Maximised, the picture is scaled to fit and centred on black bars, never stretched.
+
+    OpenCV's WINDOW_KEEPRATIO stretched it to the window on Windows, so the bed came out
+    wide and squat (rahul, 7 Oct 2026).
+    """
+    live = load_script("live_run")
+    vis = np.full((720, 1280, 3), 200, np.uint8)
+
+    # a 16:9 picture in a tall 4:3 window: full width, bars top and bottom
+    monkeypatch.setattr(live.cv2, "getWindowImageRect", lambda name: (0, 0, 1600, 1200))
+    out = live.fit_window("w", vis)
+    assert out.shape == (1200, 1600, 3)
+    assert out[600, 800].tolist() == [200, 200, 200]  # the picture, centred
+    assert out[5, 800].tolist() == [0, 0, 0] and out[1195, 800].tolist() == [0, 0, 0]
+    rows = [y for y in range(1200) if out[y, 800].any()]
+    assert round((max(rows) - min(rows) + 1) / 1600, 2) == round(720 / 1280, 2)  # same shape
+
+    # a very wide window: full height, bars left and right
+    monkeypatch.setattr(live.cv2, "getWindowImageRect", lambda name: (0, 0, 2000, 500))
+    out = live.fit_window("w", vis)
+    assert out.shape == (500, 2000, 3)
+    assert out[250, 1000].any() and not out[250, 5].any() and not out[250, 1995].any()
+
+    # a window the same shape as the picture: no bars anywhere
+    monkeypatch.setattr(live.cv2, "getWindowImageRect", lambda name: (0, 0, 640, 360))
+    out = live.fit_window("w", vis)
+    assert out.shape == (360, 640, 3) and out.min() == 200
+
+
+def test_the_window_fit_copes_with_no_window(monkeypatch):
+    """Before the window exists (and while a thumbnail is taken) the rect is empty."""
+    live = load_script("live_run")
+    vis = np.full((720, 1280, 3), 200, np.uint8)
+    monkeypatch.setattr(live.cv2, "getWindowImageRect", lambda name: (-1, -1, 0, 0))
+    assert live.fit_window("w", vis) is vis
+
+    def boom(name):
+        raise live.cv2.error("no window named w")
+
+    monkeypatch.setattr(live.cv2, "getWindowImageRect", boom)
+    assert live.fit_window("w", vis) is vis
+
+
+class _View:
+    """A BedView stand-in: the paper sits at a known rectangle of pixels."""
+
+    def __init__(self, rect):
+        self.rect = rect
+
+    def to_px(self, corners, offset_y=None):
+        import numpy as _np
+
+        x0, y0, x1, y1 = self.rect
+        return _np.array([(x1, y0), (x0, y0), (x0, y1), (x1, y1)], float)
+
+
+class _Paper:
+    x, y, x2, y2 = 21.0, 26.0, 241.5, 222.0
+
+
+def test_the_window_shows_the_paper_not_the_table():
+    """The camera sees far more table than paper, so the view is cropped to it.
+
+    On the real bed the paper is 680 px of 1920 (rahul, 7 Oct 2026: "so much waste space").
+    """
+    live = load_script("live_run")
+    view = _View((597, 244, 1277, 796))  # the measured paper on this bed
+    x0, y0, x1, y1 = live.view_crop(view, _Paper(), (1920, 1080), 0.18)
+    assert 0 <= x0 < x1 <= 1920 and 0 <= y0 < y1 <= 1080
+    assert x1 - x0 < 1920 and y1 - y0 < 1080  # something was trimmed
+    assert x0 < 597 and x1 > 1277 and y0 < 244 and y1 > 796  # the whole paper is still in
+    assert abs((x1 - x0) / (y1 - y0) - 16 / 9) < 0.02  # the window's shape, so no bars
+    assert (x1 - x0) / 1920 < 0.8  # a real saving
+
+
+def test_a_tight_margin_still_holds_the_whole_paper():
+    live = load_script("live_run")
+    view = _View((597, 244, 1277, 796))
+    x0, y0, x1, y1 = live.view_crop(view, _Paper(), (1920, 1080), 0.0)
+    assert x0 <= 597 and x1 >= 1277 and y0 <= 244 and y1 >= 796
+
+
+def test_a_crop_never_leaves_the_frame():
+    """A paper near an edge (a knocked camera) must not ask for pixels that do not exist."""
+    live = load_script("live_run")
+    for rect in ((10, 10, 300, 250), (1700, 900, 1910, 1070), (0, 0, 1920, 1080)):
+        x0, y0, x1, y1 = live.view_crop(_View(rect), _Paper(), (1920, 1080), 0.3)
+        assert 0 <= x0 < x1 <= 1920, rect
+        assert 0 <= y0 < y1 <= 1080, rect
