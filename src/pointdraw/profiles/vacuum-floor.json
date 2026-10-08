@@ -36,6 +36,7 @@
   "outside": "keep",
   "asks": {
     "no_gesture": "Where? Stand on the spot and say here.",
+    "unknown_place": "I don't know where '{name}' is. Stand next to it and say here.",
     "no_gesture.pointed": "Where should I clean? Stand on the spot and say here.",
     "ambiguous": "Did you mean this spot or that one? Stand on it and say here.",
     "unsteady": "I couldn't tell where you stood. Stand still a moment.",

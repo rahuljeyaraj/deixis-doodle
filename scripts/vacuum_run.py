@@ -26,7 +26,9 @@ app is doing, with its last words under it. The run is logged in `out/vacuum/<ti
 robot's own reported positions) and `feet.jsonl` (the spot in every frame).
 `scripts/measure_vacuum.py` reads it for M24 and M25.
 
-Keys: Q or Esc quit, Space stop the robot, S save a snapshot.
+Keys: Q or Esc quit, Space stop the robot, S save a snapshot, C clear the chat thread,
+R reset for a fresh take (back to listening, the guess and the sent box gone, chat cleared;
+the robot is left alone, so if it is cleaning it carries on and "stop" still reaches it).
 """
 
 from __future__ import annotations
@@ -37,14 +39,20 @@ import faulthandler
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 os.environ.setdefault("OMP_NUM_THREADS", "4")
 
 import cv2  # noqa: E402
+import numpy as np  # noqa: E402
 
 from deixis.mcp import DeixisClient  # noqa: E402
-from pointdraw.layout import FLOOR_MARKER_IDS  # noqa: E402
+from pointdraw.layout import (
+    FLOOR_MARKER_IDS,  # noqa: E402
+    ROBOT_MARKER_ID,  # noqa: E402
+)
 from pointdraw.live.logs import JsonlWriter, TimelineWriter  # noqa: E402
+from pointdraw.live.look import fit_window  # noqa: E402
 from pointdraw.runtime.events import EventLog  # noqa: E402
 from pointdraw.vacuum.agent import Background, RuleAgent, VacuumAgent  # noqa: E402
 from pointdraw.vacuum.app import VacuumApp  # noqa: E402
@@ -64,8 +72,6 @@ from pointdraw.vacuum.watch import RobotWatch  # noqa: E402
 from pointdraw.vision.aruco import detect_markers  # noqa: E402
 from pointdraw.vision.camera import Camera, CameraSettings, CameraUnavailable  # noqa: E402
 
-WINDOW_W = 1280
-
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(
@@ -83,6 +89,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                     help="use the 4 floor markers even if a fitted floor is saved")  # fmt: skip
     ap.add_argument("--map", type=Path, default=DEFAULT_MAP_PATH, help="floor-to-map JSON")
     ap.add_argument("--robot", choices=["real", "fake", "none"], default="real")
+    ap.add_argument(
+        "--cosmos",
+        choices=["auto", "live", "off"],
+        default="auto",
+        help="find a thing named by name ('clean around the chair'); auto = on if "
+        "COSMOS_BASE_URL is set",
+    )
     ap.add_argument("--ai", choices=["live", "rules"], default="live")
     ap.add_argument("--model", default=None, help="Nemotron model (default: the code default)")
     ap.add_argument("--type", action="store_true", help="type lines instead of speaking")
@@ -109,6 +122,22 @@ def make_words(args: argparse.Namespace, muted=None):
     mic = int(args.mic) if args.mic and args.mic.isdigit() else args.mic
     print(f"speech: {args.asr or DEFAULT_ASR} loaded in {asr.load_s:.1f} s")
     return Listener(asr, make_vad(args.vad), device=mic, muted=muted).start()
+
+
+def make_eyes(args: argparse.Namespace):
+    """Cosmos, for a place given by name. None when it is off or not configured."""
+    if args.cosmos == "off":
+        return None
+    from pointdraw.config import get_settings
+    from pointdraw.cosmos.client import CosmosClient
+    from pointdraw.vacuum.objects import Eyes
+
+    if not get_settings().cosmos_base_url:
+        if args.cosmos == "live":
+            print("no COSMOS_BASE_URL: a place given by name will not be found")
+        return None
+    print("start: cosmos (a place given by name)", flush=True)
+    return Eyes(CosmosClient())
 
 
 def run(args: argparse.Namespace) -> int:
@@ -172,6 +201,7 @@ def run(args: argparse.Namespace) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     timeline = TimelineWriter(run_dir / "timeline.jsonl")
     feet_log = JsonlWriter(run_dir / "feet.jsonl")
+    robot_log = JsonlWriter(run_dir / "robot_seen.jsonl")  # the lid marker, every frame it is found
 
     def say(text: str) -> None:
         print(f"robot: {text}", flush=True)
@@ -179,7 +209,18 @@ def run(args: argparse.Namespace) -> int:
             speaker.say(text)
 
     log = EventLog()
-    app = VacuumApp(agent, core, link, f2m, profile, log=log, say=say)
+    # The eyes look at whatever the camera last gave the loop, so a name ("the chair") is
+    # found in the room as it is now. The call blocks the window for a second or two; it
+    # says "Let me look for ..." first, so the wait is explained.
+    latest: dict[str, Any] = {"image": None, "view": None}
+    eyes = make_eyes(args)
+
+    def look(name: str):
+        if eyes is None or latest["image"] is None or latest["view"] is None:
+            return None
+        return eyes.look(name, latest["image"], latest["view"])
+
+    app = VacuumApp(agent, core, link, f2m, profile, log=log, say=say, eyes=look)
     words = make_words(args, muted=speaker.muted if speaker else None)
     print("start: pose tracker", flush=True)
     tracker = FeetTracker()
@@ -201,7 +242,7 @@ def run(args: argparse.Namespace) -> int:
     n_spoken = 0
     window = "deixis vacuum"
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
-    print(f"logging to {run_dir}. Q quits, Space stops the robot.")
+    print(f"logging to {run_dir}. Q quits, Space stops the robot, C clears the chat, R resets.")
     try:
         while True:
             frame = cam.read(timeout=2.0)
@@ -209,7 +250,20 @@ def run(args: argparse.Namespace) -> int:
                 print("the camera stopped")
                 break
             t = frame.t
-            view = floor.update(detect_markers(frame.image, ids=FLOOR_MARKER_IDS), t)
+            # One pass finds both: the floor's markers (ignored once the floor is fitted)
+            # and the one on the robot's lid, whose track is the green path in the window.
+            seen = detect_markers(frame.image, ids=None)
+            view = floor.update([m for m in seen if m.id in FLOOR_MARKER_IDS], t)
+            latest["image"], latest["view"] = frame.image, view or latest["view"]
+            lid = next((m for m in seen if m.id == ROBOT_MARKER_ID), None)
+            if lid is not None:
+                app.on_robot_seen(t, lid.center_px)
+                # Kept for the report: the camera sees the robot 30 times a second, where its
+                # own reports come about once and late (M24).
+                px = [round(float(c), 1) for c in lid.center_px]
+                mm = view.to_mm(np.array([lid.center_px]))[0] if view is not None else None
+                on_floor = None if mm is None else [round(float(q), 1) for q in mm]
+                robot_log.write({"t": round(t, 4), "px": px, "mm": on_floor})
             feet = tracker.process(frame.image, t, view)
             app.on_sample(feet.sample())
             feet_log.write({"t": round(t, 4), "spot": feet.spot_mm, "standing": feet.standing,
@@ -234,16 +288,22 @@ def run(args: argparse.Namespace) -> int:
                     log.add(t0, "spoken", text=text, t1=round(t1, 3))
                 n_spoken = len(speaker.spoken)
             timeline.write_new(log.events)
-            sent = log.of("clean_area")
-            vis = draw(frame.image, view, area_mm, app, feet, t,
-                       sent[-1]["floor_box"] if sent else None)  # fmt: skip
-            scale = WINDOW_W / vis.shape[1]
-            cv2.imshow(window, cv2.resize(vis, None, fx=scale, fy=scale))
+            vis = draw(frame.image, view, area_mm, app, feet, t, app.last_floor_box)
+            # The marks are drawn on the camera's own full-size frame and the picture is then
+            # fitted to the window (rahul, 8 Oct: shrinking to a fixed 1280 and letting OpenCV
+            # stretch that back up to a maximised window made a full-HD camera look pixelated).
+            cv2.imshow(window, fit_window(window, vis))
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
             if key == ord(" "):
                 app.stop(t)
+            if key == ord("c"):
+                app.clear_chat(t)
+                print("chat cleared")
+            if key == ord("r"):
+                app.reset(t, "r key")
+                print("reset: listening, nothing showing (the robot was left as it was)")
             if key == ord("s"):
                 path = run_dir / f"snapshot-{frame.index}.png"
                 cv2.imwrite(str(path), vis)
@@ -261,6 +321,7 @@ def run(args: argparse.Namespace) -> int:
         timeline.write_new(log.events)
         timeline.close()
         feet_log.close()
+        robot_log.close()
         if speaker is not None:
             speaker.close()
         if link is not None:

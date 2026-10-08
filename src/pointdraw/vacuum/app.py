@@ -26,6 +26,7 @@ Everything it does goes in `log` (an `EventLog`); everything it says goes to `sa
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future
@@ -41,6 +42,7 @@ from pointdraw.agent.nemotron import AgentResult
 from pointdraw.runtime.events import EventLog
 from pointdraw.vacuum.agent import Context
 from pointdraw.vacuum.calibrate import FloorToMap
+from pointdraw.vacuum.objects import thing_name
 
 LISTEN, PREVIEW, WAIT_CLEAR, CLEANING = "LISTEN", "PREVIEW", "WAIT_CLEAR", "CLEANING"
 
@@ -60,6 +62,7 @@ class VacuumParams:
     # (7 Oct: tried at 40 mm, turned off by rahul -- the box sent is the box asked for)
     min_clean_s: float = 6.0  # the robot gets this long to start before it is believed
     clean_settle_s: float = 3.0  # ... and must say it has stopped for this long to count
+    trail_step_px: float = 3.0  # the path keeps a point only this far from the last one
 
 
 @dataclass
@@ -90,6 +93,7 @@ class Preview:
     reminded_t: float | None = None
     out_since: float | None = None  # the person has stood outside the box since then
     narrow: bool = False  # asked "Clean half a metre wide?"; "yes" widens it first
+    resized: bool = False  # "smaller"/"a bit left": say the new size, not just the thing
 
 
 @dataclass
@@ -106,20 +110,45 @@ class OpenQuestion:
 _TO_SLIPS = {"two", "too"}  # -> "to", only right before a pointing word
 _HERE_SLIPS = {"hear", "heir"}  # -> "here", only right after "to" or "from"
 _POINTING = {"here", "there", "hear", "heir", "their"}
+#: "Clean" as Parakeet writes it in rahul's voice (live, 7 and 8 Oct). Repaired only when the
+#: sentence is about a place, so an utterance that really is about claims or screens is left.
+_CLEAN_SLIPS = {"claim", "claims", "claimed", "cling", "clings", "cleaned", "cleans", "screen",
+                "screens", "clear", "glean", "queen", "kleen"}  # fmt: skip
+_PLACE_WORDS = {"here", "there", "from", "around", "round", "near", "beside", "under", "this",
+                "that", "spot", "area", "bit", "square", "metre", "meter"}  # fmt: skip
+#: What the vacuum answers to when nothing is waiting on an answer. Everything else said in
+#: the room is not for it: 31 utterances in one run on 8 Oct, 20 of them other people talking,
+#: three of which ("Stop up", "Scrap", "Stop tripping") stopped the robot.
+#:
+#: A pointing word counts as well as an order, because "clean" comes out as almost anything
+#: -- "playing from here", "Clicking from here" (8 Oct) -- and no list of its mishearings
+#: will ever be complete. "Here" is the word this whole project is about and it is rare in
+#: ordinary talk, so it, not the verb, is what says the robot is being spoken to. The agent
+#: still decides what was actually asked for.
+_FOR_THE_ROBOT = {
+    "clean", "stop", "dock", "vacuum", "hoover", "hover", "home",
+    *_CLEAN_SLIPS, *_POINTING,
+}  # fmt: skip
 
 
 def repair_words(words: Sequence[Word]) -> list[Word]:
     """Undo the two ASR slips that break "clean from here ... to here" (live, 7 Oct).
 
     - "two here" / "too here" -> "to here": only when a pointing word comes next;
-    - "to hear" -> "to here": only when "to" or "from" came before.
+    - "to hear" -> "to here": only when "to" or "from" came before;
+    - a first word that is "clean" misheard ("claim", "cling", "screen") -> "clean", but only
+      when the sentence is about a place.
 
     Nothing else is touched, and the words keep their times, so the core still finds each
     "here" by its own word index.
     """
     out: list[Word] = []
+    place = any(norm_word(w.text) in _PLACE_WORDS for w in words)
     for i, w in enumerate(words):
         low = norm_word(w.text)
+        if i == 0 and low in _CLEAN_SLIPS and place:  # "Claim from here" -> "clean from here"
+            out.append(Word("clean", w.t0, w.t1, w.confidence))
+            continue
         nxt = norm_word(words[i + 1].text) if i + 1 < len(words) else ""
         prev = norm_word(out[-1].text) if out else ""
         if low in _TO_SLIPS and nxt in _POINTING:
@@ -188,6 +217,12 @@ def widened(where: Where, side_mm: float) -> Where:
     )
 
 
+def _the(label: str) -> str:
+    """ "chair" -> "the chair"; a label that already names itself is left alone."""
+    low = label.lower()
+    return label if low.startswith(("the ", "a ", "an ", "my ")) else f"the {label}"
+
+
 def inside(p: tuple[float, float], box: Sequence[float], margin: float = 0.0) -> bool:
     x, y, w, h = box
     return x - margin <= p[0] <= x + w + margin and y - margin <= p[1] <= y + h + margin
@@ -205,6 +240,7 @@ class VacuumApp:
         log: EventLog | None = None,
         say: Callable[[str], None] | None = None,
         params: VacuumParams | None = None,
+        eyes: Callable[[str], Any] | None = None,  # a name -> a Where on the floor, or None
     ) -> None:
         self.agent = agent
         self.core = core
@@ -213,14 +249,18 @@ class VacuumApp:
         self.profile = profile
         self.log = log or EventLog()
         self._say = say
+        self._eyes = eyes
         self.p = params or VacuumParams()
         self.samples: deque[Sample] = deque()
+        self.trail: deque[tuple[float, float]] = deque(maxlen=3000)  # the lid marker, in pixels
         self.state = LISTEN
         self.preview: Preview | None = None
         self.question: OpenQuestion | None = None
         self.pending: deque[tuple[Utterance, Future[AgentResult]]] = deque()
         self.opening: Utterance | None = None  # "clean from here", waiting for "to here"
         self.sent: list[dict[str, Any]] = []  # the boxes sent to the robot (map frame)
+        self.last_floor_box: list[float] | None = None  # the last box sent, for the window
+        self.chat_from = 0  # the window's thread starts here in the log (C clears it)
         self._cleaning_since: float | None = None  # when the robot was told to clean
         self._quiet_since: float | None = None  # since when it has not said "cleaning"
 
@@ -247,7 +287,22 @@ class VacuumApp:
         if self._is_answer(utt):
             self._answer(utt, t)
             return
+        if not self._for_me(utt):
+            self.log.add(t, "not_for_me", text=utt.text)
+            return
         self._ask_agent(utt, t)
+
+    def _for_me(self, utt: Utterance) -> bool:
+        """Is this said to the robot? Only asked when nothing is waiting on an answer.
+
+        With a box on the screen or a question open, anything may be the answer ("yes", "a bit
+        left", "smaller"), so everything goes through. The rest of the time the room is full
+        of talk that is not for it, and answering it ("Sorry, I didn't get that") is both
+        noise on film and, for a word like "Scrap", a stop the robot should never have had.
+        """
+        if self.state in (PREVIEW, WAIT_CLEAR) or self.question is not None:
+            return True
+        return any(norm_word(w) in _FOR_THE_ROBOT for w in utt.texts)
 
     def _ask_agent(self, utt: Utterance, t: float) -> None:
         ctx = Context(
@@ -343,6 +398,8 @@ class VacuumApp:
         self.log.add(t, "resolve", status=res.status, log=res.log)
         if res.status == "ask":
             assert res.ask is not None
+            if res.ask.reason == "unknown_place" and self._look(utt, calls, k, t):
+                return
             self.question = OpenQuestion(res.ask, utt, calls, k)
             self.log.add(t, "ask", reason=res.ask.reason, question=res.ask.question)
             self.say(t, res.ask.question)
@@ -351,6 +408,27 @@ class VacuumApp:
         assert where is not None
         self.question = None
         self._show(Preview(where, utt, calls[k], t), t)
+
+    def _look(self, utt: Utterance, calls: list[dict[str, Any]], k: int, t: float) -> bool:
+        """A place given by name: ask the eyes to find it in the room. True if they did.
+
+        Cosmos names and finds it, the floor fit places it, and the person still says yes or
+        no to the box -- so a thing it gets wrong costs one "no", not a wrong clean.
+        """
+        name = str((calls[k].get("args") or {}).get("place", {}).get("named") or "").strip()
+        if not name or self._eyes is None:
+            return False
+        self.log.add(t, "look", name=name)
+        self.say(t, f"Let me look for {thing_name(name)}.")
+        where = self._eyes(name)
+        if where is None:
+            self.log.add(t, "look_failed", name=name)
+            return False
+        self.log.add(t, "found", name=name, label=where.label,
+                     box=[round(v) for v in where.box_mm or ()])  # fmt: skip
+        self.question = None
+        self._show(Preview(where, utt, calls[k], t), t)
+        return True
 
     def _show(self, prev: Preview, t: float) -> None:
         """Show the box and say the guess. A two-spot box is echoed ("Clean from there to
@@ -364,7 +442,11 @@ class VacuumApp:
         self.log.add(t, "preview", box=[round(v) for v in w.box_mm or ()], mean=w.mean_mm,
                      source=w.source, outside=bool(w.evidence.get("outside")),
                      two_spot=two, narrow=prev.narrow)  # fmt: skip
-        if prev.narrow:
+        if w.source == "vlm":  # found by name, not by where the person stood
+            what = _the(w.label or "it")
+            size = f"{area_text(w)} " if prev.resized else ""
+            self.say(t, f"Clean {size}around {what}?")
+        elif prev.narrow:
             self.say(t, "That's a narrow strip. Clean half a metre wide?")
         elif w.evidence.get("outside"):
             what = "from there to here" if two else f"{area_text(w)} there"
@@ -387,7 +469,12 @@ class VacuumApp:
         where = res.calls[0].where("place")
         assert where is not None
         self.log.add(t, "adjust", args=call["args"], box=[round(v) for v in where.box_mm or ()])
-        self._show(Preview(where, self.preview.utt, self.preview.call, t), t)
+        old = self.preview.where
+        if old.source == "vlm":  # still the chair, moved or resized: don't start saying "here"
+            where = where.model_copy(update={"source": "vlm", "label": old.label})
+        self._show(
+            Preview(where, self.preview.utt, self.preview.call, t, resized=old.source == "vlm"), t
+        )
 
     # ------------------------------------------------------------------ answers
 
@@ -439,6 +526,19 @@ class VacuumApp:
             self.say(t, "OK. Step out, and I'll clean it.")  # one line (claim 30)
             prev.reminded_t = t
         self._wait_clear(t)
+
+    def on_robot_seen(self, t: float, centre_px: Any) -> None:
+        """The marker on the robot's lid, where the camera sees it, every frame it is found.
+
+        The path is kept in the picture's own pixels, exactly as `vacuum_map.py` tracks it
+        during the calibration drive (rahul, 8 Oct 2026): it is what the camera saw, with no
+        transform in between, so nothing the floor fit or the lid's height gets wrong can bend
+        it. The camera must not move, which the fixed floor already requires.
+        """
+        here = (float(centre_px[0]), float(centre_px[1]))
+        if self.trail and math.dist(self.trail[-1], here) < self.p.trail_step_px:
+            return  # a robot sitting still must not pile up thousands of points
+        self.trail.append(here)
 
     def on_robot_state(self, t: float, state: str | None) -> None:
         """What the robot says it is doing. Only remembers it -- `tick` decides.
@@ -558,6 +658,7 @@ class VacuumApp:
             floor_box = [round(v) for v in prev.where.box_mm or ()]
             if self.link is None:  # a dry run before calibration: the floor box is enough
                 self.log.add(t, "clean_area", floor_box=floor_box, map_box=None, reply=None)
+                self.last_floor_box = floor_box
                 self.say(t, "Dry run: the robot would clean there now.")
                 return
             self.log.add(t, "error", where="send", error="no floor-to-map calibration")
@@ -575,6 +676,7 @@ class VacuumApp:
         self.log.add(t, "clean_area", floor_box=[round(v) for v in prev.where.box_mm or ()],
                      map_box=box, inset_mm=self.p.send_inset_mm, reply=reply)  # fmt: skip
         self.sent.append({"t": t, "where": on_map, "reply": reply})
+        self.last_floor_box = [round(v) for v in prev.where.box_mm or ()]
         if reply is None:
             self.say(t, "Dry run: the robot would clean there now.")
         elif reply.get("ok"):
@@ -584,7 +686,47 @@ class VacuumApp:
         else:
             self.say(t, f"The robot said no: {reply.get('why', 'no reason given')}.")
 
+    # ------------------------------------------------------------------ a fresh take
+
+    def clear_chat(self, t: float) -> None:
+        """Hide the thread so far. The window only; the log keeps every line."""
+        self.log.add(t, "chat_cleared")
+        self.chat_from = len(self.log.events)
+
+    def reset(self, t: float, why: str = "r key") -> None:
+        """Back to listening with nothing showing, without restarting the app.
+
+        The robot is deliberately left alone (rahul, 8 Oct 2026): if it is cleaning it
+        carries on, and "stop" still reaches it from here, because `stop` always sends.
+        Between takes this saves the 30 s of loading the camera, the ASR and the pose
+        tracker again. The floor fit and the camera are untouched.
+        """
+        self.log.add(t, "reset", why=why, was=self.state,
+                     robot_left_cleaning=self.state == CLEANING)  # fmt: skip
+        self.state = LISTEN
+        self.preview = self.question = self.opening = None
+        self.pending.clear()
+        self.sent.clear()
+        self.last_floor_box = None
+        self.trail.clear()
+        self._cleaning_since = self._quiet_since = None
+        self.clear_chat(t)
+
     # ------------------------------------------------------------------ for the view
+
+    def chat(self, limit: int = 6) -> list[tuple[str, str]]:
+        """The last few turns as ("you" | "it", text), oldest first, for the window.
+
+        Both sides, unlike the plotter's window, which lists only what it heard: on film the
+        thread has to read as a conversation (rahul, 8 Oct 2026).
+        """
+        out: list[tuple[str, str]] = []
+        for e in self.log.events[self.chat_from :]:
+            if e["kind"] == "utterance" and e.get("text"):
+                out.append(("you", str(e["text"])))
+            elif e["kind"] == "say":
+                out.append(("it", str(e["text"])))
+        return out[-limit:]
 
     def banner(self) -> str:
         if self.state == PREVIEW:
